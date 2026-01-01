@@ -10,8 +10,17 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Add include directories
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libosmium/include
+)
+
 # Find required packages
 find_package(Vulkan REQUIRED)
+find_package(ZLIB REQUIRED)
+find_package(Threads REQUIRED)
+find_package(BZip2 REQUIRED)
 
 # Find glslangValidator for shader compilation
 find_program(GLSLANG_VALIDATOR glslangValidator
@@ -19,6 +28,7 @@ find_program(GLSLANG_VALIDATOR glslangValidator
     REQUIRED
 )
 
+# GPU SSSP executable
 add_executable(gpusssp
     src/gpusssp.cpp
 )
@@ -26,6 +36,18 @@ add_executable(gpusssp
 target_link_libraries(gpusssp
     PRIVATE
         Vulkan::Vulkan
+)
+
+# OSM to Graph converter executable
+add_executable(osm2graph
+    src/osm2graph.cpp
+)
+
+target_link_libraries(osm2graph
+    PRIVATE
+        ZLIB::ZLIB
+        BZip2::BZip2
+        Threads::Threads
 )
 
 # Custom command to compile GLSL shader to SPIR-V
