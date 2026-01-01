@@ -21,9 +21,6 @@ std::vector<uint32_t> readSPV(const std::string &filename)
 
 int main(int argc, char **argv)
 {
-    if (argc < 3) {
-      std::cout << argv[0] << "GRAPH SOURCE" << std::end;
-    }
     vk::ApplicationInfo appInfo("DeltaStep", 1, "NoEngine", 1, VK_API_VERSION_1_2);
     vk::Instance instance = vk::createInstance({{}, &appInfo});
     auto physDevices = instance.enumeratePhysicalDevices();
