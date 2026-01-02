@@ -247,10 +247,10 @@ class ParsingHandler : public osmium::handler::Handler {
 };
 }
 
-inline OSMNetwork read_network(const std::string &base_path) {
+inline OSMNetwork read_network(const std::string &file_path) {
     OSMNetwork network;
 
-    osmium::io::File file{base_path + ".osm.pbf"};
+    osmium::io::File file{file_path};
     osmium::io::Reader reader{file};
 
     osmium::index::map::SparseMemArray<osmium::unsigned_object_id_type, osmium::Location>

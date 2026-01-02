@@ -11,15 +11,15 @@ int main(int argc, char **argv) {
         std::cout << argv[0] << " PATH_TO_OSM OUTPUT_PATH"
                   << std::endl;
         std::cout << "Example: " << argv[0]
-                  << " data/berlin.osm.pbf .cache/graph/berlin" << std::endl;
+                  << " berlin.osm.pbf cache/graph/berlin" << std::endl;
         return EXIT_FAILURE;
     }
 
-    const std::string network_base_path = argv[1];
+    const std::string network_path = argv[1];
     const std::string output_base_path = argv[2];
 
     gpusssp::common::TimedLogger time_read("Reading network from");
-    auto network = gpusssp::preprocessing::read_network(network_base_path);
+    auto network = gpusssp::preprocessing::read_network(network_path);
     time_read.finished();
 
     gpusssp::common::TimedLogger time_simplify("Simplify OSM data");

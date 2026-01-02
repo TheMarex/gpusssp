@@ -2,7 +2,15 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <cmath>
+#include <limits>
 #include <vulkan/vulkan.hpp>
+
+#include "common/files.hpp"
+#include "common/coordinate.hpp"
+#include "common/weighted_graph.hpp"
+
+using namespace gpusssp::common;
 
 const uint32_t WORKGROUP_SIZE = 128;
 
@@ -19,8 +27,67 @@ std::vector<uint32_t> readSPV(const std::string &filename)
     return spv;
 }
 
+// Find the closest node to a given coordinate
+uint32_t find_closest_node(const std::vector<Coordinate> &coordinates, 
+                           const Coordinate& target)
+{
+    uint32_t closest_node = 0;
+    long min_dist_sq = std::numeric_limits<long>::max();
+    
+    for (uint32_t i = 0; i < coordinates.size(); ++i) {
+        long dist_sq = euclid_squared_distance(coordinates[i], target);
+        if (dist_sq < min_dist_sq) {
+            min_dist_sq = dist_sq;
+            closest_node = i;
+        }
+    }
+    
+    return closest_node;
+}
+
+Coordinate string_to_coordinate(const std::string& s) {
+    auto pos = s.find(',');
+    return Coordinate::from_floating(std::stod(s.substr(0, pos)), std::stod(s.substr(pos+1)));
+}
+
 int main(int argc, char **argv)
 {
+    // Parse command line arguments
+    if (argc != 4) {
+        std::cerr << "Usage: " << argv[0] 
+                  << " <graph_path> SRC_LON,SRC_LAT DEST_LON,DEST_LAT" << std::endl;
+        std::cerr << "Example: " << argv[0] 
+                  << " cache/berlin 13.3889,52.5170 13.4050,52.5200" << std::endl;
+        return 1;
+    }
+    
+    std::string graph_path = argv[1];
+    auto src_coord = string_to_coordinate(argv[2]);
+    auto dst_coord = string_to_coordinate(argv[3]);
+    
+    std::cout << "Loading graph from: " << graph_path << std::endl;
+    
+    // Load graph and coordinates
+    auto graph = files::read_weighted_graph<uint32_t>(graph_path);
+    auto coordinates = files::read_coordinates(graph_path);
+    
+    std::cout << "Graph loaded: " << graph.num_nodes() << " nodes, " 
+              << graph.num_edges() << " edges" << std::endl;
+    
+    // Find closest nodes
+    uint32_t src_node = find_closest_node(coordinates, src_coord);
+    uint32_t dst_node = find_closest_node(coordinates, dst_coord);
+    
+    std::cout << "Source: " << src_coord << " -> Node " << src_node << " " << coordinates[src_node] << std::endl;
+    std::cout << "Target: " << dst_coord << " -> Node " << dst_node << " " << coordinates[dst_node] << std::endl;
+    
+    // Extract graph data in CSR format
+    auto [first_out, head, weight] = WeightedGraph<uint32_t>::unwrap(graph);
+    uint32_t n = graph.num_nodes();
+    
+    std::cout << "Computing SSSP from node " << src_node << "..." << std::endl;
+
+    // Initialize Vulkan
     vk::ApplicationInfo appInfo("DeltaStep", 1, "NoEngine", 1, VK_API_VERSION_1_2);
     vk::Instance instance = vk::createInstance({{}, &appInfo});
     auto physDevices = instance.enumeratePhysicalDevices();
@@ -31,36 +98,28 @@ int main(int argc, char **argv)
     vk::Device device = phys.createDevice({{}, 1, &queueInfo});
     vk::Queue queue = device.getQueue(0, 0);
 
-    // 2. Command pool
+    // Command pool
     vk::CommandPool cmdPool =
         device.createCommandPool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0});
 
-    // 3. Simple example graph (CSR)
-    // Graph: 4 vertices, edges with weights
-    // 0->1(1), 0->2(4), 1->2(2), 1->3(6), 2->3(3)
-    std::vector<uint32_t> row_ptr = {0, 2, 4, 5, 5};
-    std::vector<uint32_t> col_idx = {1, 2, 2, 3, 3};
-    std::vector<uint32_t> weight = {1, 4, 2, 6, 3};
-    uint32_t n = 4;
-    uint32_t e = 5;
-
+    // Initialize distances
     std::vector<uint32_t> dist(n, UINT32_MAX);
-    dist[0] = 0;
+    dist[src_node] = 0;
 
-    // 4. Create buffers
+    // Create buffers
     auto createBuffer = [&](vk::DeviceSize size, vk::BufferUsageFlags usage)
     { return device.createBuffer({{}, size, usage, vk::SharingMode::eExclusive}); };
     vk::Buffer bufRow =
-        createBuffer(row_ptr.size() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
+        createBuffer(first_out.size() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
     vk::Buffer bufCol =
-        createBuffer(col_idx.size() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
+        createBuffer(head.size() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
     vk::Buffer bufWeight =
         createBuffer(weight.size() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
     vk::Buffer bufDist =
         createBuffer(dist.size() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
     vk::Buffer bufChanged = createBuffer(sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
 
-    // 5. Allocate memory (host visible for simplicity)
+    // Allocate memory (host visible for simplicity)
     auto allocAndBind = [&](vk::Buffer buf)
     {
         vk::MemoryRequirements mr = device.getBufferMemoryRequirements(buf);
@@ -86,13 +145,13 @@ int main(int argc, char **argv)
     vk::DeviceMemory memDist = allocAndBind(bufDist);
     vk::DeviceMemory memChanged = allocAndBind(bufChanged);
 
-    // Copy data
-    memcpy(device.mapMemory(memRow, 0, row_ptr.size() * sizeof(uint32_t)),
-           row_ptr.data(),
-           row_ptr.size() * sizeof(uint32_t));
-    memcpy(device.mapMemory(memCol, 0, col_idx.size() * sizeof(uint32_t)),
-           col_idx.data(),
-           col_idx.size() * sizeof(uint32_t));
+    // Copy graph data
+    memcpy(device.mapMemory(memRow, 0, first_out.size() * sizeof(uint32_t)),
+           first_out.data(),
+           first_out.size() * sizeof(uint32_t));
+    memcpy(device.mapMemory(memCol, 0, head.size() * sizeof(uint32_t)),
+           head.data(),
+           head.size() * sizeof(uint32_t));
     memcpy(device.mapMemory(memWeight, 0, weight.size() * sizeof(uint32_t)),
            weight.data(),
            weight.size() * sizeof(uint32_t));
@@ -105,7 +164,7 @@ int main(int argc, char **argv)
     auto gpuChanged = (uint32_t *)device.mapMemory(memChanged, 0, sizeof(uint32_t));
     *gpuChanged = 0;
 
-    // 6. Descriptor set layout
+    // Descriptor set layout
     std::vector<vk::DescriptorSetLayoutBinding> bindings(5);
     for (int i = 0; i < 5; i++)
     {
@@ -117,7 +176,7 @@ int main(int argc, char **argv)
     vk::DescriptorSetLayout dsl =
         device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
 
-    // 7. Descriptor pool and set
+    // Descriptor pool and set
     vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer, 5};
     vk::DescriptorPool descPool = device.createDescriptorPool({{}, 1, 1, &poolSize});
     vk::DescriptorSet descSet = device.allocateDescriptorSets({descPool, 1, &dsl})[0];
@@ -136,7 +195,7 @@ int main(int argc, char **argv)
         {descSet, 4, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbiChanged, nullptr}};
     device.updateDescriptorSets(writes, {});
 
-    // 8. Load SPIR-V shader
+    // Load SPIR-V shader
     std::vector<uint32_t> spv = readSPV("delta_step.spv");
     vk::ShaderModule shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
 
@@ -150,7 +209,7 @@ int main(int argc, char **argv)
     vk::Pipeline pipeline =
         device.createComputePipeline({}, {{}, shaderStage, pipelineLayout}).value;
 
-    // 9. Command buffer
+    // Command buffer
     vk::CommandBuffer cmdBuf =
         device.allocateCommandBuffers({cmdPool, vk::CommandBufferLevel::ePrimary, 1})[0];
 
@@ -161,13 +220,19 @@ int main(int argc, char **argv)
         uint32_t delta;
     };
 
-    for (uint32_t bucket = 0; bucket < 10; bucket++)
+    const uint32_t DELTA = 1000; // Adjust based on edge weight scale
+    const uint32_t NUM_BUCKETS = 1000; // Process up to DELTA * NUM_BUCKETS
+    
+    // Run delta-stepping algorithm
+    for (uint32_t bucket = 0; bucket < NUM_BUCKETS; bucket++)
     {
         *gpuChanged = 1;
         uint32_t iter = 0;
         while (*gpuChanged > 0)
         {
-            std::cout << bucket << " - " << iter++ << std::endl;
+            if (iter == 0) {
+                std::cout << "Processing bucket " << bucket << "..." << std::endl;
+            }
             *gpuChanged = 0;
 
             cmdBuf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
@@ -175,7 +240,7 @@ int main(int argc, char **argv)
             cmdBuf.bindDescriptorSets(
                 vk::PipelineBindPoint::eCompute, pipelineLayout, 0, descSet, {});
 
-            PushConsts pc{n, bucket, 2}; // delta=2
+            PushConsts pc{n, bucket, DELTA};
 
             cmdBuf.pushConstants(
                 pipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
@@ -189,13 +254,33 @@ int main(int argc, char **argv)
             cmdBuf.end();
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmdBuf});
             queue.waitIdle();
-
-            std::cout << "Distances: ";
-            for (uint32_t i = 0; i < n; i++)
-                std::cout << gpuDist[i] << " ";
-            std::cout << std::endl;
+            
+            iter++;
+        }
+        
+        // Early termination: if target is reached and stable
+        if (gpuDist[dst_node] != UINT32_MAX) {
+            // Check if we've processed all distances up to the target
+            if (gpuDist[dst_node] < bucket * DELTA) {
+                std::cout << "Target reached at bucket " << bucket << std::endl;
+                break;
+            }
         }
     }
+
+    // Output results
+    std::cout << "\n=== SSSP Results ===" << std::endl;
+    std::cout << "Distance from node " << src_node << " to node " << dst_node << ": ";
+    if (gpuDist[dst_node] == UINT32_MAX) {
+        std::cout << "UNREACHABLE" << std::endl;
+    } else {
+        std::cout << gpuDist[dst_node] << std::endl;
+        
+        // Calculate real-world distance
+        double haversine_dist = haversine_distance(coordinates[src_node], coordinates[dst_node]);
+        std::cout << "Haversine distance: " << haversine_dist << " meters" << std::endl;
+    }
+    std::cout << std::endl;
 
     device.unmapMemory(memDist);
     device.unmapMemory(memChanged);
