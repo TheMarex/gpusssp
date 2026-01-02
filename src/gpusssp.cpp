@@ -4,6 +4,8 @@
 #include <vector>
 #include <cmath>
 #include <limits>
+#include <optional>
+#include <random>
 #include <vulkan/vulkan.hpp>
 
 #include "common/files.hpp"
@@ -17,8 +19,15 @@ using namespace gpusssp;
 
 const uint32_t WORKGROUP_SIZE = 128;
 
-common::Coordinate string_to_coordinate(const std::string& s) {
+std::optional<common::Coordinate> string_to_coordinate(const std::string& s) {
+    if (s == "random") {
+      return {};
+    }
+
     auto pos = s.find(',');
+    if (pos == s.npos) {
+      throw new std::runtime_error("Illegal coordinate " + s);
+    }
     return common::Coordinate::from_floating(std::stod(s.substr(0, pos)), std::stod(s.substr(pos+1)));
 }
 
@@ -78,40 +87,57 @@ auto run_gpu_sssp(uint32_t src_node, uint32_t dst_node, uint32_t num_nodes, uint
 int main(int argc, char **argv)
 {
     // Parse command line arguments
-    if (argc < 4) {
+    if (argc < 2 || argc > 6) {
         std::cerr << "Usage: " << argv[0] 
-                  << " <graph_path> SRC_LON,SRC_LAT DEST_LON,DEST_LAT [DELTA]" << std::endl;
+                  << " <graph_path> [SRC_LON,SRC_LAT DEST_LON,DEST_LAT] [DELTA] [NUM_QUERIES]" << std::endl;
         std::cerr << "Example: " << argv[0] 
-                  << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600" << std::endl;
+                  << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600 10" << std::endl;
         return 1;
     }
     
     std::string graph_path = argv[1];
-    auto src_coord = string_to_coordinate(argv[2]);
-    auto dst_coord = string_to_coordinate(argv[3]);
+    std::optional<common::Coordinate> maybe_src_coord;
+    std::optional<common::Coordinate> maybe_dst_coord;
+    if (argc > 2) {
+        maybe_src_coord = string_to_coordinate(argv[2]);
+        maybe_dst_coord = string_to_coordinate(argv[3]);
+    }
 
     auto delta = 3600u;
-
-    if (argc == 5) {
+    if (argc >= 5) {
       delta = std::stoi(argv[4]);
+    }
+
+    auto num_queries = 100u;
+    if (argc >= 6) {
+      num_queries = std::stoi(argv[5]);
     }
     
     std::cout << "Loading graph from: " << graph_path << std::endl;
-    
-    // Load graph and coordinates
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_path);
     auto coordinates = common::files::read_coordinates(graph_path);
-    
     std::cout << "Graph loaded: " << graph.num_nodes() << " nodes, " 
               << graph.num_edges() << " edges" << std::endl;
     
-    // Find closest nodes
     common::NearestNeighbour nn(coordinates);
-    uint32_t src_node = nn.nearest(src_coord);
-    uint32_t dst_node = nn.nearest(dst_coord);
-    
-    std::cout << "Source: " << src_coord << " -> Node " << src_node << " " << coordinates[src_node] << std::endl;
-    std::cout << "Target: " << dst_coord << " -> Node " << dst_node << " " << coordinates[dst_node] << std::endl;
+
+    std::uniform_int_distribution<> random_node_id(0, graph.num_nodes()-1);
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    std::vector<uint32_t> src_nodes(num_queries);
+    std::vector<uint32_t> dst_nodes(num_queries);
+    if (maybe_src_coord) {
+        std::fill(src_nodes.begin(), src_nodes.end(), nn.nearest(*maybe_src_coord));
+    } else {
+        std::generate(src_nodes.begin(), src_nodes.end(), [&]() { return random_node_id(gen); });
+    }
+    if (maybe_dst_coord) {
+        std::fill(dst_nodes.begin(), dst_nodes.end(), nn.nearest(*maybe_dst_coord));
+    } else {
+        std::generate(dst_nodes.begin(), dst_nodes.end(), [&]() { return random_node_id(gen); });
+    }
 
     // Initialize Vulkan
     vk::ApplicationInfo appInfo("DeltaStep", 1, "NoEngine", 1, VK_API_VERSION_1_2);
@@ -235,11 +261,12 @@ int main(int argc, char **argv)
         device.allocateCommandBuffers({cmdPool, vk::CommandBufferLevel::ePrimary, 1})[0];
 
     common::TimedLogger time_query("Running query with delta " + std::to_string(delta));
+    std::uint32_t checksum = 0;
     for (int i = 0; i < 10; i++) {
-        auto result = run_gpu_sssp(src_node, dst_node, graph.num_nodes(), delta, gpuDist, gpuChanged, cmdBuf, queue, pipeline, pipelineLayout, descSet);
-        std::cout << src_node << "->" << dst_node << " => " << result << std::endl;
+        checksum ^= run_gpu_sssp(src_nodes[i], dst_nodes[i], graph.num_nodes(), delta, gpuDist, gpuChanged, cmdBuf, queue, pipeline, pipelineLayout, descSet);
     }
     time_query.finished();
+    std::cout << "Checksum: " << checksum << std::endl;
 
     device.unmapMemory(memDist);
     device.unmapMemory(memChanged);
