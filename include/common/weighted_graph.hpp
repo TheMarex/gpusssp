@@ -62,7 +62,6 @@ class WeightedGraph : public AdjGraph {
         return std::tie(graph.first_edges, graph.targets, graph.weights);
     }
 
-   protected:
     std::vector<weight_t> weights;
 };
 }

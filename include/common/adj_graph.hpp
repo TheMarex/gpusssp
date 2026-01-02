@@ -97,7 +97,6 @@ class AdjGraph {
         return std::tie(graph.first_edges, graph.targets);
     }
 
-  protected:
     std::vector<edge_id_t> first_edges;
     std::vector<node_id_t> targets;
 };

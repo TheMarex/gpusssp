@@ -8,14 +8,21 @@ layout(std430, binding = 3) buffer Dist { uint dist[]; };
 layout(std430, binding = 4) buffer Changed { uint changed; };
 
 layout(push_constant) uniform PushConsts {
+    uint src_node;
     uint n;
     uint bucket_idx;
     uint delta;
+    uint iteration;
 } pc;
 
 void main() {
     uint u = gl_GlobalInvocationID.x;
     if (u >= pc.n) return;
+
+    // Initialization
+    if (pc.bucket_idx == 0 && pc.iteration == 0) {
+      dist[u] = u == pc.src_node ? 0 : 0xFFFFFFFF;
+    }
 
     uint du = dist[u];
     if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta) {
