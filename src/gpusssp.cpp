@@ -15,6 +15,9 @@
 #include "common/weighted_graph.hpp"
 #include "common/nearest_neighbour.hpp"
 
+#include "gpu/memory.hpp"
+#include "gpu/graph_buffers.hpp"
+
 using namespace gpusssp;
 
 const uint32_t WORKGROUP_SIZE = 128;
@@ -148,6 +151,7 @@ int main(int argc, char **argv)
     float queuePriority = 1.0f;
     vk::DeviceQueueCreateInfo queueInfo({}, 0, 1, &queuePriority);
     vk::Device device = phys.createDevice({{}, 1, &queueInfo});
+    auto mem_props = phys.getMemoryProperties();
     vk::Queue queue = device.getQueue(0, 0);
 
     // Command pool
@@ -156,43 +160,22 @@ int main(int argc, char **argv)
 
 
     // Create buffers
-    auto createBuffer = [&](vk::DeviceSize size, vk::BufferUsageFlags usage)
-    { return device.createBuffer({{}, size, usage, vk::SharingMode::eExclusive}); };
     vk::Buffer bufRow =
-        createBuffer(graph.first_edges.size() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
+        gpu::create_exclusive_buffer<uint32_t>(device, graph.first_edges.size(), vk::BufferUsageFlagBits::eStorageBuffer);
     vk::Buffer bufCol =
-        createBuffer(graph.targets.size() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
+        gpu::create_exclusive_buffer<uint32_t>(device, graph.targets.size(), vk::BufferUsageFlagBits::eStorageBuffer);
     vk::Buffer bufWeight =
-        createBuffer(graph.weights.size() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
+        gpu::create_exclusive_buffer<uint32_t>(device, graph.weights.size(), vk::BufferUsageFlagBits::eStorageBuffer);
     vk::Buffer bufDist =
-        createBuffer(graph.num_nodes() * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
-    vk::Buffer bufChanged = createBuffer(sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer);
+        gpu::create_exclusive_buffer<uint32_t>(device, graph.num_nodes(), vk::BufferUsageFlagBits::eStorageBuffer);
+    vk::Buffer bufChanged = 
+        gpu::create_exclusive_buffer<uint32_t>(device, 1, vk::BufferUsageFlagBits::eStorageBuffer);
 
-    // Allocate memory (host visible for simplicity)
-    auto allocAndBind = [&](vk::Buffer buf)
-    {
-        vk::MemoryRequirements mr = device.getBufferMemoryRequirements(buf);
-        uint32_t memTypeIndex = 0;
-        vk::PhysicalDeviceMemoryProperties memProps = phys.getMemoryProperties();
-        for (uint32_t i = 0; i < memProps.memoryTypeCount; i++)
-        {
-            if ((mr.memoryTypeBits & (1 << i)) &&
-                (memProps.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eHostVisible))
-            {
-                memTypeIndex = i;
-                break;
-            }
-        }
-        vk::DeviceMemory mem = device.allocateMemory({mr.size, memTypeIndex});
-        device.bindBufferMemory(buf, mem, 0);
-        return mem;
-    };
-
-    vk::DeviceMemory memRow = allocAndBind(bufRow);
-    vk::DeviceMemory memCol = allocAndBind(bufCol);
-    vk::DeviceMemory memWeight = allocAndBind(bufWeight);
-    vk::DeviceMemory memDist = allocAndBind(bufDist);
-    vk::DeviceMemory memChanged = allocAndBind(bufChanged);
+    vk::DeviceMemory memRow = gpu::alloc_and_bind(device, mem_props, bufRow, vk::MemoryPropertyFlagBits::eHostVisible);
+    vk::DeviceMemory memCol = gpu::alloc_and_bind(device, mem_props, bufCol, vk::MemoryPropertyFlagBits::eHostVisible);
+    vk::DeviceMemory memWeight = gpu::alloc_and_bind(device, mem_props, bufWeight, vk::MemoryPropertyFlagBits::eHostVisible);
+    vk::DeviceMemory memDist = gpu::alloc_and_bind(device, mem_props, bufDist, vk::MemoryPropertyFlagBits::eHostVisible);
+    vk::DeviceMemory memChanged = gpu::alloc_and_bind(device, mem_props, bufChanged, vk::MemoryPropertyFlagBits::eHostVisible);
 
     // Copy graph data
     memcpy(device.mapMemory(memRow, 0, graph.first_edges.size() * sizeof(uint32_t)),
