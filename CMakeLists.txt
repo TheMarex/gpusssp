@@ -71,8 +71,27 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+# AddressSanitizer support
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+
+if(ENABLE_ASAN)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        set(ASAN_FLAGS "-fsanitize=address -fno-omit-frame-pointer -g")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ASAN_FLAGS}")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${ASAN_FLAGS}")
+        message(STATUS "AddressSanitizer enabled")
+    else()
+        message(WARNING "AddressSanitizer requested but not supported with ${CMAKE_CXX_COMPILER_ID}")
+    endif()
+endif()
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(gpusssp PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_compile_options(osm2graph PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -85,3 +104,4 @@ message(STATUS "C++ compiler: ${CMAKE_CXX_COMPILER}")
 message(STATUS "C++ standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Vulkan found: ${Vulkan_FOUND}")
 message(STATUS "glslangValidator: ${GLSLANG_VALIDATOR}")
+message(STATUS "AddressSanitizer: ${ENABLE_ASAN}")
