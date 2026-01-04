@@ -1,8 +1,8 @@
 #version 450
 layout(local_size_x = 128) in;
 
-layout(std430, binding = 0) buffer RowPtr { uint row_ptr[]; };
-layout(std430, binding = 1) buffer ColIdx { uint col_idx[]; };
+layout(std430, binding = 0) buffer FirstEdges { uint first_edges[]; };
+layout(std430, binding = 1) buffer Targets { uint targets[]; };
 layout(std430, binding = 2) buffer Weight { uint weight[]; };
 layout(std430, binding = 3) buffer Dist { uint dist[]; };
 layout(std430, binding = 4) buffer Changed { uint changed; };
@@ -28,8 +28,8 @@ void main() {
     if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta) {
         uint local_changed = 0;
 
-        for (uint eid = row_ptr[u]; eid < row_ptr[u+1]; ++eid) {
-            uint v = col_idx[eid];
+        for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
+            uint v = targets[eid];
             uint alt = du + weight[eid];
             uint prev = atomicMin(dist[v], alt);
             if (alt < prev) local_changed++;
