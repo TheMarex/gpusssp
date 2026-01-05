@@ -40,8 +40,8 @@ public:
     return gpu_changed;
   }
 
-  std::array<const vk::Buffer*, 2> buffers() const {
-    return {&buf_dist, &buf_changed};
+  std::array<const vk::Buffer, 2> buffers() const {
+    return {buf_dist, buf_changed};
   }
 
 private:

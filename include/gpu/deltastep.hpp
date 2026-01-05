@@ -39,16 +39,16 @@ public:
 
 
   void initialize_descriptor_set() {
-    std::vector<const vk::Buffer*> buffers;
-    for (const auto* ptr : graph_buffers.buffers()) {
-      buffers.push_back(ptr);
+    std::vector<vk::Buffer> buffers;
+    for (auto buffer : graph_buffers.buffers()) {
+      buffers.push_back(buffer);
     }
-    for (const auto* ptr : deltastep_buffers.buffers()) {
-      buffers.push_back(ptr);
+    for (auto buffer : deltastep_buffers.buffers()) {
+      buffers.push_back(buffer);
     }
-    auto num_buffers = buffers.size();
-    std::vector<vk::DescriptorSetLayoutBinding> bindings(num_buffers);
-    for (auto i = 0u; i < num_buffers; i++)
+
+    std::vector<vk::DescriptorSetLayoutBinding> bindings(buffers.size());
+    for (auto i = 0u; i < buffers.size(); i++)
     {
         bindings[i].binding = i;
         bindings[i].descriptorType = vk::DescriptorType::eStorageBuffer;
@@ -58,14 +58,14 @@ public:
     desc_set_layout =
         device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
 
-    vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer, (uint32_t)num_buffers};
+    vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer, (uint32_t)buffers.size()};
     desc_pool = device.createDescriptorPool({{}, 1, 1, &poolSize});
     desc_set = device.allocateDescriptorSets({desc_pool, 1, &desc_set_layout})[0];
 
     std::vector<vk::WriteDescriptorSet> writes;
-    std::vector<vk::DescriptorBufferInfo> dbis;
-    for (auto i = 0u; i < bindings.size(); ++i) {
-      dbis.push_back({*buffers[i], 0, VK_WHOLE_SIZE});
+    std::vector<vk::DescriptorBufferInfo> dbis(buffers.size());
+    for (auto i = 0u; i < buffers.size(); ++i) {
+      dbis[i] = {{buffers[i], 0, VK_WHOLE_SIZE}};
       writes.push_back({desc_set, i, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbis[i], nullptr});
     }
     device.updateDescriptorSets(writes, {});
@@ -75,7 +75,7 @@ public:
     initialize_descriptor_set();
 
     std::vector<uint32_t> spv = common::read_spv("delta_step.spv");
-    vk::ShaderModule shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
+    shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
 
     vk::PushConstantRange pcRange{
         vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};

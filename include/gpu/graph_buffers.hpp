@@ -56,8 +56,8 @@ public:
     return graph.num_nodes();
   }
 
-  std::array<const vk::Buffer*, 3> buffers() const {
-    return {&buf_first_edges, &buf_targets, &buf_weights};
+  std::array<vk::Buffer, 3> buffers() const {
+    return {buf_first_edges, buf_targets, buf_weights};
   }
 
 private:

@@ -105,22 +105,24 @@ int main(int argc, char **argv)
     vk::CommandPool cmdPool =
         device.createCommandPool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0});
     
-    gpu::GraphBuffers graph_buffers(graph, device);
-    gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device);
+    {
+      gpu::GraphBuffers graph_buffers(graph, device);
+      gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device);
 
-    graph_buffers.initialize(phys.getMemoryProperties());
-    deltastep_buffers.initialize(phys.getMemoryProperties());
+      graph_buffers.initialize(phys.getMemoryProperties());
+      deltastep_buffers.initialize(phys.getMemoryProperties());
 
-    gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
-    deltastep.initialize();
+      gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
+      deltastep.initialize();
 
-    common::TimedLogger time_query("Running query with delta " + std::to_string(delta));
-    std::uint32_t checksum = 0;
-    for (int i = 0; i < 10; i++) {
-        checksum ^= deltastep.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
+      common::TimedLogger time_query("Running query with delta " + std::to_string(delta));
+      std::uint32_t checksum = 0;
+      for (int i = 0; i < 10; i++) {
+          checksum ^= deltastep.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
+      }
+      time_query.finished();
+      std::cout << "Checksum: " << checksum << std::endl;
     }
-    time_query.finished();
-    std::cout << "Checksum: " << checksum << std::endl;
 
     device.destroyCommandPool(cmdPool);
     device.destroy();
