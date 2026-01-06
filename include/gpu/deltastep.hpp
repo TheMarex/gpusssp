@@ -7,257 +7,296 @@
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
 
-namespace gpusssp::gpu {
+namespace gpusssp::gpu
+{
 
-template<typename GraphT>
-class DeltaStep {
-  static constexpr const size_t WORKGROUP_SIZE = 128u;
-  struct PushConsts
-  {
-      uint32_t src_node;
-      uint32_t n;
-      uint32_t bucket_idx;
-      uint32_t delta;
-      uint32_t iteration;
-      uint32_t max_weight;
-  };
-
-public:
-
-  DeltaStep(const GraphBuffers<GraphT>& graph_buffers, DeltaStepBuffers& deltastep_buffers, vk::Device& device)
-    : graph_buffers(graph_buffers), deltastep_buffers(deltastep_buffers), device(device)
-  {
-  }
-
-  ~DeltaStep() {
-    device.destroyShaderModule(shader);
-    device.destroyPipeline(pipeline);
-    device.destroyPipelineLayout(pipeline_layout);
-    device.destroyDescriptorSetLayout(desc_set_layout);
-    device.destroyDescriptorPool(desc_pool);
-  }
-
-
-
-  void initialize_descriptor_set() {
-    std::vector<vk::Buffer> buffers;
-    for (auto buffer : graph_buffers.buffers()) {
-      buffers.push_back(buffer);
-    }
-    for (auto buffer : deltastep_buffers.buffers()) {
-      buffers.push_back(buffer);
-    }
-
-    std::vector<vk::DescriptorSetLayoutBinding> bindings(buffers.size());
-    for (auto i = 0u; i < buffers.size(); i++)
+template <typename GraphT> class DeltaStep
+{
+    static constexpr const size_t WORKGROUP_SIZE = 128u;
+    struct PushConsts
     {
-        bindings[i].binding = i;
-        bindings[i].descriptorType = vk::DescriptorType::eStorageBuffer;
-        bindings[i].descriptorCount = 1;
-        bindings[i].stageFlags = vk::ShaderStageFlagBits::eCompute;
+        uint32_t src_node;
+        uint32_t n;
+        uint32_t bucket_idx;
+        uint32_t delta;
+        uint32_t iteration;
+        uint32_t max_weight;
+    };
+
+  public:
+    DeltaStep(const GraphBuffers<GraphT> &graph_buffers,
+              DeltaStepBuffers &deltastep_buffers,
+              vk::Device &device)
+        : graph_buffers(graph_buffers), deltastep_buffers(deltastep_buffers), device(device)
+    {
     }
-    desc_set_layout =
-        device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
 
-    vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer, (uint32_t)buffers.size()};
-    desc_pool = device.createDescriptorPool({{}, 1, 1, &poolSize});
-    desc_set = device.allocateDescriptorSets({desc_pool, 1, &desc_set_layout})[0];
-
-    std::vector<vk::WriteDescriptorSet> writes;
-    std::vector<vk::DescriptorBufferInfo> dbis(buffers.size());
-    for (auto i = 0u; i < buffers.size(); ++i) {
-      dbis[i] = {{buffers[i], 0, VK_WHOLE_SIZE}};
-      writes.push_back({desc_set, i, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbis[i], nullptr});
+    ~DeltaStep()
+    {
+        device.destroyShaderModule(shader);
+        device.destroyPipeline(pipeline);
+        device.destroyPipelineLayout(pipeline_layout);
+        device.destroyDescriptorSetLayout(desc_set_layout);
+        device.destroyDescriptorPool(desc_pool);
     }
-    device.updateDescriptorSets(writes, {});
-  }
 
-  void initialize() {
-    initialize_descriptor_set();
+    void initialize_descriptor_set()
+    {
+        std::vector<vk::Buffer> buffers;
+        for (auto buffer : graph_buffers.buffers())
+        {
+            buffers.push_back(buffer);
+        }
+        for (auto buffer : deltastep_buffers.buffers())
+        {
+            buffers.push_back(buffer);
+        }
 
-    std::vector<uint32_t> spv = common::read_spv("delta_step.spv");
-    shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
+        std::vector<vk::DescriptorSetLayoutBinding> bindings(buffers.size());
+        for (auto i = 0u; i < buffers.size(); i++)
+        {
+            bindings[i].binding = i;
+            bindings[i].descriptorType = vk::DescriptorType::eStorageBuffer;
+            bindings[i].descriptorCount = 1;
+            bindings[i].stageFlags = vk::ShaderStageFlagBits::eCompute;
+        }
+        desc_set_layout =
+            device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
 
-    vk::PushConstantRange pcRange{
-        vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};
-    pipeline_layout = device.createPipelineLayout({{}, 1, &desc_set_layout, 1, &pcRange});
+        vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer,
+                                        (uint32_t)buffers.size()};
+        desc_pool = device.createDescriptorPool({{}, 1, 1, &poolSize});
+        desc_set = device.allocateDescriptorSets({desc_pool, 1, &desc_set_layout})[0];
 
-    vk::PipelineShaderStageCreateInfo shaderStage{
-        {}, vk::ShaderStageFlagBits::eCompute, shader, "main"};
+        std::vector<vk::WriteDescriptorSet> writes;
+        std::vector<vk::DescriptorBufferInfo> dbis(buffers.size());
+        for (auto i = 0u; i < buffers.size(); ++i)
+        {
+            dbis[i] = {{buffers[i], 0, VK_WHOLE_SIZE}};
+            writes.push_back({desc_set,
+                              i,
+                              0,
+                              1,
+                              vk::DescriptorType::eStorageBuffer,
+                              nullptr,
+                              &dbis[i],
+                              nullptr});
+        }
+        device.updateDescriptorSets(writes, {});
+    }
 
-    pipeline = device.createComputePipeline({}, {{}, shaderStage, pipeline_layout}).value;
-  }
+    void initialize()
+    {
+        initialize_descriptor_set();
 
-  uint32_t run(vk::CommandPool& cmd_pool, vk::Queue& queue, uint32_t src_node, uint32_t dst_node, uint32_t delta) {
-      vk::CommandBuffer cmd_buf =
-          device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
+        std::vector<uint32_t> spv = common::read_spv("delta_step.spv");
+        shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
 
-      const std::size_t MAX_BUCKETS = UINT32_MAX / delta - 1;
+        vk::PushConstantRange pcRange{vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};
+        pipeline_layout = device.createPipelineLayout({{}, 1, &desc_set_layout, 1, &pcRange});
 
-      uint32_t* gpu_changed = deltastep_buffers.changed();
-      uint32_t* gpu_dist = deltastep_buffers.dist();
-      auto num_nodes = (uint32_t)graph_buffers.num_nodes();
-      auto num_blocks = (num_nodes + 15 / 16) + 1;
+        vk::PipelineShaderStageCreateInfo shaderStage{
+            {}, vk::ShaderStageFlagBits::eCompute, shader, "main"};
 
-      vk::Buffer is_changed_buffer = deltastep_buffers.buffers()[1];
-      vk::Buffer was_changed_buffer = deltastep_buffers.buffers()[2];
+        pipeline = device.createComputePipeline({}, {{}, shaderStage, pipeline_layout}).value;
+    }
 
-      for (uint32_t bucket = 0; bucket < MAX_BUCKETS; bucket++)
-      {
-          *gpu_changed = 1;
-          uint32_t iteration = 0;
-          while (*gpu_changed > 0)
-          {
-              cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-              cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
-              cmd_buf.bindDescriptorSets(
-                  vk::PipelineBindPoint::eCompute, pipeline_layout, 0, desc_set, {});
+    uint32_t run(vk::CommandPool &cmd_pool,
+                 vk::Queue &queue,
+                 uint32_t src_node,
+                 uint32_t dst_node,
+                 uint32_t delta)
+    {
+        vk::CommandBuffer cmd_buf =
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
 
-              PushConsts pc{src_node, num_nodes, bucket, delta, iteration, delta};
+        const std::size_t MAX_BUCKETS = UINT32_MAX / delta - 1;
 
-              // For the first run we want to process all nodes in the bucket
-              cmd_buf.fillBuffer(was_changed_buffer, 0, VK_WHOLE_SIZE, UINT32_MAX);
-              cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
-              cmd_buf.pipelineBarrier(
-                vk::PipelineStageFlagBits::eTransfer,
-                vk::PipelineStageFlagBits::eComputeShader,
-                vk::DependencyFlags{},
-                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
-                {},
-                {});
+        uint32_t *gpu_changed = deltastep_buffers.changed();
+        uint32_t *gpu_dist = deltastep_buffers.dist();
+        auto num_nodes = (uint32_t)graph_buffers.num_nodes();
+        auto num_blocks = (num_nodes + 15 / 16) + 1;
 
-              pc.iteration = iteration++;
-              cmd_buf.pushConstants(
-                  pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-              cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
-              cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                     vk::PipelineStageFlagBits::eTransfer,
-                                     vk::DependencyFlags{},
-                                     {},
-                                     {},
-                                     {});
+        vk::Buffer is_changed_buffer = deltastep_buffers.buffers()[1];
+        vk::Buffer was_changed_buffer = deltastep_buffers.buffers()[2];
 
-              cmd_buf.copyBuffer(is_changed_buffer, was_changed_buffer, vk::BufferCopy{0, 0, num_blocks * sizeof(uint32_t)});
-              cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
-              cmd_buf.pipelineBarrier(
-                vk::PipelineStageFlagBits::eTransfer,
-                vk::PipelineStageFlagBits::eComputeShader,
-                vk::DependencyFlags{},
-                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
-                {},
-                {});
+        for (uint32_t bucket = 0; bucket < MAX_BUCKETS; bucket++)
+        {
+            *gpu_changed = 1;
+            uint32_t iteration = 0;
+            while (*gpu_changed > 0)
+            {
+                cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+                cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
+                cmd_buf.bindDescriptorSets(
+                    vk::PipelineBindPoint::eCompute, pipeline_layout, 0, desc_set, {});
 
-              pc.iteration = iteration++;
-              cmd_buf.pushConstants(
-                  pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-              cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
-              cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                     vk::PipelineStageFlagBits::eTransfer,
-                                     vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
-                                     {},
-                                     {});
+                PushConsts pc{src_node, num_nodes, bucket, delta, iteration, delta};
 
-              cmd_buf.copyBuffer(is_changed_buffer, was_changed_buffer, vk::BufferCopy{0, 0, num_blocks * sizeof(uint32_t)});
-              cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
-              cmd_buf.pipelineBarrier(
-                vk::PipelineStageFlagBits::eTransfer,
-                vk::PipelineStageFlagBits::eComputeShader,
-                vk::DependencyFlags{},
-                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
-                {},
-                {});
+                // For the first run we want to process all nodes in the bucket
+                cmd_buf.fillBuffer(was_changed_buffer, 0, VK_WHOLE_SIZE, UINT32_MAX);
+                cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                        vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::DependencyFlags{},
+                                        vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                          vk::AccessFlagBits::eShaderRead |
+                                                              vk::AccessFlagBits::eShaderWrite},
+                                        {},
+                                        {});
 
-              pc.iteration = iteration++;
-              cmd_buf.pushConstants(
-                  pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-              cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
-              cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                     vk::PipelineStageFlagBits::eTransfer,
-                                     vk::DependencyFlags{},
-                                     vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
-                                     {},
-                                     {});
+                pc.iteration = iteration++;
+                cmd_buf.pushConstants(
+                    pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+                cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::PipelineStageFlagBits::eTransfer,
+                                        vk::DependencyFlags{},
+                                        {},
+                                        {},
+                                        {});
 
-              cmd_buf.copyBuffer(is_changed_buffer, was_changed_buffer, vk::BufferCopy{0, 0, num_blocks * sizeof(uint32_t)});
-              cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
-              cmd_buf.pipelineBarrier(
-                vk::PipelineStageFlagBits::eTransfer,
-                vk::PipelineStageFlagBits::eComputeShader,
-                vk::DependencyFlags{},
-                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
-                {},
-                {});
+                cmd_buf.copyBuffer(is_changed_buffer,
+                                   was_changed_buffer,
+                                   vk::BufferCopy{0, 0, num_blocks * sizeof(uint32_t)});
+                cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                        vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::DependencyFlags{},
+                                        vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                          vk::AccessFlagBits::eShaderRead |
+                                                              vk::AccessFlagBits::eShaderWrite},
+                                        {},
+                                        {});
 
-              pc.iteration = iteration++;
-              cmd_buf.pushConstants(
-                  pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-              cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
-              cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                     vk::PipelineStageFlagBits::eComputeShader,
-                                     vk::DependencyFlags{},
-                                     vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
-                                     {},
-                                     {});
-              cmd_buf.end();
-              queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
-              queue.waitIdle();
+                pc.iteration = iteration++;
+                cmd_buf.pushConstants(
+                    pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+                cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::PipelineStageFlagBits::eTransfer,
+                                        vk::DependencyFlags{},
+                                        vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                          vk::AccessFlagBits::eShaderRead |
+                                                              vk::AccessFlagBits::eShaderWrite},
+                                        {},
+                                        {});
 
-              //for (auto i = 0u; i < num_nodes; ++i) {
-              //  if (gpu_dist[i] != UINT32_MAX) {
-              //    std::cout << " " << i << ": " << gpu_dist[i] << " / " << gpu_changed[i] << ", ";
-              //  }
-              //}
-              //std::cout << std::endl;
+                cmd_buf.copyBuffer(is_changed_buffer,
+                                   was_changed_buffer,
+                                   vk::BufferCopy{0, 0, num_blocks * sizeof(uint32_t)});
+                cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                        vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::DependencyFlags{},
+                                        vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                          vk::AccessFlagBits::eShaderRead |
+                                                              vk::AccessFlagBits::eShaderWrite},
+                                        {},
+                                        {});
 
-              //std::cout << bucket << " " << iteration << " " << *gpu_changed << " " << gpu_dist[src_node] << " " << gpu_dist[dst_node] << std::endl;
-          }
+                pc.iteration = iteration++;
+                cmd_buf.pushConstants(
+                    pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+                cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::PipelineStageFlagBits::eTransfer,
+                                        vk::DependencyFlags{},
+                                        vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                          vk::AccessFlagBits::eShaderRead |
+                                                              vk::AccessFlagBits::eShaderWrite},
+                                        {},
+                                        {});
 
-          cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-          cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
-          cmd_buf.bindDescriptorSets(
-              vk::PipelineBindPoint::eCompute, pipeline_layout, 0, desc_set, {});
+                cmd_buf.copyBuffer(is_changed_buffer,
+                                   was_changed_buffer,
+                                   vk::BufferCopy{0, 0, num_blocks * sizeof(uint32_t)});
+                cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                        vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::DependencyFlags{},
+                                        vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                          vk::AccessFlagBits::eShaderRead |
+                                                              vk::AccessFlagBits::eShaderWrite},
+                                        {},
+                                        {});
 
-          PushConsts pc{src_node, num_nodes, bucket, delta, iteration++, UINT32_MAX};
+                pc.iteration = iteration++;
+                cmd_buf.pushConstants(
+                    pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+                cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::DependencyFlags{},
+                                        vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                          vk::AccessFlagBits::eShaderRead |
+                                                              vk::AccessFlagBits::eShaderWrite},
+                                        {},
+                                        {});
+                cmd_buf.end();
+                queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
+                queue.waitIdle();
 
-          cmd_buf.pushConstants(
-              pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-          cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
-          cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                 vk::PipelineStageFlagBits::eComputeShader,
-                                 vk::DependencyFlags{},
-                                 {},
-                                 {},
-                                 {});
-          cmd_buf.end();
-          queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
-          queue.waitIdle();
-          
-          if (gpu_dist[dst_node] != UINT32_MAX) {
-              // If the distance is smaller then the current bucket, we have already settled the destination
-              if (gpu_dist[dst_node] < bucket * delta) {
-                  break;
-              }
-          }
-      }
+                // for (auto i = 0u; i < num_nodes; ++i) {
+                //   if (gpu_dist[i] != UINT32_MAX) {
+                //     std::cout << " " << i << ": " << gpu_dist[i] << " / " << gpu_changed[i] << ",
+                //     ";
+                //   }
+                // }
+                // std::cout << std::endl;
 
-      return gpu_dist[dst_node];
-  }
+                // std::cout << bucket << " " << iteration << " " << *gpu_changed << " " <<
+                // gpu_dist[src_node] << " " << gpu_dist[dst_node] << std::endl;
+            }
 
-private:
-  const GraphBuffers<GraphT>& graph_buffers;
-  DeltaStepBuffers& deltastep_buffers;
+            cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
+            cmd_buf.bindDescriptorSets(
+                vk::PipelineBindPoint::eCompute, pipeline_layout, 0, desc_set, {});
 
-  vk::DescriptorSet desc_set;
-  vk::DescriptorSetLayout desc_set_layout;
-  vk::DescriptorPool desc_pool;
-  vk::ShaderModule shader;
-  vk::Pipeline pipeline;
-  vk::PipelineLayout pipeline_layout;
+            PushConsts pc{src_node, num_nodes, bucket, delta, iteration++, UINT32_MAX};
 
-  vk::Device& device;
+            cmd_buf.pushConstants(
+                pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+            cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::DependencyFlags{},
+                                    {},
+                                    {},
+                                    {});
+            cmd_buf.end();
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
+            queue.waitIdle();
+
+            if (gpu_dist[dst_node] != UINT32_MAX)
+            {
+                // If the distance is smaller then the current bucket, we have already settled the
+                // destination
+                if (gpu_dist[dst_node] < bucket * delta)
+                {
+                    break;
+                }
+            }
+        }
+
+        return gpu_dist[dst_node];
+    }
+
+  private:
+    const GraphBuffers<GraphT> &graph_buffers;
+    DeltaStepBuffers &deltastep_buffers;
+
+    vk::DescriptorSet desc_set;
+    vk::DescriptorSetLayout desc_set_layout;
+    vk::DescriptorPool desc_pool;
+    vk::ShaderModule shader;
+    vk::Pipeline pipeline;
+    vk::PipelineLayout pipeline_layout;
+
+    vk::Device &device;
 };
 
-}
+} // namespace gpusssp::gpu
 
 #endif

@@ -19,26 +19,25 @@
 #include <tuple>
 #include <vector>
 
-namespace gpusssp {
-namespace preprocessing {
+namespace gpusssp
+{
+namespace preprocessing
+{
 
-struct OSMNetwork {
-    struct NodeMetaData {
+struct OSMNetwork
+{
+    struct NodeMetaData
+    {
         common::Coordinate coordinate;
 
-        bool operator==(const NodeMetaData &other) const {
-            return other.coordinate == coordinate;
-        }
+        bool operator==(const NodeMetaData &other) const { return other.coordinate == coordinate; }
     };
-    struct EdgeMetaData {
+    struct EdgeMetaData
+    {
         uint8_t max_speed;
 
-        bool operator==(const EdgeMetaData &other) const {
-            return other.max_speed == max_speed;
-        }
-        bool operator<(const EdgeMetaData &other) const {
-            return other.max_speed < max_speed;
-        }
+        bool operator==(const EdgeMetaData &other) const { return other.max_speed == max_speed; }
+        bool operator<(const EdgeMetaData &other) const { return other.max_speed < max_speed; }
     };
     using Edge = std::tuple<std::uint32_t, std::uint32_t, EdgeMetaData>;
 
@@ -46,13 +45,16 @@ struct OSMNetwork {
     std::vector<NodeMetaData> nodes;
 };
 
-namespace detail {
+namespace detail
+{
 
-class ParsingHandler : public osmium::handler::Handler {
+class ParsingHandler : public osmium::handler::Handler
+{
   public:
     ParsingHandler(OSMNetwork &network)
         : network(network), highway_filter{false}, access_filter{true}, oneway_filter{false},
-          reversed_filter{false}, tunnel_filter{false} {
+          reversed_filter{false}, tunnel_filter{false}
+    {
         // allow all highways by default but blacklist certain highways
         highway_filter.add_rule(false, osmium::TagMatcher{"highway", "pedestrian"});
         highway_filter.add_rule(false, osmium::TagMatcher{"highway", "cycleway"});
@@ -110,7 +112,8 @@ class ParsingHandler : public osmium::handler::Handler {
     void node(const osmium::Node &) noexcept {}
     void relation(const osmium::Relation &) noexcept {}
 
-    void way(const osmium::Way &way) noexcept {
+    void way(const osmium::Way &way) noexcept
+    {
         if (way.nodes().size() < 2)
             return;
 
@@ -119,7 +122,8 @@ class ParsingHandler : public osmium::handler::Handler {
         bool is_accessible = true;
         bool is_reverse = false;
         bool is_tunnel = false;
-        for (const auto &tag : way.tags()) {
+        for (const auto &tag : way.tags())
+        {
             is_oneway |= oneway_filter(tag);
             is_reverse |= reversed_filter(tag);
             is_highway |= highway_filter(tag);
@@ -127,47 +131,57 @@ class ParsingHandler : public osmium::handler::Handler {
             is_tunnel |= tunnel_filter(tag);
         }
 
-        if (!is_highway || !is_accessible) {
+        if (!is_highway || !is_accessible)
+        {
             return;
         }
         assert(is_highway);
         assert(is_accessible);
 
-        auto[forward_max_speed, backward_max_speed] = compute_max_speed(way);
+        auto [forward_max_speed, backward_max_speed] = compute_max_speed(way);
         auto forward_speed = static_cast<uint8_t>(forward_max_speed);
         auto backward_speed = static_cast<uint8_t>(backward_max_speed);
 
-        for (const auto &node : way.nodes()) {
-            if (auto iter = osm_to_local.find(node.ref()); iter == osm_to_local.end()) {
+        for (const auto &node : way.nodes())
+        {
+            if (auto iter = osm_to_local.find(node.ref()); iter == osm_to_local.end())
+            {
                 osm_to_local[node.ref()] = network.nodes.size();
                 auto c = common::Coordinate::from_floating(node.lon(), node.lat());
                 network.nodes.push_back(OSMNetwork::NodeMetaData{c});
             }
         }
 
-        if (is_reverse) {
+        if (is_reverse)
+        {
             auto rbegin = std::make_reverse_iterator(way.nodes().end());
             auto rend = std::make_reverse_iterator(way.nodes().begin());
-            for (auto current = rbegin, next = std::next(current); next != rend;
-                 ++current, ++next) {
+            for (auto current = rbegin, next = std::next(current); next != rend; ++current, ++next)
+            {
                 auto start = osm_to_local[current->ref()];
                 auto target = osm_to_local[next->ref()];
 
                 network.edges.push_back({start, target, {forward_speed}});
             }
-        } else if (is_oneway) {
+        }
+        else if (is_oneway)
+        {
             auto begin = way.nodes().begin();
             auto end = way.nodes().end();
-            for (auto current = begin, next = std::next(current); next != end; ++current, ++next) {
+            for (auto current = begin, next = std::next(current); next != end; ++current, ++next)
+            {
                 auto start = osm_to_local[current->ref()];
                 auto target = osm_to_local[next->ref()];
 
                 network.edges.push_back({start, target, {forward_speed}});
             }
-        } else {
+        }
+        else
+        {
             auto begin = way.nodes().begin();
             auto end = way.nodes().end();
-            for (auto current = begin, next = std::next(current); next != end; ++current, ++next) {
+            for (auto current = begin, next = std::next(current); next != end; ++current, ++next)
+            {
                 auto start = osm_to_local[current->ref()];
                 auto target = osm_to_local[next->ref()];
 
@@ -178,59 +192,76 @@ class ParsingHandler : public osmium::handler::Handler {
     }
 
   private:
-    const char *default_max_speed(const osmium::Way &way) const {
+    const char *default_max_speed(const osmium::Way &way) const
+    {
         const char *highway = way.get_value_by_key("highway");
-        if (auto iter = default_max_speeds.find(highway); iter != default_max_speeds.end()) {
+        if (auto iter = default_max_speeds.find(highway); iter != default_max_speeds.end())
+        {
             return iter->second;
         }
 
         return "5";
     }
 
-    const char *default_min_speed(const osmium::Way &way) const {
+    const char *default_min_speed(const osmium::Way &way) const
+    {
         const char *highway = way.get_value_by_key("highway");
-        if (auto iter = default_min_speeds.find(highway); iter != default_min_speeds.end()) {
+        if (auto iter = default_min_speeds.find(highway); iter != default_min_speeds.end())
+        {
             return iter->second;
         }
 
         const char *motorroad = way.get_value_by_key("motorroad", "no");
-        if (std::string("yes") == motorroad) {
+        if (std::string("yes") == motorroad)
+        {
             return "60";
         }
 
         return "5";
     }
 
-    double value_to_number(const std::string &value, const char *fallback_value) const {
+    double value_to_number(const std::string &value, const char *fallback_value) const
+    {
         auto begin_mph = value.find("mph");
 
-        try {
+        try
+        {
             std::size_t number_chars = 0;
             auto number = std::stof(value, &number_chars);
-            if (number_chars > 0) {
-                if (begin_mph == std::string::npos) {
+            if (number_chars > 0)
+            {
+                if (begin_mph == std::string::npos)
+                {
                     return number;
-                } else {
+                }
+                else
+                {
                     return number * 1.60934;
                 }
             }
-        } catch (std::invalid_argument) {
+        }
+        catch (std::invalid_argument)
+        {
             return std::stof(fallback_value);
         }
 
         return std::stof(fallback_value);
     }
 
-    std::tuple<double, double> compute_max_speed(const osmium::Way &way) const noexcept {
+    std::tuple<double, double> compute_max_speed(const osmium::Way &way) const noexcept
+    {
         auto default_max_speed_value = default_max_speed(way);
         auto max_speed_value = way.get_value_by_key("maxspeed", default_max_speed_value);
         auto forward_max_speed_value = way.get_value_by_key("maxspeed:forward", max_speed_value);
         auto backward_max_speed_value = way.get_value_by_key("maxspeed:backward", max_speed_value);
-        auto forward_max_speed = std::max(5.0, std::min(140.0, value_to_number(forward_max_speed_value, default_max_speed_value)));
-        auto backward_max_speed = std::max(5.0, std::min(140.0, value_to_number(backward_max_speed_value, default_max_speed_value)));
+        auto forward_max_speed = std::max(
+            5.0,
+            std::min(140.0, value_to_number(forward_max_speed_value, default_max_speed_value)));
+        auto backward_max_speed = std::max(
+            5.0,
+            std::min(140.0, value_to_number(backward_max_speed_value, default_max_speed_value)));
         return std::make_tuple(forward_max_speed, backward_max_speed);
     }
-
 
     OSMNetwork &network;
 
@@ -245,9 +276,10 @@ class ParsingHandler : public osmium::handler::Handler {
 
     std::unordered_map<osmium::unsigned_object_id_type, std::uint32_t> osm_to_local;
 };
-}
+} // namespace detail
 
-inline OSMNetwork read_network(const std::string &file_path) {
+inline OSMNetwork read_network(const std::string &file_path)
+{
     OSMNetwork network;
 
     osmium::io::File file{file_path};
@@ -266,16 +298,21 @@ inline OSMNetwork read_network(const std::string &file_path) {
 }
 
 // Removes excessive degree 2 nodes where possible
-inline auto simplify_network(OSMNetwork network, std::size_t small_component_size = 1000) {
+inline auto simplify_network(OSMNetwork network, std::size_t small_component_size = 1000)
+{
     auto num_nodes = network.nodes.size();
     std::vector<bool> removed_node(num_nodes, false);
 
     using edge_t = common::DynDataGraph<OSMNetwork::EdgeMetaData>::edge_t;
     std::vector<edge_t> edges(network.edges.size());
-    std::transform(network.edges.begin(), network.edges.end(), edges.begin(), [](const auto &edge) {
-        auto[start, target, data] = edge;
-        return edge_t{start, target, data};
-    });
+    std::transform(network.edges.begin(),
+                   network.edges.end(),
+                   edges.begin(),
+                   [](const auto &edge)
+                   {
+                       auto [start, target, data] = edge;
+                       return edge_t{start, target, data};
+                   });
     std::sort(edges.begin(), edges.end());
 
     common::DynDataGraph<OSMNetwork::EdgeMetaData> graph{num_nodes, edges};
@@ -291,39 +328,49 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
     }
 
     auto filtered_edges = graph.edges();
-    auto new_end = std::remove_if(filtered_edges.begin(), filtered_edges.end(), [&](const auto &edge) {
-        return component_sizes[component[edge.start]] < small_component_size ||
-               component_sizes[component[edge.target]] < small_component_size;
-    });
+    auto new_end =
+        std::remove_if(filtered_edges.begin(),
+                       filtered_edges.end(),
+                       [&](const auto &edge)
+                       {
+                           return component_sizes[component[edge.start]] < small_component_size ||
+                                  component_sizes[component[edge.target]] < small_component_size;
+                       });
     auto new_size = new_end - filtered_edges.begin();
     filtered_edges.resize(new_size);
     graph = {num_nodes, filtered_edges};
 
     // Contract degree 2 nodes (note: contraction can only degrease the degree in this case)
     std::size_t removed;
-    do {
+    do
+    {
         removed = 0;
-        for (auto from : common::irange<std::uint32_t>(0, num_nodes)) {
-            for (const auto from_edge : graph.edges(from)) {
+        for (auto from : common::irange<std::uint32_t>(0, num_nodes))
+        {
+            for (const auto from_edge : graph.edges(from))
+            {
                 auto via = graph.target(from_edge);
                 if (degree[via] != 2)
                     continue;
 
                 bool contracted = false;
-                for (const auto to_edge : graph.edges(via)) {
+                for (const auto to_edge : graph.edges(via))
+                {
                     auto to = graph.target(to_edge);
                     if (to == from)
                         continue;
 
                     bool forward_compatible = graph.weight(from_edge) == graph.weight(to_edge);
 
-                    if (forward_compatible) {
+                    if (forward_compatible)
+                    {
                         auto backward_from_edge = graph.edge(via, from);
                         auto backward_to_edge = graph.edge(to, via);
 
                         // oneway street
                         if (backward_from_edge == common::INVALID_ID &&
-                            backward_to_edge == common::INVALID_ID) {
+                            backward_to_edge == common::INVALID_ID)
+                        {
 
                             auto weight = graph.weight(from_edge);
 
@@ -334,11 +381,13 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
                         }
                         // two way street
                         else if (backward_from_edge != common::INVALID_ID &&
-                                 backward_to_edge != common::INVALID_ID) {
+                                 backward_to_edge != common::INVALID_ID)
+                        {
                             bool backward_compatible =
                                 graph.weight(backward_from_edge) == graph.weight(backward_to_edge);
 
-                            if (backward_compatible) {
+                            if (backward_compatible)
+                            {
                                 auto forward_weight = graph.weight(from_edge);
                                 auto backward_weight = graph.weight(backward_from_edge);
 
@@ -357,7 +406,8 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
                         break;
                 }
 
-                if (contracted) {
+                if (contracted)
+                {
                     removed++;
                     // we can't process any more edges going out `from` since we just invalidated
                     // the edge
@@ -370,7 +420,8 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
     network.edges.clear();
 
     std::vector<bool> used(graph.num_nodes(), false);
-    for (const auto &edge : graph.edges()) {
+    for (const auto &edge : graph.edges())
+    {
         network.edges.push_back(OSMNetwork::Edge{edge.start, edge.target, edge.weight});
         used[edge.start] = true;
         used[edge.target] = true;
@@ -378,8 +429,10 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
 
     std::vector<std::uint32_t> old_to_new(graph.num_nodes(), common::INVALID_ID);
     std::uint32_t new_id = 0;
-    for (auto node : common::irange<std::uint32_t>(0, graph.num_nodes())) {
-        if (used[node]) {
+    for (auto node : common::irange<std::uint32_t>(0, graph.num_nodes()))
+    {
+        if (used[node])
+        {
             old_to_new[node] = new_id++;
             assert(node >= old_to_new[node]);
             network.nodes[old_to_new[node]] = network.nodes[node];
@@ -387,8 +440,9 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
     }
     network.nodes.resize(new_id);
 
-    for (auto &edge : network.edges) {
-        auto & [ start, target, weight ] = edge;
+    for (auto &edge : network.edges)
+    {
+        auto &[start, target, weight] = edge;
         start = old_to_new[start];
         target = old_to_new[target];
     }
@@ -396,39 +450,46 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
     return network;
 }
 
-auto coordinates_from_network(const OSMNetwork &network) {
+auto coordinates_from_network(const OSMNetwork &network)
+{
     std::vector<common::Coordinate> coordinates(network.nodes.size());
-    std::transform(network.nodes.begin(), network.nodes.end(), coordinates.begin(),
+    std::transform(network.nodes.begin(),
+                   network.nodes.end(),
+                   coordinates.begin(),
                    [](const auto &data) { return data.coordinate; });
     return coordinates;
 }
 
-auto weighted_graph_from_network(const OSMNetwork &network) {
+auto weighted_graph_from_network(const OSMNetwork &network)
+{
     using GraphT = common::WeightedGraph<std::uint32_t>;
     using edge_t = typename GraphT::edge_t;
     using node_id_t = typename GraphT::node_id_t;
 
     std::vector<edge_t> edges;
-    for (const auto &edge : network.edges) {
-        const auto & [ start, target, data ] = edge;
+    for (const auto &edge : network.edges)
+    {
+        const auto &[start, target, data] = edge;
 
         auto length = common::haversine_distance(network.nodes[start].coordinate,
                                                  network.nodes[target].coordinate);
         auto max_speed = data.max_speed;
-        if (max_speed <= 0) {
-          throw new std::runtime_error("Invalid maximum speed");
+        if (max_speed <= 0)
+        {
+            throw new std::runtime_error("Invalid maximum speed");
         }
         auto weight = (uint32_t)(length / (double)max_speed * 3.6 * 10);
 
         edges.push_back(edge_t{static_cast<typename GraphT::node_id_t>(start),
-                               static_cast<typename GraphT::node_id_t>(target), weight});
+                               static_cast<typename GraphT::node_id_t>(target),
+                               weight});
     }
 
     std::sort(edges.begin(), edges.end());
 
     return GraphT{network.nodes.size(), edges};
 }
-}
-}
+} // namespace preprocessing
+} // namespace gpusssp
 
 #endif

@@ -1,13 +1,14 @@
 #ifndef GPUSSSP_COMMON_SHADER_HPP
 #define GPUSSSP_COMMON_SHADER_HPP
 
-#include <vector>
-#include <fstream>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
+#include <vector>
 
-namespace gpusssp::common {
+namespace gpusssp::common
+{
 
 // Utility: read SPIR-V file
 inline std::vector<uint32_t> read_spv(const std::string &filename)
@@ -22,6 +23,6 @@ inline std::vector<uint32_t> read_spv(const std::string &filename)
     return spv;
 }
 
-}
+} // namespace gpusssp::common
 
 #endif

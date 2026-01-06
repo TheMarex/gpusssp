@@ -7,70 +7,83 @@
 #include <limits>
 #include <tuple>
 
-namespace gpusssp {
-namespace common {
+namespace gpusssp
+{
+namespace common
+{
 
 inline constexpr long double DEGREE_TO_RAD = 0.017453292519943295769236907684886;
 inline constexpr long double RAD_TO_DEGREE = 1. / DEGREE_TO_RAD;
 
 // Fixed point encoded coordinate to save memory
-struct Coordinate {
+struct Coordinate
+{
     // devide by PRECISION to get floating point encoding
     static const constexpr double PRECISION = 1e6;
     std::int32_t lon;
     std::int32_t lat;
 
-    static Coordinate from_floating(double lon, double lat) {
+    static Coordinate from_floating(double lon, double lat)
+    {
         return Coordinate{static_cast<std::int32_t>(lon * PRECISION),
                           static_cast<std::int32_t>(lat * PRECISION)};
     }
 
-    std::tuple<double, double> to_floating() const {
+    std::tuple<double, double> to_floating() const
+    {
         return std::make_tuple(lon / PRECISION, lat / PRECISION);
     }
 
-    bool operator==(const Coordinate &other) const {
+    bool operator==(const Coordinate &other) const
+    {
         return std::tie(lon, lat) == std::tie(other.lon, other.lat);
     }
 };
 
-inline std::ostream &operator<<(std::ostream &out, const Coordinate &coord) {
+inline std::ostream &operator<<(std::ostream &out, const Coordinate &coord)
+{
     out << "{" << (coord.lon / Coordinate::PRECISION) << "," << (coord.lat / Coordinate::PRECISION)
         << "}";
     return out;
 }
 
-inline long euclid_squared_distance(const Coordinate &lhs, const Coordinate &rhs) {
+inline long euclid_squared_distance(const Coordinate &lhs, const Coordinate &rhs)
+{
     const long dlat = lhs.lat - rhs.lat;
     const long dlon = lhs.lon - rhs.lon;
 
     return dlat * dlat + dlon * dlon;
 }
 
-inline double bearing(const Coordinate &lhs, const Coordinate &rhs) {
-    auto[lhs_lon, lhs_lat] = lhs.to_floating();
-    auto[rhs_lon, rhs_lat] = rhs.to_floating();
+inline double bearing(const Coordinate &lhs, const Coordinate &rhs)
+{
+    auto [lhs_lon, lhs_lat] = lhs.to_floating();
+    auto [rhs_lon, rhs_lat] = rhs.to_floating();
     const auto lon_diff = rhs_lon - lhs_lon;
     const auto lon_delta = DEGREE_TO_RAD * lon_diff;
-    const auto lat1 = DEGREE_TO_RAD*lhs_lat;
-    const auto lat2 = DEGREE_TO_RAD*rhs_lat;
+    const auto lat1 = DEGREE_TO_RAD * lhs_lat;
+    const auto lat2 = DEGREE_TO_RAD * rhs_lat;
     const auto y = std::sin(lon_delta) * std::cos(lat2);
-    const auto x = std::cos(lat1) * std::sin(lat2) - std::sin(lat1) * std::cos(lat2) * std::cos(lon_delta);
+    const auto x =
+        std::cos(lat1) * std::sin(lat2) - std::sin(lat1) * std::cos(lat2) * std::cos(lon_delta);
     double result = RAD_TO_DEGREE * std::atan2(y, x);
 
-    while (result < 0.0) {
+    while (result < 0.0)
+    {
         result += 360.0;
     }
-    while (result >= 360.0) {
+    while (result >= 360.0)
+    {
         result -= 360.0;
     }
 
     return result;
 }
 
-inline double haversine_distance(const Coordinate lhs, const Coordinate rhs) {
-    const auto[ln1, lt1] = lhs.to_floating();
-    const auto[ln2, lt2] = rhs.to_floating();
+inline double haversine_distance(const Coordinate lhs, const Coordinate rhs)
+{
+    const auto [ln1, lt1] = lhs.to_floating();
+    const auto [ln2, lt2] = rhs.to_floating();
 
     const constexpr long double EARTH_RADIUS = 6372797.560856;
 
