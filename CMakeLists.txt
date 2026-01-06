@@ -98,6 +98,54 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+# Testing support
+option(BUILD_TESTS "Build tests" ON)
+
+if(BUILD_TESTS)
+    enable_testing()
+    
+    # Fetch Catch2
+    include(FetchContent)
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.5.2
+    )
+    FetchContent_MakeAvailable(Catch2)
+    
+    # Add test executable
+    add_executable(gpusssp_tests
+        tests/test_main.cpp
+        tests/test_deltastep.cpp
+    )
+    
+    target_link_libraries(gpusssp_tests
+        PRIVATE
+            Catch2::Catch2WithMain
+            Vulkan::Vulkan
+    )
+    
+    # Make sure tests can find the shader
+    add_dependencies(gpusssp_tests shaders)
+    
+    # Compiler warnings for tests
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(gpusssp_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    
+    # Discover tests
+    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+    include(CTest)
+    include(Catch)
+    catch_discover_tests(gpusssp_tests)
+    
+    message(STATUS "Tests enabled")
+endif()
+
 message(STATUS "CMake version: ${CMAKE_VERSION}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ compiler: ${CMAKE_CXX_COMPILER}")
