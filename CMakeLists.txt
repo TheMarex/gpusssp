@@ -146,6 +146,50 @@ if(BUILD_TESTS)
     message(STATUS "Tests enabled")
 endif()
 
+# clang-format integration
+find_program(CLANG_FORMAT_EXECUTABLE
+    NAMES clang-format
+    DOC "Path to clang-format executable"
+)
+
+if(CLANG_FORMAT_EXECUTABLE)
+    # Collect all source files
+    file(GLOB_RECURSE ALL_SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hpp
+    )
+    
+    # Add format target
+    add_custom_target(format
+        COMMAND ${CLANG_FORMAT_EXECUTABLE}
+        -i
+        -style=file
+        ${ALL_SOURCE_FILES}
+        COMMENT "Running clang-format on all source files"
+        VERBATIM
+    )
+    
+    # Add format-check target (useful for CI)
+    add_custom_target(format-check
+        COMMAND ${CLANG_FORMAT_EXECUTABLE}
+        --dry-run
+        --Werror
+        -style=file
+        ${ALL_SOURCE_FILES}
+        COMMENT "Checking code formatting with clang-format"
+        VERBATIM
+    )
+    
+    message(STATUS "clang-format: ${CLANG_FORMAT_EXECUTABLE}")
+    message(STATUS "  Run 'make format' or 'cmake --build . --target format' to format code")
+    message(STATUS "  Run 'make format-check' or 'cmake --build . --target format-check' to check formatting")
+else()
+    message(STATUS "clang-format: NOT FOUND (formatting targets will not be available)")
+endif()
+
 message(STATUS "CMake version: ${CMAKE_VERSION}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ compiler: ${CMAKE_CXX_COMPILER}")
