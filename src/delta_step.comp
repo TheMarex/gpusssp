@@ -4,8 +4,11 @@ layout(local_size_x = 128) in;
 layout(std430, binding = 0) buffer FirstEdges { uint first_edges[]; };
 layout(std430, binding = 1) buffer Targets { uint targets[]; };
 layout(std430, binding = 2) buffer Weight { uint weight[]; };
-layout(std430, binding = 3) buffer Dist { uint dist[]; };
-layout(std430, binding = 4) buffer Changed { uint changed; };
+layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
+// Was the given node modified in the previous iteration
+layout(std430, binding = 4) coherent buffer IsChanged { uint is_changed[]; };
+// Is the given node modified by the current iteration
+layout(std430, binding = 5) coherent buffer WasChanged { uint was_changed[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
@@ -15,6 +18,14 @@ layout(push_constant) uniform PushConsts {
     uint iteration;
     uint max_weight;
 } pc;
+
+bool was_node_changed(uint node) {
+  return (was_changed[1 + node / 16] & (1u << (node % 16))) > 0;
+}
+
+void set_node_changed(uint node) {
+  atomicOr(is_changed[1 + node / 16] , 1U << (node % 16));
+}
 
 void main() {
     uint u = gl_GlobalInvocationID.x;
@@ -26,7 +37,7 @@ void main() {
     }
 
     uint du = dist[u];
-    if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta) {
+    if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta && was_node_changed(u)) {
         uint local_changed = 0;
 
         for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
@@ -35,10 +46,14 @@ void main() {
               uint v = targets[eid];
               uint alt = du + w;
               uint prev = atomicMin(dist[v], alt);
-              if (alt < prev) local_changed++;
+              if (alt < prev) {
+                set_node_changed(v);
+                local_changed++;
+              }
             }
         }
 
-        atomicAdd(changed, local_changed);
+        // First block is reserved to be a counter
+        atomicAdd(is_changed[0], local_changed);
     }
 }
