@@ -69,8 +69,14 @@ int main(int argc, char **argv)
     std::cout << "Loading graph from: " << graph_path << std::endl;
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_path);
     auto coordinates = common::files::read_coordinates(graph_path);
+
+    auto num_heavy = 0u;
+    for (uint32_t eid = 0u; eid < graph.num_edges(); ++eid) {
+      num_heavy += graph.weight(eid) >= delta;
+    }
+
     std::cout << "Graph loaded: " << graph.num_nodes() << " nodes, " 
-              << graph.num_edges() << " edges" << std::endl;
+              << graph.num_edges() << " edges (" << num_heavy << " heavy)" << std::endl;
     
     common::NearestNeighbour nn(coordinates);
 
