@@ -5,6 +5,7 @@
 #include <limits>
 
 #include "mock_graph.hpp"
+#include "vulkan_test_fixture.hpp"
 
 // Placeholder test to verify Catch2 is working
 TEST_CASE("Catch2 is working", "[sanity]") {
@@ -40,4 +41,15 @@ TEST_CASE("Expected distances are available", "[mock]") {
     REQUIRE(distances[0] == 0);
     REQUIRE(distances[1] == 1000);
     REQUIRE(distances[3] == 500);
+}
+
+TEST_CASE("Vulkan test fixture initializes correctly", "[vulkan]") {
+    gpusssp::test::VulkanTestFixture fixture;
+    
+    // Verify all resources are initialized
+    REQUIRE(fixture.get_instance());
+    REQUIRE(fixture.get_physical_device());
+    REQUIRE(fixture.get_device());
+    REQUIRE(fixture.get_queue());
+    REQUIRE(fixture.get_command_pool());
 }
