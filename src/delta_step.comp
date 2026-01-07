@@ -20,11 +20,12 @@ layout(push_constant) uniform PushConsts {
 } pc;
 
 bool was_node_changed(uint node) {
-  return (was_changed[1 + node / 16] & (1u << (node % 16))) > 0;
+  return (was_changed[node / 16] & (1u << (node % 16))) > 0;
 }
 
-void set_node_changed(uint node) {
-  atomicOr(is_changed[1 + node / 16] , 1U << (node % 16));
+bool set_node_changed(uint node) {
+  uint old = atomicOr(is_changed[node / 16] , 1U << (node % 16));
+  return (old & (1u << (node % 16))) > 0;
 }
 
 void main() {
@@ -33,7 +34,7 @@ void main() {
 
     // Initialization
     if (pc.bucket_idx == 0 && pc.iteration == 0) {
-      dist[u] = u == pc.src_node ? 0 : 0xFFFFFFFF;
+      dist[u] = (u == pc.src_node || u == pc.n) ? 0 : 0xFFFFFFFF;
     }
 
     uint du = dist[u];
@@ -47,13 +48,14 @@ void main() {
               uint alt = du + w;
               uint prev = atomicMin(dist[v], alt);
               if (alt < prev) {
-                set_node_changed(v);
-                local_changed++;
+                atomicMax(dist[pc.n], alt);
+                bool was_set = set_node_changed(v);
+                if (!was_set) local_changed++;
               }
             }
         }
 
         // First block is reserved to be a counter
-        atomicAdd(is_changed[0], local_changed);
+        atomicAdd(is_changed[(pc.n+15/16)], local_changed);
     }
 }

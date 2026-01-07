@@ -27,9 +27,10 @@ class DeltaStepBuffers
 
     void initialize(const vk::PhysicalDeviceMemoryProperties &mem_props)
     {
+        // last entry is the maximum overall distance
         buf_dist = gpu::create_exclusive_buffer<uint32_t>(
-            device, num_nodes, vk::BufferUsageFlagBits::eStorageBuffer);
-        // Boolean flag arrays
+            device, num_nodes + 1, vk::BufferUsageFlagBits::eStorageBuffer);
+        // Boolean flag arrays, last entry is the number of changed nodes
         auto num_blocks = (num_nodes + 15 / 16) + 1;
         buf_is_changed = gpu::create_exclusive_buffer<uint32_t>(
             device, num_blocks, vk::BufferUsageFlagBits::eStorageBuffer);
@@ -43,13 +44,13 @@ class DeltaStepBuffers
         mem_was_changed = gpu::alloc_and_bind(
             device, mem_props, buf_was_changed, vk::MemoryPropertyFlagBits::eHostVisible);
 
-        gpu_dist = (uint32_t *)device.mapMemory(mem_dist, 0, num_nodes * sizeof(uint32_t));
-        gpu_changed = (uint32_t *)device.mapMemory(mem_is_changed, 0, sizeof(uint32_t));
+        gpu_dist = (uint32_t *)device.mapMemory(mem_dist, 0, (num_nodes+1) * sizeof(uint32_t));
+        gpu_num_changed = (uint32_t *)device.mapMemory(mem_is_changed, (num_blocks-1)*sizeof(uint32_t), sizeof(uint32_t));
     }
 
     uint32_t *dist() { return gpu_dist; }
 
-    uint32_t *changed() { return gpu_changed; }
+    uint32_t *num_changed() { return gpu_num_changed; }
 
     std::array<const vk::Buffer, 3> buffers() const
     {
@@ -66,7 +67,7 @@ class DeltaStepBuffers
     vk::DeviceMemory mem_was_changed;
 
     uint32_t *gpu_dist;
-    uint32_t *gpu_changed;
+    uint32_t *gpu_num_changed;
 
     size_t num_nodes;
     vk::Device &device;

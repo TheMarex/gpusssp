@@ -7,6 +7,8 @@
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
 
+#include <iostream>
+
 namespace gpusssp::gpu
 {
 
@@ -112,19 +114,22 @@ template <typename GraphT> class DeltaStep
 
         const std::size_t MAX_BUCKETS = UINT32_MAX / delta - 1;
 
-        uint32_t *gpu_changed = deltastep_buffers.changed();
+        uint32_t *gpu_num_changed = deltastep_buffers.num_changed();
         uint32_t *gpu_dist = deltastep_buffers.dist();
         auto num_nodes = (uint32_t)graph_buffers.num_nodes();
         auto num_blocks = (num_nodes + 15 / 16) + 1;
+
+        uint32_t *gpu_max_dist = gpu_dist + num_nodes;
+        *gpu_max_dist = 0u;
 
         vk::Buffer is_changed_buffer = deltastep_buffers.buffers()[1];
         vk::Buffer was_changed_buffer = deltastep_buffers.buffers()[2];
 
         for (uint32_t bucket = 0; bucket < MAX_BUCKETS; bucket++)
         {
-            *gpu_changed = 1;
+            *gpu_num_changed = 1;
             uint32_t iteration = 0;
-            while (*gpu_changed > 0)
+            while (*gpu_num_changed > 0)
             {
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
                 cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
@@ -236,17 +241,6 @@ template <typename GraphT> class DeltaStep
                 cmd_buf.end();
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
-
-                // for (auto i = 0u; i < num_nodes; ++i) {
-                //   if (gpu_dist[i] != UINT32_MAX) {
-                //     std::cout << " " << i << ": " << gpu_dist[i] << " / " << gpu_changed[i] << ",
-                //     ";
-                //   }
-                // }
-                // std::cout << std::endl;
-
-                // std::cout << bucket << " " << iteration << " " << *gpu_changed << " " <<
-                // gpu_dist[src_node] << " " << gpu_dist[dst_node] << std::endl;
             }
 
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
@@ -256,13 +250,26 @@ template <typename GraphT> class DeltaStep
 
             PushConsts pc{src_node, num_nodes, bucket, delta, iteration++, UINT32_MAX};
 
+            cmd_buf.fillBuffer(was_changed_buffer, 0, VK_WHOLE_SIZE, UINT32_MAX);
+            cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
+            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                    vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::DependencyFlags{},
+                                    vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                      vk::AccessFlagBits::eShaderRead |
+                                                          vk::AccessFlagBits::eShaderWrite},
+                                    {},
+                                    {});
+
             cmd_buf.pushConstants(
                 pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
             cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                     vk::PipelineStageFlagBits::eComputeShader,
                                     vk::DependencyFlags{},
-                                    {},
+                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                      vk::AccessFlagBits::eShaderRead |
+                                                          vk::AccessFlagBits::eShaderWrite},
                                     {},
                                     {});
             cmd_buf.end();
@@ -277,6 +284,12 @@ template <typename GraphT> class DeltaStep
                 {
                     break;
                 }
+            }
+
+            // If the maximum node distance is lowe then the next bucket all other buckets will be empty
+            // -> dst_node is unreachable.
+            if (*gpu_max_dist < (bucket+1)*delta) {
+                break;
             }
         }
 
