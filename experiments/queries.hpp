@@ -16,16 +16,16 @@ namespace gpusssp::experiments {
   inline auto read_queries(const std::string &base_path)
   {
       std::vector<Query> queries;
-      BinaryReader reader(base_path + "/queries");
-      serialization::read(reader, queries);
+      common::BinaryReader reader(base_path + "/queries");
+      common::serialization::read(reader, queries);
       return queries;
   }
 
   inline void write_queries(const std::string &base_path,
                                 const std::vector<Query> &queries)
   {
-      BinaryWriter writer(base_path + "/queries");
-      serialization::write(writer, queries);
+      common::BinaryWriter writer(base_path + "/queries");
+      common::serialization::write(writer, queries);
   }
 }
 
