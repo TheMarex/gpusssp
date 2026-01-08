@@ -122,6 +122,7 @@ if(BUILD_TESTS)
     add_executable(gpusssp_tests
         tests/test_main.cpp
         tests/test_deltastep.cpp
+        tests/test_string_util.cpp
     )
     
     target_link_libraries(gpusssp_tests
