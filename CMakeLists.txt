@@ -55,6 +55,11 @@ add_executable(generate_queries
     experiments/generate_queries.cpp
 )
 
+# Experiment Dijkstra
+add_executable(experiment_dijkstra
+    experiments/experiment_dijkstra.cpp
+)
+
 # Custom command to compile GLSL shader to SPIR-V
 set(SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/delta_step.comp)
 set(SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/delta_step.spv)

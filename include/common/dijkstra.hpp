@@ -40,23 +40,16 @@ template <typename GraphT> inline bool no_stall(const typename GraphT::node_id_t
 
 namespace detail
 {
-template <typename GraphT, typename StallFn>
+template <typename GraphT>
 void route_step(MinIDQueue &queue,
                 CostVector<GraphT> &forward_costs,
                 CostVector<GraphT> &reverse_costs,
                 const GraphT &graph,
                 typename GraphT::node_id_t &middle,
-                typename GraphT::weight_t &best_cost,
-                StallFn stall)
+                typename GraphT::weight_t &best_cost)
 {
     auto top = queue.pop();
     auto cost_to_top = top.key;
-
-    if (stall(top.id))
-    {
-        Statistics::get().count(StatisticsEvent::DIJKSTRA_STALL);
-        return;
-    }
 
     if (reverse_costs.peek(top.id) < INF_WEIGHT)
     {
@@ -91,24 +84,17 @@ void route_step(MinIDQueue &queue,
     }
 }
 
-template <typename GraphT, typename StallFn>
+template <typename GraphT>
 void route_step(MinIDQueue &queue,
                 CostVector<GraphT> &forward_costs,
                 CostVector<GraphT> &reverse_costs,
                 ParentVector<GraphT> &forward_parents,
                 const GraphT &graph,
                 typename GraphT::node_id_t &middle,
-                typename GraphT::weight_t &best_cost,
-                StallFn stall)
+                typename GraphT::weight_t &best_cost)
 {
     auto top = queue.pop();
     auto cost_to_top = top.key;
-
-    if (stall(top.id))
-    {
-        Statistics::get().count(StatisticsEvent::DIJKSTRA_STALL);
-        return;
-    }
 
     if (reverse_costs.peek(top.id) < INF_WEIGHT)
     {
@@ -144,11 +130,10 @@ void route_step(MinIDQueue &queue,
     }
 }
 
-template <typename GraphT, typename ConstrainFn>
-void constrained_route_step(MinIDQueue &queue,
-                            CostVector<GraphT> &costs,
-                            const GraphT &graph,
-                            ConstrainFn constrain)
+template <typename GraphT>
+void route_step(MinIDQueue &queue,
+                CostVector<GraphT> &costs,
+                const GraphT &graph)
 {
     auto top = queue.pop();
     auto cost_to_top = top.key;
@@ -158,7 +143,7 @@ void constrained_route_step(MinIDQueue &queue,
         Statistics::get().count(StatisticsEvent::DIJKSTRA_RELAX);
         auto target = graph.target(edge);
         auto weight = graph.weight(edge);
-        auto tentative_cost = constrain(cost_to_top + weight);
+        auto tentative_cost = cost_to_top + weight;
 
         if (tentative_cost < costs.peek(target))
         {
@@ -174,12 +159,6 @@ void constrained_route_step(MinIDQueue &queue,
             costs[target] = tentative_cost;
         }
     }
-}
-
-template <typename GraphT>
-auto route_step(MinIDQueue &queue, CostVector<GraphT> &costs, const GraphT &graph)
-{
-    return constrained_route_step(queue, costs, graph, unconstrained<typename GraphT::weight_t>);
 }
 
 template <typename GraphT>
@@ -216,7 +195,7 @@ void route_step(MinIDQueue &queue,
 }
 } // namespace detail
 
-template <typename GraphT, typename TerminateFn, typename StallFn>
+template <typename GraphT, typename TerminateFn>
 auto dijkstra(typename GraphT::node_id_t start,
               typename GraphT::node_id_t target,
               const GraphT &forward_graph,
@@ -225,8 +204,7 @@ auto dijkstra(typename GraphT::node_id_t start,
               MinIDQueue &reverse_queue,
               CostVector<GraphT> &forward_costs,
               CostVector<GraphT> &reverse_costs,
-              TerminateFn terminate,
-              StallFn stall)
+              TerminateFn terminate)
 {
     forward_costs.clear();
     reverse_costs.clear();
@@ -249,8 +227,7 @@ auto dijkstra(typename GraphT::node_id_t start,
                                reverse_costs,
                                forward_graph,
                                middle,
-                               best_cost,
-                               stall);
+                               best_cost);
         }
 
         if (!reverse_queue.empty())
@@ -260,8 +237,7 @@ auto dijkstra(typename GraphT::node_id_t start,
                                forward_costs,
                                reverse_graph,
                                middle,
-                               best_cost,
-                               stall);
+                               best_cost);
         }
 
         if (terminate(forward_queue, reverse_queue, best_cost))
@@ -273,7 +249,7 @@ auto dijkstra(typename GraphT::node_id_t start,
     return best_cost;
 }
 
-template <typename GraphT, typename TerminateFn, typename StallFn>
+template <typename GraphT, typename TerminateFn>
 auto dijkstra(typename GraphT::node_id_t start,
               typename GraphT::node_id_t target,
               const GraphT &forward_graph,
@@ -285,8 +261,7 @@ auto dijkstra(typename GraphT::node_id_t start,
               ParentVector<GraphT> &forward_parents,
               ParentVector<GraphT> &backward_parents,
               typename GraphT::node_id_t &middle,
-              TerminateFn terminate,
-              StallFn stall)
+              TerminateFn terminate)
 {
     forward_costs.clear();
     reverse_costs.clear();
@@ -312,8 +287,7 @@ auto dijkstra(typename GraphT::node_id_t start,
                                forward_parents,
                                forward_graph,
                                middle,
-                               best_cost,
-                               stall);
+                               best_cost);
         }
 
         if (!reverse_queue.empty())
@@ -324,8 +298,7 @@ auto dijkstra(typename GraphT::node_id_t start,
                                backward_parents,
                                reverse_graph,
                                middle,
-                               best_cost,
-                               stall);
+                               best_cost);
         }
 
         if (terminate(forward_queue, reverse_queue, best_cost))
@@ -390,24 +363,6 @@ auto dijkstra_to_all(
 }
 
 template <typename GraphT>
-auto continue_dijkstra(typename GraphT::node_id_t target,
-                       const GraphT &graph,
-                       MinIDQueue &queue,
-                       CostVector<GraphT> &costs,
-                       std::vector<bool> &settled)
-{
-    while (!queue.empty() && !settled[target])
-    {
-        const auto id = queue.peek().id;
-        settled[id] = true;
-
-        detail::route_step(queue, costs, graph);
-    }
-
-    return costs[target];
-}
-
-template <typename GraphT>
 auto dijkstra(typename GraphT::node_id_t source,
               typename GraphT::node_id_t target,
               const GraphT &graph,
@@ -464,89 +419,6 @@ auto dijkstra(typename GraphT::node_id_t start,
 
     return costs[target];
 }
-template <typename GraphT, typename TerminateFn, typename ConstrainFn>
-auto constrained_dijkstra(typename GraphT::node_id_t start,
-                          typename GraphT::node_id_t target,
-                          const GraphT &graph,
-                          MinIDQueue &queue,
-                          CostVector<GraphT> &costs,
-                          TerminateFn terminate,
-                          ConstrainFn constrain)
-{
-    costs.clear();
-    queue.clear();
-    queue.push(IDKeyPair{start, 0});
-    costs[start] = 0;
-
-    typename GraphT::weight_t best_cost = INF_WEIGHT;
-
-    while (!queue.empty())
-    {
-        detail::constrained_route_step(queue, costs, graph, constrain);
-
-        if (terminate(queue))
-            return costs[target];
-    }
-
-    return costs[target];
-}
-
-template <typename GraphT, typename TerminateFn>
-auto dijkstra(typename GraphT::node_id_t start,
-              typename GraphT::node_id_t target,
-              const GraphT &graph,
-              MinIDQueue &queue,
-              CostVector<GraphT> &costs,
-              TerminateFn terminate)
-{
-    return dijkstra(
-        start, target, graph, queue, costs, terminate, unconstrained<typename GraphT::weight_t>);
-}
-
-template <typename GraphT, typename TerminateFn, typename ConstrainFn>
-auto constrained_dijkstra(
-    const std::vector<std::tuple<typename GraphT::node_id_t, typename GraphT::weight_t>> &sources,
-    typename GraphT::node_id_t target,
-    const GraphT &graph,
-    MinIDQueue &queue,
-    CostVector<GraphT> &costs,
-    TerminateFn terminate,
-    ConstrainFn constrain)
-{
-    costs.clear();
-    queue.clear();
-    for (const auto &s : sources)
-    {
-        auto [start, weight] = s;
-        queue.push(IDKeyPair{start, weight});
-        costs[start] = weight;
-    }
-
-    typename GraphT::weight_t best_cost = INF_WEIGHT;
-
-    while (!queue.empty())
-    {
-        detail::constrained_route_step(queue, costs, graph, constrain);
-
-        if (terminate(queue))
-            return costs[target];
-    }
-
-    return costs[target];
-}
-
-template <typename GraphT, typename TerminateFn>
-auto dijkstra(
-    const std::vector<std::tuple<typename GraphT::node_id_t, typename GraphT::weight_t>> &sources,
-    typename GraphT::node_id_t target,
-    const GraphT &graph,
-    MinIDQueue &queue,
-    CostVector<GraphT> &costs,
-    TerminateFn terminate)
-{
-    return dijkstra(
-        sources, target, graph, queue, costs, terminate, unconstrained<typename GraphT::weight_t>);
-}
 
 template <typename GraphT>
 auto dijkstra_to_all(typename GraphT::node_id_t start,
@@ -592,8 +464,7 @@ auto dijkstra(typename GraphT::node_id_t start,
                     forward_parents,
                     backward_parents,
                     middle,
-                    terminate_sum_min<GraphT>,
-                    no_stall<GraphT>);
+                    terminate_sum_min<GraphT>);
 }
 
 template <typename GraphT>
@@ -614,32 +485,9 @@ auto dijkstra(typename GraphT::node_id_t start,
                     reverse_queue,
                     forward_costs,
                     reverse_costs,
-                    terminate_sum_min<GraphT>,
-                    no_stall<GraphT>);
+                    terminate_sum_min<GraphT>);
 }
 
-template <typename GraphT, typename TerminateFn>
-auto dijkstra(typename GraphT::node_id_t start,
-              typename GraphT::node_id_t target,
-              const GraphT &forward_graph,
-              const GraphT &reverse_graph,
-              MinIDQueue &forward_queue,
-              MinIDQueue &reverse_queue,
-              CostVector<GraphT> &forward_costs,
-              CostVector<GraphT> &reverse_costs,
-              TerminateFn terminate)
-{
-    return dijkstra(start,
-                    target,
-                    forward_graph,
-                    reverse_graph,
-                    forward_queue,
-                    reverse_queue,
-                    forward_costs,
-                    reverse_costs,
-                    terminate,
-                    no_stall<GraphT>);
-}
 } // namespace common
 } // namespace gpusssp
 

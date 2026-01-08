@@ -16,7 +16,7 @@ namespace common
 struct IDKeyPair
 {
     std::uint32_t id;
-    std::int32_t key;
+    std::uint32_t key;
 };
 
 //! A priority queue where the elements are IDs from 0 to id_count-1 where id_count is a number that
