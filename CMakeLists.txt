@@ -60,6 +60,16 @@ add_executable(experiment_dijkstra
     experiments/experiment_dijkstra.cpp
 )
 
+# Experiment DeltaStep
+add_executable(experiment_deltastep
+    experiments/experiment_deltastep.cpp
+)
+
+target_link_libraries(experiment_deltastep
+    PRIVATE
+        Vulkan::Vulkan
+)
+
 # Custom command to compile GLSL shader to SPIR-V
 set(SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/delta_step.comp)
 set(SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/delta_step.spv)
@@ -76,6 +86,7 @@ add_custom_target(shaders
     DEPENDS ${SHADER_OUTPUT}
 )
 add_dependencies(gpusssp shaders)
+add_dependencies(experiment_deltastep shaders)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)

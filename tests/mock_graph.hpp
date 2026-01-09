@@ -14,7 +14,7 @@ namespace gpusssp::test
  *
  *            1000    2000
  *  |----- 0 -----> 1 -----> 2
- *  |      |        |        |       
+ *  |      |        |        |
  *  |   500|     800|        | 2500
  *  |      v        v        v
  *  |      3 -----> 4 -----> 5
@@ -24,15 +24,13 @@ namespace gpusssp::test
  */
 
 static constexpr std::array<uint32_t, 36> SHORTEST_DISTANCES_MOCK = {
-//0              1               2               3              4               5
-  0,             1000,           3000,           500,           1000,           5000,
-  UINT32_MAX,    0,              2000,           UINT32_MAX,    800,            4500,
-  UINT32_MAX,    UINT32_MAX,     0,              UINT32_MAX,    UINT32_MAX,     2500,
-  UINT32_MAX,    UINT32_MAX,     UINT32_MAX,     0,             500,            4500,
-  UINT32_MAX,    UINT32_MAX,     UINT32_MAX,     UINT32_MAX,    0,              4000,
-  UINT32_MAX,    UINT32_MAX,     UINT32_MAX,     UINT32_MAX,    UINT32_MAX,     0
-};
- 
+    // 0              1               2               3              4               5
+    0,          1000,       3000,       500,        1000,       5000,       UINT32_MAX, 0,
+    2000,       UINT32_MAX, 800,        4500,       UINT32_MAX, UINT32_MAX, 0,          UINT32_MAX,
+    UINT32_MAX, 2500,       UINT32_MAX, UINT32_MAX, UINT32_MAX, 0,          500,        4500,
+    UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, 0,          4000,       UINT32_MAX, UINT32_MAX,
+    UINT32_MAX, UINT32_MAX, UINT32_MAX, 0};
+
 inline common::WeightedGraph<uint32_t> create_mock_graph()
 {
     using Edge = common::Edge<uint32_t, uint32_t>;
@@ -56,7 +54,7 @@ inline common::WeightedGraph<uint32_t> create_mock_graph()
 
 inline uint32_t get_expected_distances(uint32_t src_node, uint32_t dst_node)
 {
-  return SHORTEST_DISTANCES_MOCK[src_node * 6 + dst_node];
+    return SHORTEST_DISTANCES_MOCK[src_node * 6 + dst_node];
 }
 
 } // namespace gpusssp::test

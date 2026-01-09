@@ -44,8 +44,9 @@ class DeltaStepBuffers
         mem_was_changed = gpu::alloc_and_bind(
             device, mem_props, buf_was_changed, vk::MemoryPropertyFlagBits::eHostVisible);
 
-        gpu_dist = (uint32_t *)device.mapMemory(mem_dist, 0, (num_nodes+1) * sizeof(uint32_t));
-        gpu_num_changed = (uint32_t *)device.mapMemory(mem_is_changed, (num_blocks-1)*sizeof(uint32_t), sizeof(uint32_t));
+        gpu_dist = (uint32_t *)device.mapMemory(mem_dist, 0, (num_nodes + 1) * sizeof(uint32_t));
+        gpu_num_changed = (uint32_t *)device.mapMemory(
+            mem_is_changed, (num_blocks - 1) * sizeof(uint32_t), sizeof(uint32_t));
     }
 
     uint32_t *dist() { return gpu_dist; }

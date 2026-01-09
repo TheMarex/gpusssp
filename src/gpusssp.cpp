@@ -136,7 +136,8 @@ int main(int argc, char **argv)
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
         deltastep.initialize();
 
-        common::TimedLogger time_query("Running "+ std::to_string(num_queries) +" queries with delta " + std::to_string(delta));
+        common::TimedLogger time_query("Running " + std::to_string(num_queries) +
+                                       " queries with delta " + std::to_string(delta));
         std::uint32_t checksum = 0;
         for (int i = 0; i < num_queries; i++)
         {

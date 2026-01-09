@@ -286,9 +286,11 @@ template <typename GraphT> class DeltaStep
                 }
             }
 
-            // If the maximum node distance is lowe then the next bucket all other buckets will be empty
+            // If the maximum node distance is lowe then the next bucket all other buckets will be
+            // empty
             // -> dst_node is unreachable.
-            if (*gpu_max_dist < (bucket+1)*delta) {
+            if (*gpu_max_dist < (bucket + 1) * delta)
+            {
                 break;
             }
         }

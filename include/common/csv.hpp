@@ -6,21 +6,26 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <vector>
 #include <type_traits>
+#include <vector>
 
-namespace gpusssp::common {
+namespace gpusssp::common
+{
 
-namespace csv {
-struct skip final {
+namespace csv
+{
+struct skip final
+{
     bool operator==(const skip &) const { return true; }
 };
 inline skip ignored;
-}
+} // namespace csv
 
-namespace detail {
+namespace detail
+{
 template <std::size_t Column, class... Types>
-void parse_column(std::vector<std::string> &columns, std::tuple<Types...> &tuple) {
+void parse_column(std::vector<std::string> &columns, std::tuple<Types...> &tuple)
+{
     // clang-format off
     if constexpr(std::is_same_v<double, typename std::tuple_element<Column, std::tuple<Types...>>::type>) {
         std::get<Column>(tuple) = std::stof(columns[Column]);
@@ -44,7 +49,8 @@ void parse_column(std::vector<std::string> &columns, std::tuple<Types...> &tuple
     // clang-format on
 }
 
-template <class... Types> std::tuple<Types...> parse_columns(std::vector<std::string> &columns) {
+template <class... Types> std::tuple<Types...> parse_columns(std::vector<std::string> &columns)
+{
     std::tuple<Types...> tuple;
 
     // resursively fills the tuple
@@ -53,11 +59,12 @@ template <class... Types> std::tuple<Types...> parse_columns(std::vector<std::st
     return tuple;
 }
 
-template<typename T>
-auto to_csv_column(const T& value);
+template <typename T> auto to_csv_column(const T &value);
 
-template <typename T> struct stream_printer {
-    friend auto &operator<<(std::ostream &ss, const stream_printer& printer) {
+template <typename T> struct stream_printer
+{
+    friend auto &operator<<(std::ostream &ss, const stream_printer &printer)
+    {
         ss << printer.value;
         return ss;
     }
@@ -65,17 +72,21 @@ template <typename T> struct stream_printer {
     T value;
 };
 
-template <typename T1, typename T2> struct stream_printer<std::tuple<T1, T2>> {
-    friend auto &operator<<(std::ostream &ss, const stream_printer& other) {
-        ss << "(" << std::get<0>(other.value) << " " <<std::get<1>(other.value) << ")";
+template <typename T1, typename T2> struct stream_printer<std::tuple<T1, T2>>
+{
+    friend auto &operator<<(std::ostream &ss, const stream_printer &other)
+    {
+        ss << "(" << std::get<0>(other.value) << " " << std::get<1>(other.value) << ")";
         return ss;
     }
 
     std::tuple<T1, T2> value;
 };
 
-template <typename T> struct stream_printer<std::vector<T>> {
-    friend auto &operator<<(std::ostream &ss, const stream_printer& other) {
+template <typename T> struct stream_printer<std::vector<T>>
+{
+    friend auto &operator<<(std::ostream &ss, const stream_printer &other)
+    {
         if (other.value.empty())
             return ss;
 
@@ -88,16 +99,19 @@ template <typename T> struct stream_printer<std::vector<T>> {
     std::vector<T> value;
 };
 
-template <> struct stream_printer<csv::skip> {
-    friend auto &operator<<(std::ostream &ss, const stream_printer&) { return ss; }
+template <> struct stream_printer<csv::skip>
+{
+    friend auto &operator<<(std::ostream &ss, const stream_printer &) { return ss; }
 };
 
-template<typename T>
-auto to_csv_column(const T& value) { return stream_printer<typename std::remove_reference<T>::type>{value}; }
+template <typename T> auto to_csv_column(const T &value)
+{
+    return stream_printer<typename std::remove_reference<T>::type>{value};
+}
 
 template <std::size_t Column, class... Types>
-void append_column(std::stringstream &ss, const std::tuple<Types...> &tuple,
-                   const char *delimiter) {
+void append_column(std::stringstream &ss, const std::tuple<Types...> &tuple, const char *delimiter)
+{
     // clang-format off
     if constexpr(Column != 0) {
         ss << delimiter;
@@ -114,27 +128,32 @@ void append_column(std::stringstream &ss, const std::tuple<Types...> &tuple,
 }
 
 template <class... Types>
-std::string join_tuple(const std::tuple<Types...> &tuple, const char *delimiter) {
+std::string join_tuple(const std::tuple<Types...> &tuple, const char *delimiter)
+{
     std::stringstream ss;
 
     append_column<0>(ss, tuple, delimiter);
 
     return ss.str();
 }
-}
+} // namespace detail
 
-template <class... Types> class CSVReader {
+template <class... Types> class CSVReader
+{
   public:
     using output_t = std::tuple<Types...>;
 
     CSVReader(const std::string &path, const char *delimiter = ",")
-        : stream(path), delimiter(delimiter) {
+        : stream(path), delimiter(delimiter)
+    {
         stream.exceptions(std::ifstream::badbit);
     }
 
-    bool read_header(std::vector<std::string> &header) {
+    bool read_header(std::vector<std::string> &header)
+    {
         std::string line;
-        if (std::getline(stream, line)) {
+        if (std::getline(stream, line))
+        {
             detail::split(header, line, delimiter);
             return true;
         }
@@ -142,9 +161,11 @@ template <class... Types> class CSVReader {
         return false;
     }
 
-    bool read(output_t &value) {
+    bool read(output_t &value)
+    {
         std::string line;
-        if (std::getline(stream, line)) {
+        if (std::getline(stream, line))
+        {
             std::vector<std::string> tokens;
             detail::split(tokens, line, delimiter);
 
@@ -152,7 +173,8 @@ template <class... Types> class CSVReader {
             if (tokens.size() == 0)
                 return true;
 
-            if (tokens.size() != std::tuple_size<output_t>::value) {
+            if (tokens.size() != std::tuple_size<output_t>::value)
+            {
                 throw std::runtime_error("Could not parse line: \"" + line +
                                          "\". Number of columns is " +
                                          std::to_string(tokens.size()));
@@ -170,21 +192,25 @@ template <class... Types> class CSVReader {
     std::ifstream stream;
 };
 
-template <class... Types> class CSVWriter {
+template <class... Types> class CSVWriter
+{
   public:
     using input_t = std::tuple<Types...>;
 
     CSVWriter(const std::string &path, const char *delimiter = ",")
-        : stream(path), delimiter(delimiter) {
+        : stream(path), delimiter(delimiter)
+    {
         stream.exceptions(std::ifstream::badbit);
     }
 
-    void write_header(const std::vector<std::string> &header) {
+    void write_header(const std::vector<std::string> &header)
+    {
         stream << detail::join(header, delimiter) << std::endl;
         ;
     }
 
-    void write(const input_t &value) {
+    void write(const input_t &value)
+    {
         stream << detail::join_tuple<Types...>(value, delimiter) << std::endl;
     }
 
@@ -192,6 +218,6 @@ template <class... Types> class CSVWriter {
     const char *delimiter;
     std::ofstream stream;
 };
-}
+} // namespace gpusssp::common
 
 #endif

@@ -131,9 +131,7 @@ void route_step(MinIDQueue &queue,
 }
 
 template <typename GraphT>
-void route_step(MinIDQueue &queue,
-                CostVector<GraphT> &costs,
-                const GraphT &graph)
+void route_step(MinIDQueue &queue, CostVector<GraphT> &costs, const GraphT &graph)
 {
     auto top = queue.pop();
     auto cost_to_top = top.key;
@@ -222,22 +220,14 @@ auto dijkstra(typename GraphT::node_id_t start,
     {
         if (!forward_queue.empty())
         {
-            detail::route_step(forward_queue,
-                               forward_costs,
-                               reverse_costs,
-                               forward_graph,
-                               middle,
-                               best_cost);
+            detail::route_step(
+                forward_queue, forward_costs, reverse_costs, forward_graph, middle, best_cost);
         }
 
         if (!reverse_queue.empty())
         {
-            detail::route_step(reverse_queue,
-                               reverse_costs,
-                               forward_costs,
-                               reverse_graph,
-                               middle,
-                               best_cost);
+            detail::route_step(
+                reverse_queue, reverse_costs, forward_costs, reverse_graph, middle, best_cost);
         }
 
         if (terminate(forward_queue, reverse_queue, best_cost))
