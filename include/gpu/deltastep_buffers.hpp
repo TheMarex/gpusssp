@@ -31,7 +31,7 @@ class DeltaStepBuffers
         buf_dist = gpu::create_exclusive_buffer<uint32_t>(
             device, num_nodes + 1, vk::BufferUsageFlagBits::eStorageBuffer);
         // Boolean flag arrays, last entry is the number of changed nodes
-        auto num_blocks = (num_nodes + 15 / 16) + 1;
+        auto num_blocks = (num_nodes + 15) / 16 + 1;
         buf_is_changed = gpu::create_exclusive_buffer<uint32_t>(
             device, num_blocks, vk::BufferUsageFlagBits::eStorageBuffer);
         buf_was_changed = gpu::create_exclusive_buffer<uint32_t>(

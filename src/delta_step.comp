@@ -32,11 +32,6 @@ void main() {
     uint u = gl_GlobalInvocationID.x;
     if (u >= pc.n) return;
 
-    // Initialization
-    if (pc.bucket_idx == 0 && pc.iteration == 0) {
-      dist[u] = (u == pc.src_node || u == pc.n) ? 0 : 0xFFFFFFFF;
-    }
-
     uint du = dist[u];
     if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta && was_node_changed(u)) {
         uint local_changed = 0;
@@ -55,7 +50,8 @@ void main() {
             }
         }
 
-        // First block is reserved to be a counter
-        atomicAdd(is_changed[(pc.n+15/16)], local_changed);
+        // Last block is reserved to be a counter
+        uint last_block = (pc.n+15)/16;
+        atomicAdd(is_changed[last_block], local_changed);
     }
 }

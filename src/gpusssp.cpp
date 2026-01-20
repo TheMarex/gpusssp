@@ -1,8 +1,5 @@
 #include <cassert>
-#include <cmath>
-#include <fstream>
 #include <iostream>
-#include <limits>
 #include <optional>
 #include <random>
 #include <vector>
@@ -14,6 +11,9 @@
 #include "common/shader.hpp"
 #include "common/timed_logger.hpp"
 #include "common/weighted_graph.hpp"
+#include "common/dijkstra.hpp"
+#include "common/id_queue.hpp"
+#include "common/lazy_clear_vector.hpp"
 
 #include "gpu/deltastep.hpp"
 #include "gpu/deltastep_buffers.hpp"
@@ -34,10 +34,24 @@ std::optional<common::Coordinate> string_to_coordinate(const std::string &s)
     auto pos = s.find(',');
     if (pos == s.npos)
     {
-        throw new std::runtime_error("Illegal coordinate " + s);
+      return {};
     }
     return common::Coordinate::from_floating(std::stod(s.substr(0, pos)),
                                              std::stod(s.substr(pos + 1)));
+}
+
+std::optional<uint32_t> string_to_node_id(const std::string &s) {
+    if (s.size() < 1 || !std::isdigit(s[0])) {
+      return {};
+    }
+
+    std::size_t pos;
+    auto node_id = std::stoi(s, &pos);
+    if (pos != s.size()) {
+      return {};
+    }
+
+    return node_id;
 }
 
 int main(int argc, char **argv)
@@ -49,7 +63,7 @@ int main(int argc, char **argv)
                   << " <graph_path> [SRC_LON,SRC_LAT DEST_LON,DEST_LAT] [DELTA] [NUM_QUERIES]"
                   << std::endl;
         std::cerr << "Example: " << argv[0]
-                  << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600 10" << std::endl;
+                  << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600 1" << std::endl;
         return 1;
     }
 
@@ -61,6 +75,12 @@ int main(int argc, char **argv)
         maybe_src_coord = string_to_coordinate(argv[2]);
         maybe_dst_coord = string_to_coordinate(argv[3]);
     }
+    std::optional<uint32_t> maybe_src_node_id;
+    std::optional<uint32_t> maybe_dst_node_id;
+    if (argc > 2) {
+        if (!maybe_src_coord) maybe_src_node_id = string_to_node_id(argv[2]);
+        if (!maybe_dst_coord) maybe_dst_node_id = string_to_node_id(argv[3]);
+    }
 
     auto delta = 3600u;
     if (argc >= 5)
@@ -68,7 +88,7 @@ int main(int argc, char **argv)
         delta = std::stoi(argv[4]);
     }
 
-    auto num_queries = 100u;
+    auto num_queries = 1u;
     if (argc >= 6)
     {
         num_queries = std::stoi(argv[5]);
@@ -100,6 +120,10 @@ int main(int argc, char **argv)
     {
         std::fill(src_nodes.begin(), src_nodes.end(), nn.nearest(*maybe_src_coord));
     }
+    else if (maybe_src_node_id)
+    {
+        std::fill(src_nodes.begin(), src_nodes.end(), *maybe_src_node_id);
+    }
     else
     {
         std::generate(src_nodes.begin(), src_nodes.end(), [&]() { return random_node_id(gen); });
@@ -107,6 +131,10 @@ int main(int argc, char **argv)
     if (maybe_dst_coord)
     {
         std::fill(dst_nodes.begin(), dst_nodes.end(), nn.nearest(*maybe_dst_coord));
+    }
+    else if (maybe_dst_node_id)
+    {
+        std::fill(dst_nodes.begin(), dst_nodes.end(), *maybe_dst_node_id);
     }
     else
     {
@@ -127,6 +155,10 @@ int main(int argc, char **argv)
         device.createCommandPool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0});
 
     {
+        common::MinIDQueue min_queue(graph.num_nodes());
+        common::CostVector<common::WeightedGraph<uint32_t>> costs(graph.num_nodes(), common::INF_WEIGHT);
+        std::vector<bool> settled(graph.num_nodes(), false);
+
         gpu::GraphBuffers graph_buffers(graph, device);
         gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device);
 
@@ -136,14 +168,25 @@ int main(int argc, char **argv)
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
         deltastep.initialize();
 
-        common::TimedLogger time_query("Running " + std::to_string(num_queries) +
-                                       " queries with delta " + std::to_string(delta));
         std::uint32_t checksum = 0;
-        for (int i = 0; i < num_queries; i++)
+        std::uint32_t dij_duration = 0;
+        std::uint32_t ds_duration = 0;
+        for (auto i = 0u; i < num_queries; i++)
         {
-            checksum ^= deltastep.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
+            auto time_1 = std::chrono::high_resolution_clock::now();
+            auto expected_dist = common::dijkstra(src_nodes[i], dst_nodes[i], graph, min_queue, costs, settled);
+            auto time_2 = std::chrono::high_resolution_clock::now();
+            auto dist = deltastep.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
+            auto time_3 = std::chrono::high_resolution_clock::now();
+
+            dij_duration += std::chrono::duration_cast<std::chrono::milliseconds>(time_2 - time_1).count();
+            ds_duration += std::chrono::duration_cast<std::chrono::milliseconds>(time_3 - time_2).count();
+            if (dist != expected_dist) {
+                std::cout << "Error: Distance " << src_nodes[i] << "->" << dst_nodes[i] << " mismatch. expected: " << expected_dist << " actual: " << dist << std::endl;
+            }
+            checksum ^= dist;
         }
-        time_query.finished();
+        std::cout << "Processed " << num_queries << " queries in " << dij_duration << "ms (dijkstra) " << ds_duration << "ms (deltastep)" << std::endl;
         std::cout << "Checksum: " << checksum << std::endl;
     }
 

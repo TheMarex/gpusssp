@@ -119,11 +119,12 @@ template <typename GraphT> class DeltaStep
         auto num_nodes = (uint32_t)graph_buffers.num_nodes();
         auto num_blocks = (num_nodes + 15 / 16) + 1;
 
+        std::fill(gpu_dist, gpu_dist+num_nodes, UINT32_MAX);
+        gpu_dist[src_node] = 0;
         uint32_t *gpu_max_dist = gpu_dist + num_nodes;
         *gpu_max_dist = 0u;
 
-        vk::Buffer is_changed_buffer = deltastep_buffers.buffers()[1];
-        vk::Buffer was_changed_buffer = deltastep_buffers.buffers()[2];
+        auto [dist_buffer, is_changed_buffer, was_changed_buffer] = deltastep_buffers.buffers();
 
         for (uint32_t bucket = 0; bucket < MAX_BUCKETS; bucket++)
         {
@@ -241,14 +242,20 @@ template <typename GraphT> class DeltaStep
                 cmd_buf.end();
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
+
+                //std::cout << bucket << " " << *gpu_num_changed << " max distance " << *gpu_max_dist << std::endl;
+                //for (auto node_id = 0u; node_id < num_nodes; ++node_id) {
+                //  if (gpu_dist[node_id] != UINT32_MAX) {
+                //    std::cout << "\t" << node_id << "\t" << gpu_dist[node_id] << std::endl;
+                //  }
+                //}
             }
 
+            /*
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
             cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
             cmd_buf.bindDescriptorSets(
                 vk::PipelineBindPoint::eCompute, pipeline_layout, 0, desc_set, {});
-
-            PushConsts pc{src_node, num_nodes, bucket, delta, iteration++, UINT32_MAX};
 
             cmd_buf.fillBuffer(was_changed_buffer, 0, VK_WHOLE_SIZE, UINT32_MAX);
             cmd_buf.fillBuffer(is_changed_buffer, 0, VK_WHOLE_SIZE, 0);
@@ -261,6 +268,7 @@ template <typename GraphT> class DeltaStep
                                     {},
                                     {});
 
+            PushConsts pc{src_node, num_nodes, bucket, delta, iteration++, UINT32_MAX};
             cmd_buf.pushConstants(
                 pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
             cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
@@ -275,6 +283,17 @@ template <typename GraphT> class DeltaStep
             cmd_buf.end();
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
             queue.waitIdle();
+
+            std::cout << bucket << " heavy " << *gpu_num_changed << " max distance " << *gpu_max_dist << std::endl;
+
+
+            for (auto node_id = 0u; node_id < num_nodes; ++node_id) {
+              if (gpu_dist[node_id] != UINT32_MAX) {
+                std::cout << "\t" << node_id << "\t" << gpu_dist[node_id] << std::endl;
+              }
+            }
+            */
+
 
             if (gpu_dist[dst_node] != UINT32_MAX)
             {
