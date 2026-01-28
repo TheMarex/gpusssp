@@ -4,6 +4,7 @@
 #include "common/files.hpp"
 #include "common/id_queue.hpp"
 #include "common/lazy_clear_vector.hpp"
+#include "experiment_util.hpp"
 #include "queries.hpp"
 
 #include <chrono>
@@ -30,11 +31,18 @@ int main(int argc, char **argv)
     auto queries = experiments::read_queries(base_path);
     std::cout << "Loaded " << queries.size() << " queries." << std::endl;
 
+    // Generate output filename
+    uint64_t timestamp = experiments::get_unix_timestamp();
+    std::string queries_hash = experiments::hash_queries_content(queries);
+    std::string output_filename = experiments::generate_experiment_filename(
+        timestamp, queries_hash, "", "dijkstra");
+    std::cout << "Output file: " << output_filename << std::endl;
+
     common::MinIDQueue queue(graph.num_nodes());
     common::CostVector<common::WeightedGraph<uint32_t>> costs(graph.num_nodes(), common::INF_WEIGHT);
     std::vector<bool> settled(graph.num_nodes(), false);
 
-    common::CSVWriter<uint32_t, uint32_t, uint32_t, long long> writer("experiment_dijkstra.csv");
+    common::CSVWriter<uint32_t, uint32_t, uint32_t, long long> writer(output_filename);
     writer.write_header({"from_node_id", "to_node_id", "distance", "time"});
 
     std::cout << "Running queries..." << std::endl;

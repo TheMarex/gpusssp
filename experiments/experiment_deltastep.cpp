@@ -3,6 +3,7 @@
 #include "common/files.hpp"
 #include "common/shader.hpp"
 #include "common/weighted_graph.hpp"
+#include "experiment_util.hpp"
 #include "queries.hpp"
 
 #include "gpu/deltastep.hpp"
@@ -12,6 +13,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <sstream>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
@@ -42,6 +44,15 @@ int main(int argc, char **argv)
     auto queries = experiments::read_queries(base_path);
     std::cout << "Loaded " << queries.size() << " queries." << std::endl;
 
+    // Generate output filename with delta parameter
+    uint64_t timestamp = experiments::get_unix_timestamp();
+    std::string queries_hash = experiments::hash_queries_content(queries);
+    std::ostringstream params_stream;
+    params_stream << "delta" << delta;
+    std::string output_filename = experiments::generate_experiment_filename(
+        timestamp, queries_hash, params_stream.str(), "deltastep");
+    std::cout << "Output file: " << output_filename << std::endl;
+
     // Initialize Vulkan
     vk::ApplicationInfo appInfo("DeltaStepExperiment", 1, "NoEngine", 1, VK_API_VERSION_1_2);
     vk::Instance instance = vk::createInstance({{}, &appInfo});
@@ -56,7 +67,7 @@ int main(int argc, char **argv)
     vk::CommandPool cmdPool =
         device.createCommandPool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0});
 
-    common::CSVWriter<uint32_t, uint32_t, uint32_t, long long> writer("experiment_deltastep.csv");
+    common::CSVWriter<uint32_t, uint32_t, uint32_t, long long> writer(output_filename);
     writer.write_header({"from_node_id", "to_node_id", "distance", "time"});
 
     std::cout << "Running queries with delta = " << delta << "..." << std::endl;
