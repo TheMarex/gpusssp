@@ -22,12 +22,9 @@ TEST_CASE("DeltaStep computes correct shortest paths", "[deltastep]")
     auto cmd_pool = vk_fixture.get_command_pool();
     auto mem_props = vk_fixture.get_memory_properties();
 
-    gpusssp::gpu::GraphBuffers<gpusssp::common::WeightedGraph<uint32_t>> graph_buffers(graph,
-                                                                                       device);
-    gpusssp::gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device);
-
-    graph_buffers.initialize(mem_props);
-    deltastep_buffers.initialize(mem_props);
+    gpusssp::gpu::GraphBuffers<gpusssp::common::WeightedGraph<uint32_t>> graph_buffers(
+        graph, device, mem_props);
+    gpusssp::gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device, mem_props);
 
     gpusssp::gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
     deltastep.initialize();

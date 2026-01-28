@@ -13,19 +13,9 @@ namespace gpusssp::gpu
 template <typename GraphT> class GraphBuffers
 {
   public:
-    GraphBuffers(const GraphT &graph, vk::Device &device) : graph(graph), device(device) {}
-
-    ~GraphBuffers()
-    {
-        device.destroyBuffer(buf_first_edges);
-        device.destroyBuffer(buf_targets);
-        device.destroyBuffer(buf_weights);
-        device.freeMemory(mem_first_edges);
-        device.freeMemory(mem_targets);
-        device.freeMemory(mem_weights);
-    }
-
-    void initialize(const vk::PhysicalDeviceMemoryProperties &mem_props)
+    GraphBuffers(const GraphT &graph, vk::Device &device,
+                 const vk::PhysicalDeviceMemoryProperties &mem_props)
+        : graph(graph), device(device)
     {
         buf_first_edges = gpu::create_exclusive_buffer<uint32_t>(
             device, graph.first_edges.size(), vk::BufferUsageFlagBits::eStorageBuffer);
@@ -53,6 +43,16 @@ template <typename GraphT> class GraphBuffers
         device.unmapMemory(mem_first_edges);
         device.unmapMemory(mem_targets);
         device.unmapMemory(mem_weights);
+    }
+
+    ~GraphBuffers()
+    {
+        device.destroyBuffer(buf_first_edges);
+        device.destroyBuffer(buf_targets);
+        device.destroyBuffer(buf_weights);
+        device.freeMemory(mem_first_edges);
+        device.freeMemory(mem_targets);
+        device.freeMemory(mem_weights);
     }
 
     auto num_nodes() const { return graph.num_nodes(); }

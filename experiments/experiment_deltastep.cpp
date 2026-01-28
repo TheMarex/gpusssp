@@ -66,11 +66,9 @@ int main(int argc, char **argv)
     std::cout << "Running queries with delta = " << delta << "..." << std::endl;
 
     {
-        gpu::GraphBuffers graph_buffers(graph, device);
-        gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device);
-
-        graph_buffers.initialize(vk_ctx.memory_properties());
-        deltastep_buffers.initialize(vk_ctx.memory_properties());
+        gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties());
+        gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device,
+                                                vk_ctx.memory_properties());
 
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
         deltastep.initialize();
