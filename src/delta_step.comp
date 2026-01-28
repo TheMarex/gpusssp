@@ -5,10 +5,10 @@ layout(std430, binding = 0) readonly buffer FirstEdges { uint first_edges[]; };
 layout(std430, binding = 1) readonly buffer Targets { uint targets[]; };
 layout(std430, binding = 2) readonly buffer Weight { uint weight[]; };
 layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
-// Was the given node modified in the previous iteration
-layout(std430, binding = 4) coherent buffer IsChanged { uint is_changed[]; };
-// Is the given node modified by the current iteration
-layout(std430, binding = 5) readonly buffer WasChanged { uint was_changed[]; };
+// Nodes modified by the current iteration (written to)
+layout(std430, binding = 4) coherent buffer CurrentChanged { uint current_changed[]; };
+// Nodes modified in the previous iteration (read from)
+layout(std430, binding = 5) readonly buffer PreviousChanged { uint previous_changed[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
@@ -20,11 +20,11 @@ layout(push_constant) uniform PushConsts {
 } pc;
 
 bool was_node_changed(uint node) {
-  return (was_changed[node / 16] & (1u << (node % 16))) > 0;
+  return (previous_changed[node / 16] & (1u << (node % 16))) > 0;
 }
 
 bool set_node_changed(uint node) {
-  uint old = atomicOr(is_changed[node / 16] , 1U << (node % 16));
+  uint old = atomicOr(current_changed[node / 16] , 1U << (node % 16));
   return (old & (1u << (node % 16))) > 0;
 }
 
@@ -52,6 +52,6 @@ void main() {
 
         // Last block is reserved to be a counter
         uint last_block = (pc.n+15)/16;
-        atomicAdd(is_changed[last_block], local_changed);
+        atomicAdd(current_changed[last_block], local_changed);
     }
 }
