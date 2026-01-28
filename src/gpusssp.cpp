@@ -160,10 +160,9 @@ int main(int argc, char **argv)
                                                                   common::INF_WEIGHT);
         std::vector<bool> settled(graph.num_nodes(), false);
 
-        gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool,
-                                        queue);
-        gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device,
-                                                vk_ctx.memory_properties());
+        gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool, queue);
+        gpu::DeltaStepBuffers deltastep_buffers(
+            graph.num_nodes(), device, vk_ctx.memory_properties());
 
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
         deltastep.initialize();
@@ -189,21 +188,6 @@ int main(int argc, char **argv)
                 std::cout << "Error: Distance " << src_nodes[i] << "->" << dst_nodes[i]
                           << " mismatch. expected: " << expected_dist << " actual: " << dist
                           << std::endl;
-
-                auto *gpu_dist = deltastep_buffers.dist();
-                for (auto node_id = 0u; node_id < graph.num_nodes(); ++node_id)
-                {
-                    if (gpu_dist[node_id] != common::INF_WEIGHT)
-                    {
-                        std::cout << "\t" << node_id << "\t" << gpu_dist[node_id];
-                        if (gpu_dist[node_id] != costs[node_id])
-                        {
-                            std::cout << " mismatch " << costs[node_id]
-                                      << (settled[node_id] ? " setteled" : " ");
-                        }
-                        std::cout << std::endl;
-                    }
-                }
             }
             checksum ^= dist;
         }
