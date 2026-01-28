@@ -8,7 +8,7 @@ layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
 // Was the given node modified in the previous iteration
 layout(std430, binding = 4) coherent buffer IsChanged { uint is_changed[]; };
 // Is the given node modified by the current iteration
-layout(std430, binding = 5) coherent buffer WasChanged { uint was_changed[]; };
+layout(std430, binding = 5) readonly buffer WasChanged { uint was_changed[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
