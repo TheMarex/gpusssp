@@ -19,8 +19,8 @@ template <typename ElementT> class LazyClearVector
     static const constexpr counter_t INVALID_GENERATION = std::numeric_limits<counter_t>::max();
 
     LazyClearVector(std::size_t size_, value_t default_value_)
-        : default_value(std::move(default_value_)), generations(size_, 0),
-          elements(size_, default_value), generation_counter(0)
+        : default_value(std::move(default_value_)), generation_counter(0), generations(size_, 0),
+          elements(size_, default_value)
     {
     }
 
@@ -77,8 +77,8 @@ template <> class LazyClearVector<bool>
     static const constexpr counter_t INVALID_GENERATION = std::numeric_limits<counter_t>::max();
 
     LazyClearVector(std::size_t size_, value_t default_value_)
-        : default_value(std::move(default_value_)), generations(size_, 0),
-          elements(size_, default_value), generation_counter(0)
+        : default_value(std::move(default_value_)), generation_counter(0), generations(size_, 0),
+          elements(size_, default_value)
     {
     }
 

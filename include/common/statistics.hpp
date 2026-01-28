@@ -1,7 +1,9 @@
 #ifndef GPUSSSP_COMMON_STATISTICS_HPP
 #define GPUSSSP_COMMON_STATISTICS_HPP
 
-#include <vector>
+#ifdef ENABLE_STATISTICS
+#include <array>
+#endif
 
 namespace gpusssp
 {
@@ -30,12 +32,19 @@ class Statistics
 
     void count(StatisticsEvent event)
     {
-        // Implementation can be empty or simple counter
-        // counts[static_cast<int>(event)]++;
+#ifdef ENABLE_STATISTICS
+        counts[static_cast<std::size_t>(event)]++;
+#else
+        (void)event;
+#endif
     }
 
   private:
     Statistics() {}
+
+#ifdef ENABLE_STATISTICS
+    std::array<long, static_cast<std::size_t>(StatisticsEvent::NUM_EVENTS)> counts;
+#endif
 };
 
 } // namespace common

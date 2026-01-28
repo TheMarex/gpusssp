@@ -240,7 +240,7 @@ class ParsingHandler : public osmium::handler::Handler
                 }
             }
         }
-        catch (std::invalid_argument)
+        catch (const std::invalid_argument &)
         {
             return std::stof(fallback_value);
         }

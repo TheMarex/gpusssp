@@ -3,6 +3,7 @@
 
 #include <vulkan/vulkan.hpp>
 
+#include "common/constants.hpp"
 #include "common/shader.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
@@ -112,14 +113,14 @@ template <typename GraphT> class DeltaStep
         vk::CommandBuffer cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
 
-        const std::size_t MAX_BUCKETS = UINT32_MAX / delta - 1;
+        const std::size_t MAX_BUCKETS = common::INF_WEIGHT / delta - 1;
 
         uint32_t *gpu_num_changed = deltastep_buffers.num_changed();
         uint32_t *gpu_dist = deltastep_buffers.dist();
         auto num_nodes = (uint32_t)graph_buffers.num_nodes();
         auto num_blocks = (num_nodes + 15 / 16) + 1;
 
-        std::fill(gpu_dist, gpu_dist+num_nodes, UINT32_MAX);
+        std::fill(gpu_dist, gpu_dist + num_nodes, common::INF_WEIGHT);
         gpu_dist[src_node] = 0;
         uint32_t *gpu_max_dist = gpu_dist + num_nodes;
         *gpu_max_dist = 0u;
@@ -243,15 +244,16 @@ template <typename GraphT> class DeltaStep
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
 
-                //std::cout << bucket << " " << *gpu_num_changed << " max distance " << *gpu_max_dist << std::endl;
-                //for (auto node_id = 0u; node_id < num_nodes; ++node_id) {
-                //  if (gpu_dist[node_id] != UINT32_MAX) {
-                //    std::cout << "\t" << node_id << "\t" << gpu_dist[node_id] << std::endl;
+                // std::cout << bucket << " " << *gpu_num_changed << " max distance " <<
+                // *gpu_max_dist
+                //           << std::endl;
+                //  for (auto node_id = 0u; node_id < num_nodes; ++node_id) {
+                //    if (gpu_dist[node_id] != common::INF_WEIGHT) {
+                //      std::cout << "\t" << node_id << "\t" << gpu_dist[node_id] << std::endl;
+                //    }
                 //  }
-                //}
             }
 
-            /*
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
             cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
             cmd_buf.bindDescriptorSets(
@@ -284,30 +286,27 @@ template <typename GraphT> class DeltaStep
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
             queue.waitIdle();
 
-            std::cout << bucket << " heavy " << *gpu_num_changed << " max distance " << *gpu_max_dist << std::endl;
+            // std::cout << bucket << " heavy " << *gpu_num_changed << " max distance "
+            //           << *gpu_max_dist << std::endl;
 
+            // for (auto node_id = 0u; node_id < num_nodes; ++node_id) {
+            //   if (gpu_dist[node_id] != common::INF_WEIGHT) {
+            //     std::cout << "\t" << node_id << "\t" << gpu_dist[node_id] << std::endl;
+            //   }
+            // }
 
-            for (auto node_id = 0u; node_id < num_nodes; ++node_id) {
-              if (gpu_dist[node_id] != UINT32_MAX) {
-                std::cout << "\t" << node_id << "\t" << gpu_dist[node_id] << std::endl;
-              }
-            }
-            */
-
-
-            if (gpu_dist[dst_node] != UINT32_MAX)
+            if (gpu_dist[dst_node] != common::INF_WEIGHT)
             {
-                // If the distance is smaller then the current bucket, we have already settled the
-                // destination
+                // If the distance is smaller then the current bucket,
+                // we have already settled the destination
                 if (gpu_dist[dst_node] < bucket * delta)
                 {
                     break;
                 }
             }
 
-            // If the maximum node distance is lowe then the next bucket all other buckets will be
-            // empty
-            // -> dst_node is unreachable.
+            // If the maximum node distance is lower than the next bucket all other buckets
+            // will be empty -> dst_node is unreachable.
             if (*gpu_max_dist < (bucket + 1) * delta)
             {
                 break;

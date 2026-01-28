@@ -6,14 +6,14 @@
 #include <vulkan/vulkan.hpp>
 
 #include "common/coordinate.hpp"
+#include "common/dijkstra.hpp"
 #include "common/files.hpp"
+#include "common/id_queue.hpp"
+#include "common/lazy_clear_vector.hpp"
 #include "common/nearest_neighbour.hpp"
 #include "common/shader.hpp"
 #include "common/timed_logger.hpp"
 #include "common/weighted_graph.hpp"
-#include "common/dijkstra.hpp"
-#include "common/id_queue.hpp"
-#include "common/lazy_clear_vector.hpp"
 
 #include "gpu/deltastep.hpp"
 #include "gpu/deltastep_buffers.hpp"
@@ -34,21 +34,24 @@ std::optional<common::Coordinate> string_to_coordinate(const std::string &s)
     auto pos = s.find(',');
     if (pos == s.npos)
     {
-      return {};
+        return {};
     }
     return common::Coordinate::from_floating(std::stod(s.substr(0, pos)),
                                              std::stod(s.substr(pos + 1)));
 }
 
-std::optional<uint32_t> string_to_node_id(const std::string &s) {
-    if (s.size() < 1 || !std::isdigit(s[0])) {
-      return {};
+std::optional<uint32_t> string_to_node_id(const std::string &s)
+{
+    if (s.size() < 1 || !std::isdigit(s[0]))
+    {
+        return {};
     }
 
     std::size_t pos;
     auto node_id = std::stoi(s, &pos);
-    if (pos != s.size()) {
-      return {};
+    if (pos != s.size())
+    {
+        return {};
     }
 
     return node_id;
@@ -77,9 +80,12 @@ int main(int argc, char **argv)
     }
     std::optional<uint32_t> maybe_src_node_id;
     std::optional<uint32_t> maybe_dst_node_id;
-    if (argc > 2) {
-        if (!maybe_src_coord) maybe_src_node_id = string_to_node_id(argv[2]);
-        if (!maybe_dst_coord) maybe_dst_node_id = string_to_node_id(argv[3]);
+    if (argc > 2)
+    {
+        if (!maybe_src_coord)
+            maybe_src_node_id = string_to_node_id(argv[2]);
+        if (!maybe_dst_coord)
+            maybe_dst_node_id = string_to_node_id(argv[3]);
     }
 
     auto delta = 3600u;
@@ -156,7 +162,8 @@ int main(int argc, char **argv)
 
     {
         common::MinIDQueue min_queue(graph.num_nodes());
-        common::CostVector<common::WeightedGraph<uint32_t>> costs(graph.num_nodes(), common::INF_WEIGHT);
+        common::CostVector<common::WeightedGraph<uint32_t>> costs(graph.num_nodes(),
+                                                                  common::INF_WEIGHT);
         std::vector<bool> settled(graph.num_nodes(), false);
 
         gpu::GraphBuffers graph_buffers(graph, device);
@@ -174,19 +181,41 @@ int main(int argc, char **argv)
         for (auto i = 0u; i < num_queries; i++)
         {
             auto time_1 = std::chrono::high_resolution_clock::now();
-            auto expected_dist = common::dijkstra(src_nodes[i], dst_nodes[i], graph, min_queue, costs, settled);
+            auto expected_dist =
+                common::dijkstra(src_nodes[i], dst_nodes[i], graph, min_queue, costs, settled);
             auto time_2 = std::chrono::high_resolution_clock::now();
             auto dist = deltastep.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
             auto time_3 = std::chrono::high_resolution_clock::now();
 
-            dij_duration += std::chrono::duration_cast<std::chrono::milliseconds>(time_2 - time_1).count();
-            ds_duration += std::chrono::duration_cast<std::chrono::milliseconds>(time_3 - time_2).count();
-            if (dist != expected_dist) {
-                std::cout << "Error: Distance " << src_nodes[i] << "->" << dst_nodes[i] << " mismatch. expected: " << expected_dist << " actual: " << dist << std::endl;
+            dij_duration +=
+                std::chrono::duration_cast<std::chrono::milliseconds>(time_2 - time_1).count();
+            ds_duration +=
+                std::chrono::duration_cast<std::chrono::milliseconds>(time_3 - time_2).count();
+            if (dist != expected_dist)
+            {
+                std::cout << "Error: Distance " << src_nodes[i] << "->" << dst_nodes[i]
+                          << " mismatch. expected: " << expected_dist << " actual: " << dist
+                          << std::endl;
+
+                auto *gpu_dist = deltastep_buffers.dist();
+                for (auto node_id = 0u; node_id < graph.num_nodes(); ++node_id)
+                {
+                    if (gpu_dist[node_id] != common::INF_WEIGHT)
+                    {
+                        std::cout << "\t" << node_id << "\t" << gpu_dist[node_id];
+                        if (gpu_dist[node_id] != costs[node_id])
+                        {
+                            std::cout << " mismatch " << costs[node_id]
+                                      << (settled[node_id] ? " setteled" : " ");
+                        }
+                        std::cout << std::endl;
+                    }
+                }
             }
             checksum ^= dist;
         }
-        std::cout << "Processed " << num_queries << " queries in " << dij_duration << "ms (dijkstra) " << ds_duration << "ms (deltastep)" << std::endl;
+        std::cout << "Processed " << num_queries << " queries in " << dij_duration
+                  << "ms (dijkstra) " << ds_duration << "ms (deltastep)" << std::endl;
         std::cout << "Checksum: " << checksum << std::endl;
     }
 
