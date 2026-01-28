@@ -10,6 +10,7 @@
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
 #include "gpu/memory.hpp"
+#include "gpu/vulkan_context.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -54,36 +55,10 @@ int main(int argc, char **argv)
         timestamp, queries_hash, params_stream.str(), "deltastep");
     std::cout << "Output file: " << output_filename << std::endl;
 
-    // Initialize Vulkan
-    vk::ApplicationInfo appInfo("DeltaStepExperiment", 1, "NoEngine", 1, VK_API_VERSION_1_2);
-    vk::Instance instance = vk::createInstance({{}, &appInfo});
-    auto physDevices = instance.enumeratePhysicalDevices();
-    
-    // Select device based on GPUSSSP_DEVICE environment variable
-    uint32_t device_index = 0;
-    if (const char* env_device = std::getenv("GPUSSSP_DEVICE"))
-    {
-        device_index = std::stoi(env_device);
-        if (device_index >= physDevices.size())
-        {
-            std::cerr << "Error: GPUSSSP_DEVICE=" << device_index 
-                      << " is out of range. Found " << physDevices.size() 
-                      << " device(s)." << std::endl;
-            instance.destroy();
-            return 1;
-        }
-    }
-    vk::PhysicalDevice phys = physDevices[device_index];
-    std::cout << "Using device " << device_index << ": " 
-              << phys.getProperties().deviceName << std::endl;
-
-    float queuePriority = 1.0f;
-    vk::DeviceQueueCreateInfo queueInfo({}, 0, 1, &queuePriority);
-    vk::Device device = phys.createDevice({{}, 1, &queueInfo});
-    vk::Queue queue = device.getQueue(0, 0);
-
-    vk::CommandPool cmdPool =
-        device.createCommandPool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0});
+    gpu::VulkanContext vk_ctx("DeltaStepExperiment", gpu::detail::selectDevice());
+    auto device = vk_ctx.device();
+    auto queue = vk_ctx.queue();
+    auto cmdPool = vk_ctx.command_pool();
 
     common::CSVWriter<uint32_t, uint32_t, uint32_t, long long> writer(output_filename);
     writer.write_header({"from_node_id", "to_node_id", "distance", "time"});
@@ -94,8 +69,8 @@ int main(int argc, char **argv)
         gpu::GraphBuffers graph_buffers(graph, device);
         gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device);
 
-        graph_buffers.initialize(phys.getMemoryProperties());
-        deltastep_buffers.initialize(phys.getMemoryProperties());
+        graph_buffers.initialize(vk_ctx.memory_properties());
+        deltastep_buffers.initialize(vk_ctx.memory_properties());
 
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
         deltastep.initialize();
@@ -109,7 +84,8 @@ int main(int argc, char **argv)
 
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration =
-                std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+                std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time)
+                    .count();
 
             writer.write({query.from, query.to, dist, duration});
 
@@ -120,10 +96,6 @@ int main(int argc, char **argv)
             }
         }
     }
-
-    device.destroyCommandPool(cmdPool);
-    device.destroy();
-    instance.destroy();
 
     std::cout << "Done." << std::endl;
 
