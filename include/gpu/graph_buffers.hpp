@@ -14,35 +14,39 @@ template <typename GraphT> class GraphBuffers
 {
   public:
     GraphBuffers(const GraphT &graph, vk::Device &device,
-                 const vk::PhysicalDeviceMemoryProperties &mem_props)
+                 const vk::PhysicalDeviceMemoryProperties &mem_props,
+                 vk::CommandPool command_pool, vk::Queue queue)
         : graph(graph), device(device)
     {
+        // Create device-local buffers with transfer destination flag
         buf_first_edges = gpu::create_exclusive_buffer<uint32_t>(
-            device, graph.first_edges.size(), vk::BufferUsageFlagBits::eStorageBuffer);
+            device, graph.first_edges.size(),
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
         buf_targets = gpu::create_exclusive_buffer<uint32_t>(
-            device, graph.targets.size(), vk::BufferUsageFlagBits::eStorageBuffer);
+            device, graph.targets.size(),
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
         buf_weights = gpu::create_exclusive_buffer<uint32_t>(
-            device, graph.weights.size(), vk::BufferUsageFlagBits::eStorageBuffer);
+            device, graph.weights.size(),
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
-        mem_first_edges = gpu::alloc_and_bind(
-            device, mem_props, buf_first_edges, vk::MemoryPropertyFlagBits::eHostVisible);
-        mem_targets = gpu::alloc_and_bind(
-            device, mem_props, buf_targets, vk::MemoryPropertyFlagBits::eHostVisible);
-        mem_weights = gpu::alloc_and_bind(
-            device, mem_props, buf_weights, vk::MemoryPropertyFlagBits::eHostVisible);
+        // Allocate device-local memory
+        mem_first_edges =
+            gpu::alloc_and_bind(device, mem_props, buf_first_edges,
+                                vk::MemoryPropertyFlagBits::eDeviceLocal);
+        mem_targets = gpu::alloc_and_bind(device, mem_props, buf_targets,
+                                           vk::MemoryPropertyFlagBits::eDeviceLocal);
+        mem_weights = gpu::alloc_and_bind(device, mem_props, buf_weights,
+                                           vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-        memcpy(device.mapMemory(mem_first_edges, 0, graph.first_edges.size() * sizeof(uint32_t)),
-               graph.first_edges.data(),
-               graph.first_edges.size() * sizeof(uint32_t));
-        memcpy(device.mapMemory(mem_targets, 0, graph.targets.size() * sizeof(uint32_t)),
-               graph.targets.data(),
-               graph.targets.size() * sizeof(uint32_t));
-        memcpy(device.mapMemory(mem_weights, 0, graph.weights.size() * sizeof(uint32_t)),
-               graph.weights.data(),
-               graph.weights.size() * sizeof(uint32_t));
-        device.unmapMemory(mem_first_edges);
-        device.unmapMemory(mem_targets);
-        device.unmapMemory(mem_weights);
+        // Prepare batch copy operations
+        std::vector<gpu::BufferCopyInfo> copies = {
+            {graph.first_edges.data(), buf_first_edges,
+             graph.first_edges.size() * sizeof(uint32_t)},
+            {graph.targets.data(), buf_targets, graph.targets.size() * sizeof(uint32_t)},
+            {graph.weights.data(), buf_weights, graph.weights.size() * sizeof(uint32_t)}};
+
+        // Perform batched copy from host to device-local memory
+        gpu::copy_buffers_batched(device, mem_props, command_pool, queue, copies);
     }
 
     ~GraphBuffers()

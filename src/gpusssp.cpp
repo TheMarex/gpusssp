@@ -160,7 +160,8 @@ int main(int argc, char **argv)
                                                                   common::INF_WEIGHT);
         std::vector<bool> settled(graph.num_nodes(), false);
 
-        gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties());
+        gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool,
+                                        queue);
         gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device,
                                                 vk_ctx.memory_properties());
 
