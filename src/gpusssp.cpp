@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstdlib>
 #include <iostream>
 #include <optional>
 #include <random>
@@ -150,7 +151,24 @@ int main(int argc, char **argv)
     vk::ApplicationInfo appInfo("DeltaStep", 1, "NoEngine", 1, VK_API_VERSION_1_2);
     vk::Instance instance = vk::createInstance({{}, &appInfo});
     auto physDevices = instance.enumeratePhysicalDevices();
-    vk::PhysicalDevice phys = physDevices[0];
+    
+    // Select device based on GPUSSSP_DEVICE environment variable
+    uint32_t device_index = 0;
+    if (const char* env_device = std::getenv("GPUSSSP_DEVICE"))
+    {
+        device_index = std::stoi(env_device);
+        if (device_index >= physDevices.size())
+        {
+            std::cerr << "Error: GPUSSSP_DEVICE=" << device_index 
+                      << " is out of range. Found " << physDevices.size() 
+                      << " device(s)." << std::endl;
+            instance.destroy();
+            return 1;
+        }
+    }
+    vk::PhysicalDevice phys = physDevices[device_index];
+    std::cout << "Using device " << device_index << ": " 
+              << phys.getProperties().deviceName << std::endl;
 
     float queuePriority = 1.0f;
     vk::DeviceQueueCreateInfo queueInfo({}, 0, 1, &queuePriority);
