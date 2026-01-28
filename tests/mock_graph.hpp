@@ -1,6 +1,7 @@
 #ifndef GPUSSSP_TESTS_MOCK_GRAPH_HPP
 #define GPUSSSP_TESTS_MOCK_GRAPH_HPP
 
+#include "common/constants.hpp"
 #include "common/edge.hpp"
 #include "common/weighted_graph.hpp"
 #include <cstdint>
@@ -9,27 +10,19 @@
 namespace gpusssp::test
 {
 
-/**
- * Graph topology (6 nodes, 8 edges):
- *
- *            1000    2000
- *  |----- 0 -----> 1 -----> 2
- *  |      |        |        |
- *  |   500|     800|        | 2500
- *  |      v        v        v
- *  |      3 -----> 4 -----> 5
- *  |         500   ^  4000
- *  |---------------|
- *      4000
- */
-
-static constexpr std::array<uint32_t, 36> SHORTEST_DISTANCES_MOCK = {
-    // 0              1               2               3              4               5
-    0,          1000,       3000,       500,        1000,       5000,       UINT32_MAX, 0,
-    2000,       UINT32_MAX, 800,        4500,       UINT32_MAX, UINT32_MAX, 0,          UINT32_MAX,
-    UINT32_MAX, 2500,       UINT32_MAX, UINT32_MAX, UINT32_MAX, 0,          500,        4500,
-    UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, 0,          4000,       UINT32_MAX, UINT32_MAX,
-    UINT32_MAX, UINT32_MAX, UINT32_MAX, 0};
+//
+// Graph topology (6 nodes, 8 edges):
+//
+//           1000    2000
+// |----- 0 -----> 1 -----> 2
+// |      |        |        |
+// |   500|     800|        | 2500
+// |      v        v        v
+// |      3 -----> 4 -----> 5
+// |         500   ^  4000
+// |---------------|
+//     4000
+//
 
 inline common::WeightedGraph<uint32_t> create_mock_graph()
 {
@@ -54,6 +47,16 @@ inline common::WeightedGraph<uint32_t> create_mock_graph()
 
 inline uint32_t get_expected_distances(uint32_t src_node, uint32_t dst_node)
 {
+    using common::INF_WEIGHT;
+
+    static constexpr std::array<uint32_t, 36> SHORTEST_DISTANCES_MOCK = {
+        // 0        1           2           3           4           5
+        0,          1000,       3000,       500,        1000,       5000,
+        INF_WEIGHT, 0,          2000,       INF_WEIGHT, 800,        4500,
+        INF_WEIGHT, INF_WEIGHT, 0,          INF_WEIGHT, INF_WEIGHT, 2500,
+        INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, 0,          500,        4500,
+        INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, 0,          4000,
+        INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, 0};
     return SHORTEST_DISTANCES_MOCK[src_node * 6 + dst_node];
 }
 
