@@ -1,4 +1,7 @@
 #version 450
+
+#extension GL_KHR_shader_subgroup_arithmetic: enable
+
 layout(local_size_x = 128) in;
 
 layout(std430, binding = 0) readonly buffer FirstEdges { uint first_edges[]; };
@@ -9,6 +12,8 @@ layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
 layout(std430, binding = 4) coherent buffer CurrentChanged { uint current_changed[]; };
 // Nodes modified in the previous iteration (read from)
 layout(std430, binding = 5) readonly buffer PreviousChanged { uint previous_changed[]; };
+// Counter for number of changed nodes
+layout(std430, binding = 6) coherent buffer NumChanged { uint num_changed; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
@@ -50,8 +55,10 @@ void main() {
             }
         }
 
-        // Last block is reserved to be a counter
-        uint last_block = (pc.n+15)/16;
-        atomicAdd(current_changed[last_block], local_changed);
+        uint changed = subgroupAdd(local_changed);
+
+        if (subgroupElect() && changed > 0) {
+            atomicAdd(num_changed, changed);
+        }
     }
 }

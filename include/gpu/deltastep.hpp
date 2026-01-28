@@ -46,7 +46,7 @@ template <typename GraphT> class DeltaStep
     void initialize_descriptor_sets()
     {
         auto graph_bufs = graph_buffers.buffers();
-        auto [dist_buffer, changed_buffer_0, changed_buffer_1] = deltastep_buffers.buffers();
+        auto [dist_buffer, changed_buffer_0, changed_buffer_1, num_changed_buffer] = deltastep_buffers.buffers();
 
         // Create bindings for all buffers
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
@@ -65,6 +65,9 @@ template <typename GraphT> class DeltaStep
         // Binding 5: previous_changed (will swap between buffer_1 and buffer_0)
         bindings.push_back(
             {5, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
+        // Binding 6: num_changed counter buffer
+        bindings.push_back(
+            {6, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
 
         desc_set_layout =
             device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
@@ -82,7 +85,7 @@ template <typename GraphT> class DeltaStep
         // Update descriptor set 0: changed_buffer_0 as current, changed_buffer_1 as previous
         std::vector<vk::DescriptorBufferInfo> dbis_0;
         // Pre-allocate to avoid reallocation
-        dbis_0.reserve(6);
+        dbis_0.reserve(7);
 
         for (auto i = 0u; i < graph_bufs.size(); ++i)
         {
@@ -91,6 +94,7 @@ template <typename GraphT> class DeltaStep
         dbis_0.push_back({dist_buffer, 0, VK_WHOLE_SIZE});
         dbis_0.push_back({changed_buffer_0, 0, VK_WHOLE_SIZE});
         dbis_0.push_back({changed_buffer_1, 0, VK_WHOLE_SIZE});
+        dbis_0.push_back({num_changed_buffer, 0, VK_WHOLE_SIZE});
 
         std::vector<vk::WriteDescriptorSet> writes_0;
         for (auto i = 0u; i < graph_bufs.size(); ++i)
@@ -128,12 +132,20 @@ template <typename GraphT> class DeltaStep
                             nullptr,
                             &dbis_0[5],
                             nullptr});
+        writes_0.push_back({desc_set_0,
+                            6,
+                            0,
+                            1,
+                            vk::DescriptorType::eStorageBuffer,
+                            nullptr,
+                            &dbis_0[6],
+                            nullptr});
 
         device.updateDescriptorSets(writes_0, {});
 
         // Update descriptor set 1: changed_buffer_1 as current, changed_buffer_0 as previous
         std::vector<vk::DescriptorBufferInfo> dbis_1;
-        dbis_1.reserve(6);
+        dbis_1.reserve(7);
 
         for (auto i = 0u; i < graph_bufs.size(); ++i)
         {
@@ -142,6 +154,7 @@ template <typename GraphT> class DeltaStep
         dbis_1.push_back({dist_buffer, 0, VK_WHOLE_SIZE});
         dbis_1.push_back({changed_buffer_1, 0, VK_WHOLE_SIZE});
         dbis_1.push_back({changed_buffer_0, 0, VK_WHOLE_SIZE});
+        dbis_1.push_back({num_changed_buffer, 0, VK_WHOLE_SIZE});
 
         std::vector<vk::WriteDescriptorSet> writes_1;
         for (auto i = 0u; i < graph_bufs.size(); ++i)
@@ -179,6 +192,14 @@ template <typename GraphT> class DeltaStep
                             nullptr,
                             &dbis_1[5],
                             nullptr});
+        writes_1.push_back({desc_set_1,
+                            6,
+                            0,
+                            1,
+                            vk::DescriptorType::eStorageBuffer,
+                            nullptr,
+                            &dbis_1[6],
+                            nullptr});
 
         device.updateDescriptorSets(writes_1, {});
     }
@@ -210,7 +231,7 @@ template <typename GraphT> class DeltaStep
 
         const std::size_t MAX_BUCKETS = common::INF_WEIGHT / delta - 1;
 
-        auto [gpu_num_changed_0, gpu_num_changed_1] = deltastep_buffers.num_changed();
+        uint32_t *gpu_num_changed = deltastep_buffers.num_changed();
         uint32_t *gpu_dist = deltastep_buffers.dist();
         auto num_nodes = (uint32_t)graph_buffers.num_nodes();
 
@@ -219,7 +240,7 @@ template <typename GraphT> class DeltaStep
         uint32_t *gpu_max_dist = gpu_dist + num_nodes;
         *gpu_max_dist = 0u;
 
-        auto [dist_buffer, changed_buffer_0, changed_buffer_1] = deltastep_buffers.buffers();
+        auto [dist_buffer, changed_buffer_0, changed_buffer_1, num_changed_buffer] = deltastep_buffers.buffers();
 
         for (uint32_t bucket = 0; bucket < MAX_BUCKETS; bucket++)
         {
@@ -229,8 +250,6 @@ template <typename GraphT> class DeltaStep
             auto current_changed_buffer = changed_buffer_1;
             auto previous_desc_set = desc_set_0;
             auto current_desc_set = desc_set_1;
-            auto *previous_gpu_num_changed = gpu_num_changed_0;
-            auto *current_gpu_num_changed = gpu_num_changed_1;
 
             do
             {
@@ -244,6 +263,7 @@ template <typename GraphT> class DeltaStep
 
                 cmd_buf.fillBuffer(previous_changed_buffer, 0, VK_WHOLE_SIZE, UINT32_MAX);
                 cmd_buf.fillBuffer(current_changed_buffer, 0, VK_WHOLE_SIZE, 0);
+                cmd_buf.fillBuffer(num_changed_buffer, 0, VK_WHOLE_SIZE, 0);
                 cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                         vk::PipelineStageFlagBits::eComputeShader,
                                         vk::DependencyFlags{},
@@ -270,11 +290,11 @@ template <typename GraphT> class DeltaStep
                 {
                     std::swap(previous_changed_buffer, current_changed_buffer);
                     std::swap(previous_desc_set, current_desc_set);
-                    std::swap(previous_gpu_num_changed, current_gpu_num_changed);
                     cmd_buf.bindDescriptorSets(
                         vk::PipelineBindPoint::eCompute, pipeline_layout, 0, current_desc_set, {});
 
                     cmd_buf.fillBuffer(current_changed_buffer, 0, VK_WHOLE_SIZE, 0);
+                    cmd_buf.fillBuffer(num_changed_buffer, 0, VK_WHOLE_SIZE, 0);
                     cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                             vk::PipelineStageFlagBits::eComputeShader,
                                             vk::DependencyFlags{},
@@ -302,7 +322,7 @@ template <typename GraphT> class DeltaStep
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
 
-                // std::cout << bucket << " " << *current_gpu_num_changed << " max distance "
+                // std::cout << bucket << " " << *gpu_num_changed << " max distance "
                 //           << *gpu_max_dist << std::endl;
                 // for (auto node_id = 0u; node_id < num_nodes; ++node_id)
                 //{
@@ -311,19 +331,19 @@ template <typename GraphT> class DeltaStep
                 //         std::cout << "\t" << node_id << "\t" << gpu_dist[node_id] << std::endl;
                 //     }
                 // }
-            } while (*current_gpu_num_changed > 0);
+            } while (*gpu_num_changed > 0);
 
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
             cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
 
             std::swap(previous_changed_buffer, current_changed_buffer);
             std::swap(previous_desc_set, current_desc_set);
-            std::swap(previous_gpu_num_changed, current_gpu_num_changed);
             cmd_buf.bindDescriptorSets(
                 vk::PipelineBindPoint::eCompute, pipeline_layout, 0, current_desc_set, {});
 
             cmd_buf.fillBuffer(previous_changed_buffer, 0, VK_WHOLE_SIZE, UINT32_MAX);
             cmd_buf.fillBuffer(current_changed_buffer, 0, VK_WHOLE_SIZE, 0);
+            cmd_buf.fillBuffer(num_changed_buffer, 0, VK_WHOLE_SIZE, 0);
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                     vk::PipelineStageFlagBits::eComputeShader,
                                     vk::DependencyFlags{},

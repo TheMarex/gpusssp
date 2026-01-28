@@ -79,7 +79,7 @@ set(SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/delta_step.spv)
 
 add_custom_command(
     OUTPUT ${SHADER_OUTPUT}
-    COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_OUTPUT}
+    COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} --target-env vulkan1.1 -o ${SHADER_OUTPUT}
     DEPENDS ${SHADER_SOURCE}
     COMMENT "Compiling compute shader to SPIR-V"
     VERBATIM
