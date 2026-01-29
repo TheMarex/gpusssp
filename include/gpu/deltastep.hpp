@@ -267,11 +267,17 @@ template <typename GraphT> class DeltaStep
 
         // Initialize dist buffer on GPU
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-        cmd_buf.fillBuffer(dist_buffer, 0, src_node * sizeof(uint32_t), common::INF_WEIGHT);
+        if (src_node > 0)
+        {
+            cmd_buf.fillBuffer(dist_buffer, 0, src_node * sizeof(uint32_t), common::INF_WEIGHT);
+        }
         cmd_buf.fillBuffer(
             dist_buffer, src_node * sizeof(uint32_t), (src_node + 1) * sizeof(uint32_t), 0);
-        cmd_buf.fillBuffer(
-            dist_buffer, (src_node + 1) * sizeof(uint32_t), VK_WHOLE_SIZE, common::INF_WEIGHT);
+        if (src_node < num_nodes - 1)
+        {
+            cmd_buf.fillBuffer(
+                dist_buffer, (src_node + 1) * sizeof(uint32_t), VK_WHOLE_SIZE, common::INF_WEIGHT);
+        }
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
             vk::PipelineStageFlagBits::eComputeShader,
