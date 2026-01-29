@@ -1,5 +1,7 @@
 #version 450
 
+#extension GL_KHR_shader_subgroup_arithmetic: enable
+
 layout(local_size_x = 128) in;
 
 layout(std430, binding = 0) readonly buffer FirstEdges { uint first_edges[]; };
@@ -29,14 +31,19 @@ void main() {
 
     uint du = dist[u];
     if (du < INF_WEIGHT) {
+        uint local_changed = 0;
         for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
             uint v = targets[eid];
             uint w = weight[eid];
             uint alt = du + w;
             uint prev = atomicMin(dist[v], alt);
             if (alt < prev) {
-                atomicMax(changed, 1);
+                local_changed++;
             }
+        }
+        uint all_changed = subgroupMax(local_changed);
+        if (subgroupElect() && all_changed > 0) {
+            atomicMax(changed, 1);
         }
     }
 }
