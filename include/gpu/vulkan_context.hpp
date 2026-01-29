@@ -27,7 +27,7 @@ class VulkanContext
   public:
     explicit VulkanContext(const char *app_name, uint32_t device_index)
     {
-        vk::ApplicationInfo appInfo(app_name, 1, "NoEngine", 1, VK_API_VERSION_1_2);
+        vk::ApplicationInfo appInfo(app_name, 1, "NoEngine", 1, VK_API_VERSION_1_3);
         m_instance = vk::createInstance({{}, &appInfo});
         auto physDevices = m_instance.enumeratePhysicalDevices();
 
