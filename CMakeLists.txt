@@ -73,20 +73,31 @@ target_link_libraries(experiment_deltastep
         Vulkan::Vulkan
 )
 
-# Custom command to compile GLSL shader to SPIR-V
-set(SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/delta_step.comp)
-set(SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/delta_step.spv)
+# Custom command to compile GLSL shaders to SPIR-V
+set(DELTA_STEP_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/delta_step.comp)
+set(DELTA_STEP_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/delta_step.spv)
 
 add_custom_command(
-    OUTPUT ${SHADER_OUTPUT}
-    COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} --target-env vulkan1.1 -o ${SHADER_OUTPUT}
-    DEPENDS ${SHADER_SOURCE}
-    COMMENT "Compiling compute shader to SPIR-V"
+    OUTPUT ${DELTA_STEP_SHADER_OUTPUT}
+    COMMAND ${GLSLANG_VALIDATOR} -V ${DELTA_STEP_SHADER_SOURCE} --target-env vulkan1.1 -o ${DELTA_STEP_SHADER_OUTPUT}
+    DEPENDS ${DELTA_STEP_SHADER_SOURCE}
+    COMMENT "Compiling delta_step compute shader to SPIR-V"
+    VERBATIM
+)
+
+set(BELLMAN_FORD_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/bellman_ford.comp)
+set(BELLMAN_FORD_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/bellman_ford.spv)
+
+add_custom_command(
+    OUTPUT ${BELLMAN_FORD_SHADER_OUTPUT}
+    COMMAND ${GLSLANG_VALIDATOR} -V ${BELLMAN_FORD_SHADER_SOURCE} --target-env vulkan1.1 -o ${BELLMAN_FORD_SHADER_OUTPUT}
+    DEPENDS ${BELLMAN_FORD_SHADER_SOURCE}
+    COMMENT "Compiling bellman_ford compute shader to SPIR-V"
     VERBATIM
 )
 
 add_custom_target(shaders
-    DEPENDS ${SHADER_OUTPUT}
+    DEPENDS ${DELTA_STEP_SHADER_OUTPUT} ${BELLMAN_FORD_SHADER_OUTPUT}
 )
 add_dependencies(gpusssp shaders)
 add_dependencies(experiment_deltastep shaders)

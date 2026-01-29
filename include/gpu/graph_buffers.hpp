@@ -13,34 +13,39 @@ namespace gpusssp::gpu
 template <typename GraphT> class GraphBuffers
 {
   public:
-    GraphBuffers(const GraphT &graph, vk::Device &device,
+    GraphBuffers(const GraphT &graph,
+                 vk::Device &device,
                  const vk::PhysicalDeviceMemoryProperties &mem_props,
-                 vk::CommandPool command_pool, vk::Queue queue)
+                 vk::CommandPool command_pool,
+                 vk::Queue queue)
         : graph(graph), device(device)
     {
         // Create device-local buffers with transfer destination flag
         buf_first_edges = gpu::create_exclusive_buffer<uint32_t>(
-            device, graph.first_edges.size(),
+            device,
+            graph.first_edges.size(),
             vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
         buf_targets = gpu::create_exclusive_buffer<uint32_t>(
-            device, graph.targets.size(),
+            device,
+            graph.targets.size(),
             vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
         buf_weights = gpu::create_exclusive_buffer<uint32_t>(
-            device, graph.weights.size(),
+            device,
+            graph.weights.size(),
             vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
         // Allocate device-local memory
-        mem_first_edges =
-            gpu::alloc_and_bind(device, mem_props, buf_first_edges,
-                                vk::MemoryPropertyFlagBits::eDeviceLocal);
-        mem_targets = gpu::alloc_and_bind(device, mem_props, buf_targets,
-                                           vk::MemoryPropertyFlagBits::eDeviceLocal);
-        mem_weights = gpu::alloc_and_bind(device, mem_props, buf_weights,
-                                           vk::MemoryPropertyFlagBits::eDeviceLocal);
+        mem_first_edges = gpu::alloc_and_bind(
+            device, mem_props, buf_first_edges, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        mem_targets = gpu::alloc_and_bind(
+            device, mem_props, buf_targets, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        mem_weights = gpu::alloc_and_bind(
+            device, mem_props, buf_weights, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
         // Prepare batch copy operations
         std::vector<gpu::BufferCopyInfo> copies = {
-            {graph.first_edges.data(), buf_first_edges,
+            {graph.first_edges.data(),
+             buf_first_edges,
              graph.first_edges.size() * sizeof(uint32_t)},
             {graph.targets.data(), buf_targets, graph.targets.size() * sizeof(uint32_t)},
             {graph.weights.data(), buf_weights, graph.weights.size() * sizeof(uint32_t)}};
@@ -60,6 +65,7 @@ template <typename GraphT> class GraphBuffers
     }
 
     auto num_nodes() const { return graph.num_nodes(); }
+    auto num_edges() const { return graph.num_edges(); }
 
     std::array<vk::Buffer, 3> buffers() const
     {

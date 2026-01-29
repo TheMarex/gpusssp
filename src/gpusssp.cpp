@@ -16,6 +16,8 @@
 #include "common/timed_logger.hpp"
 #include "common/weighted_graph.hpp"
 
+#include "gpu/bellmanford.hpp"
+#include "gpu/bellmanford_buffers.hpp"
 #include "gpu/deltastep.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
@@ -163,13 +165,19 @@ int main(int argc, char **argv)
         gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool, queue);
         gpu::DeltaStepBuffers deltastep_buffers(
             graph.num_nodes(), device, vk_ctx.memory_properties());
+        gpu::BellmanFordBuffers bellmanford_buffers(
+            graph.num_nodes(), device, vk_ctx.memory_properties());
 
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
         deltastep.initialize();
 
+        gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device);
+        bellmanford.initialize();
+
         std::uint32_t checksum = 0;
         std::uint32_t dij_duration = 0;
         std::uint32_t ds_duration = 0;
+        std::uint32_t bf_duration = 0;
         for (auto i = 0u; i < num_queries; i++)
         {
             auto time_1 = std::chrono::high_resolution_clock::now();
@@ -178,21 +186,32 @@ int main(int argc, char **argv)
             auto time_2 = std::chrono::high_resolution_clock::now();
             auto dist = deltastep.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
             auto time_3 = std::chrono::high_resolution_clock::now();
+            auto bf_dist = bellmanford.run(cmdPool, queue, src_nodes[i], dst_nodes[i]);
+            auto time_4 = std::chrono::high_resolution_clock::now();
 
             dij_duration +=
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_2 - time_1).count();
             ds_duration +=
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_3 - time_2).count();
+            bf_duration +=
+                std::chrono::duration_cast<std::chrono::milliseconds>(time_4 - time_3).count();
             if (dist != expected_dist)
             {
-                std::cout << "Error: Distance " << src_nodes[i] << "->" << dst_nodes[i]
+                std::cout << "Error: DeltaStep distance " << src_nodes[i] << "->" << dst_nodes[i]
                           << " mismatch. expected: " << expected_dist << " actual: " << dist
+                          << std::endl;
+            }
+            if (bf_dist != expected_dist)
+            {
+                std::cout << "Error: BellmanFord distance " << src_nodes[i] << "->" << dst_nodes[i]
+                          << " mismatch. expected: " << expected_dist << " actual: " << bf_dist
                           << std::endl;
             }
             checksum ^= dist;
         }
         std::cout << "Processed " << num_queries << " queries in " << dij_duration
-                  << "ms (dijkstra) " << ds_duration << "ms (deltastep)" << std::endl;
+                  << "ms (dijkstra) " << ds_duration << "ms (deltastep) " << bf_duration
+                  << "ms (bellmanford)" << std::endl;
         std::cout << "Checksum: " << checksum << std::endl;
     }
 
