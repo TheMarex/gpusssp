@@ -208,8 +208,9 @@ int main(int argc, char **argv)
             checksum ^= dist;
         }
         std::cout << "Processed " << num_queries << " queries in " << dij_duration
-                  << "ms (dijkstra) " << ds_duration << "ms (deltastep) " << bf_duration
-                  << "ms (bellmanford)" << std::endl;
+                  << "ms (dijkstra) " << ds_duration << "ms (deltastep "
+                  << (dij_duration / (double)ds_duration) << ") " << bf_duration
+                  << "ms (bellmanford " << (dij_duration / (double)bf_duration) << ")" << std::endl;
         std::cout << "Checksum: " << checksum << std::endl;
     }
 
