@@ -15,7 +15,7 @@ namespace gpusssp::gpu
 
 template <typename GraphT> class DeltaStep
 {
-    static constexpr const size_t WORKGROUP_SIZE = 64u;
+    static constexpr const size_t DEFAULT_WORKGROUP_SIZE = 64u;
     struct PushConsts
     {
         uint32_t src_node;
@@ -30,8 +30,10 @@ template <typename GraphT> class DeltaStep
   public:
     DeltaStep(const GraphBuffers<GraphT> &graph_buffers,
               DeltaStepBuffers &deltastep_buffers,
-              vk::Device &device)
-        : graph_buffers(graph_buffers), deltastep_buffers(deltastep_buffers), device(device)
+              vk::Device &device,
+              uint32_t workgroup_size = DEFAULT_WORKGROUP_SIZE)
+        : graph_buffers(graph_buffers), deltastep_buffers(deltastep_buffers), device(device),
+          workgroup_size(workgroup_size)
     {
     }
 
@@ -237,8 +239,12 @@ template <typename GraphT> class DeltaStep
         vk::PushConstantRange pcRange{vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};
         pipeline_layout = device.createPipelineLayout({{}, 1, &desc_set_layout, 1, &pcRange});
 
+        // Setup specialization constant for workgroup size
+        vk::SpecializationMapEntry spec_entry{0, 0, sizeof(uint32_t)};
+        vk::SpecializationInfo spec_info{1, &spec_entry, sizeof(uint32_t), &workgroup_size};
+
         vk::PipelineShaderStageCreateInfo shaderStage{
-            {}, vk::ShaderStageFlagBits::eCompute, shader, "main"};
+            {}, vk::ShaderStageFlagBits::eCompute, shader, "main", &spec_info};
 
         pipeline = device.createComputePipeline({}, {{}, shaderStage, pipeline_layout}).value;
     }
@@ -324,7 +330,7 @@ template <typename GraphT> class DeltaStep
                 pc.iteration = iteration++;
                 cmd_buf.pushConstants(
                     pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-                cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+                cmd_buf.dispatch((num_nodes + workgroup_size - 1) / workgroup_size, 1, 1);
                 cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                         vk::PipelineStageFlagBits::eComputeShader,
                                         vk::DependencyFlags{},
@@ -355,7 +361,7 @@ template <typename GraphT> class DeltaStep
                     pc.iteration = iteration++;
                     cmd_buf.pushConstants(
                         pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-                    cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+                    cmd_buf.dispatch((num_nodes + workgroup_size - 1) / workgroup_size, 1, 1);
                     cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                             vk::PipelineStageFlagBits::eComputeShader,
                                             vk::DependencyFlags{},
@@ -397,7 +403,7 @@ template <typename GraphT> class DeltaStep
             PushConsts pc{src_node, dst_node, num_nodes, bucket, delta, iteration++, UINT32_MAX};
             cmd_buf.pushConstants(
                 pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-            cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+            cmd_buf.dispatch((num_nodes + workgroup_size - 1) / workgroup_size, 1, 1);
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                     vk::PipelineStageFlagBits::eComputeShader,
                                     vk::DependencyFlags{},
@@ -447,6 +453,7 @@ template <typename GraphT> class DeltaStep
     vk::PipelineLayout pipeline_layout;
 
     vk::Device &device;
+    uint32_t workgroup_size;
 };
 
 } // namespace gpusssp::gpu

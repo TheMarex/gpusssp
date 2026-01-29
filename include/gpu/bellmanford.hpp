@@ -15,7 +15,7 @@ namespace gpusssp::gpu
 
 template <typename GraphT> class BellmanFord
 {
-    static constexpr const size_t WORKGROUP_SIZE = 128u;
+    static constexpr const size_t DEFAULT_WORKGROUP_SIZE = 128u;
     struct PushConsts
     {
         uint32_t src_node;
@@ -26,8 +26,10 @@ template <typename GraphT> class BellmanFord
   public:
     BellmanFord(const GraphBuffers<GraphT> &graph_buffers,
                 BellmanFordBuffers &bellmanford_buffers,
-                vk::Device &device)
-        : graph_buffers(graph_buffers), bellmanford_buffers(bellmanford_buffers), device(device)
+                vk::Device &device,
+                uint32_t workgroup_size = DEFAULT_WORKGROUP_SIZE)
+        : graph_buffers(graph_buffers), bellmanford_buffers(bellmanford_buffers), device(device),
+          workgroup_size(workgroup_size)
     {
     }
 
@@ -118,8 +120,12 @@ template <typename GraphT> class BellmanFord
         vk::PushConstantRange pcRange{vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};
         pipeline_layout = device.createPipelineLayout({{}, 1, &desc_set_layout, 1, &pcRange});
 
+        // Setup specialization constant for workgroup size
+        vk::SpecializationMapEntry spec_entry{0, 0, sizeof(uint32_t)};
+        vk::SpecializationInfo spec_info{1, &spec_entry, sizeof(uint32_t), &workgroup_size};
+
         vk::PipelineShaderStageCreateInfo shaderStage{
-            {}, vk::ShaderStageFlagBits::eCompute, shader, "main"};
+            {}, vk::ShaderStageFlagBits::eCompute, shader, "main", &spec_info};
 
         pipeline = device.createComputePipeline({}, {{}, shaderStage, pipeline_layout}).value;
     }
@@ -185,7 +191,7 @@ template <typename GraphT> class BellmanFord
                 PushConsts pc{src_node, dst_node, num_nodes};
                 cmd_buf.pushConstants(
                     pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-                cmd_buf.dispatch((num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+                cmd_buf.dispatch((num_nodes + workgroup_size - 1) / workgroup_size, 1, 1);
                 cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                         vk::PipelineStageFlagBits::eComputeShader,
                                         vk::DependencyFlags{},
@@ -222,6 +228,7 @@ template <typename GraphT> class BellmanFord
     vk::PipelineLayout pipeline_layout;
 
     vk::Device &device;
+    uint32_t workgroup_size;
 };
 
 } // namespace gpusssp::gpu
