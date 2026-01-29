@@ -1,4 +1,5 @@
 #include <cassert>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
@@ -10,23 +11,18 @@
 #include "common/dijkstra.hpp"
 #include "common/files.hpp"
 #include "common/id_queue.hpp"
-#include "common/lazy_clear_vector.hpp"
 #include "common/nearest_neighbour.hpp"
-#include "common/shader.hpp"
-#include "common/timed_logger.hpp"
 #include "common/weighted_graph.hpp"
 
 #include "gpu/bellmanford.hpp"
 #include "gpu/bellmanford_buffers.hpp"
 #include "gpu/deltastep.hpp"
 #include "gpu/deltastep_buffers.hpp"
+#include "gpu/device_info.hpp"
 #include "gpu/graph_buffers.hpp"
-#include "gpu/memory.hpp"
 #include "gpu/vulkan_context.hpp"
 
 using namespace gpusssp;
-
-const uint32_t WORKGROUP_SIZE = 128;
 
 std::optional<common::Coordinate> string_to_coordinate(const std::string &s)
 {
@@ -152,6 +148,8 @@ int main(int argc, char **argv)
     }
 
     gpu::VulkanContext vk_ctx("DeltaStep", gpu::detail::selectDevice());
+
+    gpu::printDeviceInfo(vk_ctx);
     auto device = vk_ctx.device();
     auto queue = vk_ctx.queue();
     auto cmdPool = vk_ctx.command_pool();
