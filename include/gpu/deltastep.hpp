@@ -15,7 +15,7 @@ namespace gpusssp::gpu
 
 template <typename GraphT> class DeltaStep
 {
-    static constexpr const size_t WORKGROUP_SIZE = 128u;
+    static constexpr const size_t WORKGROUP_SIZE = 64u;
     struct PushConsts
     {
         uint32_t src_node;
