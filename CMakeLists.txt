@@ -164,6 +164,7 @@ if(BUILD_TESTS)
         tests/test_main.cpp
         tests/test_deltastep.cpp
         tests/test_string_util.cpp
+        tests/test_graph_metrics.cpp
     )
     
     target_link_libraries(gpusssp_tests
