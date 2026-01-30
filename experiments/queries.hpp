@@ -11,6 +11,7 @@ namespace gpusssp::experiments {
   struct Query {
     uint32_t from;
     uint32_t to;
+    int32_t rank = -1;
   };
 
   inline auto read_queries(const std::string &base_path)
