@@ -27,7 +27,7 @@ int main(int argc, char **argv)
     auto graph = common::files::read_weighted_graph<uint32_t>(base_path);
     std::cout << "Graph loaded: " << graph.num_nodes() << " nodes." << std::endl;
 
-    std::cout << "Loading queries from: " << base_path << "/queries" << std::endl;
+    std::cout << "Loading queries from: " << base_path << "/queries.csv" << std::endl;
     auto queries = experiments::read_queries(base_path);
     std::cout << "Loaded " << queries.size() << " queries." << std::endl;
 

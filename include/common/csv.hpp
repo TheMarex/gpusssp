@@ -85,6 +85,8 @@ void parse_column(std::vector<std::string> &columns, std::tuple<Types...> &tuple
                 std::get<Column>(tuple) = std::stoi(columns[Column]);
             } else if constexpr(std::is_same_v<unsigned, inner_type>) {
                 std::get<Column>(tuple) = std::stoi(columns[Column]);
+            } else if constexpr(std::is_same_v<unsigned char, inner_type>) {
+                std::get<Column>(tuple) = static_cast<unsigned char>(std::stoi(columns[Column]));
             } else if constexpr(std::is_same_v<std::string, inner_type>) {
                 std::get<Column>(tuple) = columns[Column];
             } else if constexpr(std::is_same_v<csv::skip, inner_type>) {
@@ -98,6 +100,8 @@ void parse_column(std::vector<std::string> &columns, std::tuple<Types...> &tuple
             std::get<Column>(tuple) = std::stoi(columns[Column]);
         } else if constexpr(std::is_same_v<unsigned, column_type>) {
             std::get<Column>(tuple) = std::stoi(columns[Column]);
+        } else if constexpr(std::is_same_v<unsigned char, inner_type>) {
+            std::get<Column>(tuple) = static_cast<unsigned char>(std::stoi(columns[Column]));
         } else if constexpr(std::is_same_v<std::string, column_type>) {
             std::get<Column>(tuple).swap(columns[Column]);
         } else if constexpr(std::is_same_v<csv::skip, column_type>) {

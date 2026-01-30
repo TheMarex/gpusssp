@@ -115,7 +115,7 @@ int main(int argc, char **argv)
     }
 
     experiments::write_queries(base_path, queries);
-    std::cout << "Queries written to " << base_path << "/queries" << std::endl;
+    std::cout << "Queries written to " << base_path << "/queries.csv" << std::endl;
 
     return 0;
 }
