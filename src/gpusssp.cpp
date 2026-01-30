@@ -10,6 +10,7 @@
 #include "common/coordinate.hpp"
 #include "common/dijkstra.hpp"
 #include "common/files.hpp"
+#include "common/graph_metrics.hpp"
 #include "common/id_queue.hpp"
 #include "common/nearest_neighbour.hpp"
 #include "common/weighted_graph.hpp"
@@ -88,12 +89,6 @@ int main(int argc, char **argv)
             maybe_dst_node_id = string_to_node_id(argv[3]);
     }
 
-    auto delta = 3600u;
-    if (argc >= 5)
-    {
-        delta = std::stoi(argv[4]);
-    }
-
     auto num_queries = 1u;
     if (argc >= 6)
     {
@@ -103,6 +98,13 @@ int main(int argc, char **argv)
     std::cout << "Loading graph from: " << graph_path << std::endl;
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_path);
     auto coordinates = common::files::read_coordinates(graph_path);
+
+    auto delta = common::compute_delta_heuristic(graph);
+    if (argc >= 5 && std::string(argv[4]) != "auto")
+    {
+        delta = std::stoi(argv[4]);
+    }
+    std::cout << "Using delta value " << delta << std::endl;
 
     auto num_heavy = 0u;
     for (uint32_t eid = 0u; eid < graph.num_edges(); ++eid)
