@@ -193,6 +193,31 @@ template <typename T> struct stream_printer<std::vector<T>>
     std::vector<T> value;
 };
 
+template <> struct stream_printer<unsigned char>
+{
+    friend auto &operator<<(std::ostream &ss, const stream_printer &other)
+    {
+        ss << (unsigned)other.value;
+        return ss;
+    }
+
+    unsigned char value;
+};
+
+template <typename T> struct stream_printer<std::optional<T>>
+{
+    friend auto &operator<<(std::ostream &ss, const stream_printer &other)
+    {
+        if (!other.value.has_value())
+            return ss;
+
+        ss << to_csv_column(*other.value);
+        return ss;
+    }
+
+    std::optional<T> value;
+};
+
 template <> struct stream_printer<csv::skip>
 {
     friend auto &operator<<(std::ostream &ss, const stream_printer &) { return ss; }

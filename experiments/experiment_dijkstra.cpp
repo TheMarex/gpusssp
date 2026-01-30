@@ -34,16 +34,18 @@ int main(int argc, char **argv)
     // Generate output filename
     uint64_t timestamp = experiments::get_unix_timestamp();
     std::string queries_hash = experiments::hash_queries_content(queries);
-    std::string output_filename = experiments::generate_experiment_filename(
-        timestamp, queries_hash, "", "dijkstra");
+    std::string output_filename =
+        experiments::generate_experiment_filename(timestamp, queries_hash, "", "dijkstra");
     std::cout << "Output file: " << output_filename << std::endl;
 
     common::MinIDQueue queue(graph.num_nodes());
-    common::CostVector<common::WeightedGraph<uint32_t>> costs(graph.num_nodes(), common::INF_WEIGHT);
+    common::CostVector<common::WeightedGraph<uint32_t>> costs(graph.num_nodes(),
+                                                              common::INF_WEIGHT);
     std::vector<bool> settled(graph.num_nodes(), false);
 
-    common::CSVWriter<uint32_t, uint32_t, uint32_t, long long> writer(output_filename);
-    writer.write_header({"from_node_id", "to_node_id", "distance", "time"});
+    common::CSVWriter<uint32_t, uint32_t, std::optional<uint8_t>, uint32_t, uint64_t> writer(
+        output_filename);
+    writer.write_header({"from_node_id", "to_node_id", "rank", "distance", "time"});
 
     std::cout << "Running queries..." << std::endl;
 
@@ -55,9 +57,10 @@ int main(int argc, char **argv)
         auto dist = common::dijkstra(query.from, query.to, graph, queue, costs, settled);
 
         auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+        auto duration =
+            std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
 
-        writer.write({query.from, query.to, dist, duration});
+        writer.write({query.from, query.to, query.rank, dist, duration});
 
         progress_counter++;
         if (progress_counter % 100 == 0)

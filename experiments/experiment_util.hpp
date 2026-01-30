@@ -14,9 +14,6 @@
 namespace gpusssp::experiments
 {
 
-/**
- * Get current Unix timestamp (seconds since epoch)
- */
 inline uint64_t get_unix_timestamp()
 {
     auto now = std::chrono::system_clock::now();
@@ -24,10 +21,6 @@ inline uint64_t get_unix_timestamp()
     return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
 }
 
-/**
- * Hash the content of queries vector
- * Uses std::hash for simplicity and speed
- */
 inline std::string hash_queries_content(const std::vector<Query> &queries)
 {
     // Build a string representation of all queries
@@ -36,40 +29,36 @@ inline std::string hash_queries_content(const std::vector<Query> &queries)
     {
         oss << query.from << "," << query.to << ";";
     }
-    
+
     std::string content = oss.str();
-    
+
     // Hash the string
     std::hash<std::string> hasher;
     size_t hash_value = hasher(content);
-    
+
     // Format as 8-character hex string
     std::ostringstream hex_stream;
-    hex_stream << std::hex << std::setw(8) << std::setfill('0') 
+    hex_stream << std::hex << std::setw(8) << std::setfill('0')
                << (hash_value & 0xFFFFFFFF); // Use lower 32 bits
-    
+
     return hex_stream.str();
 }
 
-/**
- * Generate experiment filename in format:
- * {timestamp}_{queries_hash}_{params}_{algorithm}.csv
- */
 inline std::string generate_experiment_filename(uint64_t timestamp,
-                                                 const std::string &queries_hash,
-                                                 const std::string &params,
-                                                 const std::string &algorithm)
+                                                const std::string &queries_hash,
+                                                const std::string &params,
+                                                const std::string &algorithm)
 {
     std::ostringstream filename;
     filename << timestamp << "_" << queries_hash << "_";
-    
+
     if (!params.empty())
     {
         filename << params << "_";
     }
-    
+
     filename << algorithm << ".csv";
-    
+
     return filename.str();
 }
 
