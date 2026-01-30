@@ -178,6 +178,7 @@ int main(int argc, char **argv)
         std::uint32_t dij_duration = 0;
         std::uint32_t ds_duration = 0;
         std::uint32_t bf_duration = 0;
+        std::size_t num_unreachable = 0;
         for (auto i = 0u; i < num_queries; i++)
         {
             auto time_1 = std::chrono::high_resolution_clock::now();
@@ -188,6 +189,12 @@ int main(int argc, char **argv)
             auto time_3 = std::chrono::high_resolution_clock::now();
             auto bf_dist = bellmanford.run(cmdPool, queue, src_nodes[i], dst_nodes[i]);
             auto time_4 = std::chrono::high_resolution_clock::now();
+
+            if (expected_dist == common::INF_WEIGHT)
+            {
+                num_unreachable++;
+                continue;
+            }
 
             dij_duration +=
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_2 - time_1).count();
@@ -207,13 +214,16 @@ int main(int argc, char **argv)
                           << " mismatch. expected: " << expected_dist << " actual: " << bf_dist
                           << std::endl;
             }
-            checksum ^= dist;
+            checksum += dist;
         }
-        std::cout << "Processed " << num_queries << " queries in " << dij_duration
-                  << "ms (dijkstra) " << ds_duration << "ms (deltastep "
-                  << (dij_duration / (double)ds_duration) << ") " << bf_duration
-                  << "ms (bellmanford " << (dij_duration / (double)bf_duration) << ")" << std::endl;
-        std::cout << "Checksum: " << checksum << std::endl;
+        auto num_reachable = num_queries - num_unreachable;
+        std::cout << "Processed " << num_reachable << " queries (" << num_unreachable
+                  << " unreachable) in " << (dij_duration / num_reachable) << "ms/req (dijkstra) "
+                  << (ds_duration / num_reachable) << "ms/req (deltastep "
+                  << (dij_duration / (double)ds_duration) << ") " << (bf_duration / num_reachable)
+                  << "ms/req (bellmanford " << (dij_duration / (double)bf_duration) << ")"
+                  << std::endl;
+        std::cout << "Checksum: " << (checksum / num_reachable) << std::endl;
     }
 
     return 0;
