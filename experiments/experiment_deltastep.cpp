@@ -56,8 +56,9 @@ int main(int argc, char **argv)
     auto queue = vk_ctx.queue();
     auto cmdPool = vk_ctx.command_pool();
 
-    common::CSVWriter<uint32_t, uint32_t, uint32_t, long long> writer(output_filename);
-    writer.write_header({"from_node_id", "to_node_id", "distance", "time"});
+    common::CSVWriter<uint32_t, uint32_t, std::optional<uint8_t>, uint32_t, uint64_t> writer(
+        output_filename);
+    writer.write_header({"from_node_id", "to_node_id", "rank", "distance", "time"});
 
     std::cout << "Running queries with delta = " << delta << "..." << std::endl;
 
@@ -81,7 +82,7 @@ int main(int argc, char **argv)
                 std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time)
                     .count();
 
-            writer.write({query.from, query.to, dist, duration});
+            writer.write({query.from, query.to, query.rank, dist, duration});
 
             progress_counter++;
             if (progress_counter % 100 == 0)
