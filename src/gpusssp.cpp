@@ -7,6 +7,7 @@
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
+#include "common/benchmark.hpp"
 #include "common/coordinate.hpp"
 #include "common/dijkstra.hpp"
 #include "common/files.hpp"
@@ -184,10 +185,13 @@ int main(int argc, char **argv)
             auto time_1 = std::chrono::high_resolution_clock::now();
             auto expected_dist =
                 common::dijkstra(src_nodes[i], dst_nodes[i], graph, min_queue, costs, settled);
+            common::DoNotOptimize(expected_dist);
             auto time_2 = std::chrono::high_resolution_clock::now();
             auto dist = deltastep.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
+            common::DoNotOptimize(dist);
             auto time_3 = std::chrono::high_resolution_clock::now();
             auto bf_dist = bellmanford.run(cmdPool, queue, src_nodes[i], dst_nodes[i]);
+            common::DoNotOptimize(bf_dist);
             auto time_4 = std::chrono::high_resolution_clock::now();
 
             if (expected_dist == common::INF_WEIGHT)
