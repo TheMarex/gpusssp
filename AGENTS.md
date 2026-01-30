@@ -17,43 +17,125 @@ include/
   common/           # Core utilities (graphs, coordinates, I/O)
   gpu/              # Vulkan/GPU implementations
   preprocessing/    # OSM data to internal format conversion
-src/                # Source files for key executables and shader
+src/                # Source files for key executables and shaders
 experiments/        # Source files for experiment runners
 tests/              # Catch2 unit tests
 third_party/
   libosmium/        # OSM file parsing library
-data/               # Input OSM data files
-cache/              # Preprocessed graph data
+data/               # Input OSM data files (.osm.pbf format)
+cache/              # Preprocessed graph data (binary format)
+.cache/             # Git-ignored cache directory
 ```
+
+### File Extensions
+- `.hpp` - C++ header files (header-only implementations)
+- `.cpp` - C++ source files (executables, tests)
+- `.comp` - GLSL compute shaders (compiled to .spv)
+- `.spv` - SPIR-V compiled shaders (generated in build directory)
 
 ## Key Files
 
-- `src/delta_step.comp` - GLSL compute shader implementing delta-stepping algorithm
-- `src/gpusssp.cpp` - Main entry point for running shortest path queries
+### Executables
+- `src/gpusssp.cpp` - Main entry point for running shortest path queries (compares Dijkstra, DeltaStep, BellmanFord)
 - `src/osm2graph.cpp` - Converter from OSM PBF format to internal graph format
+- `experiments/generate_queries.cpp` - Generate query pairs for experiments
+- `experiments/experiment_dijkstra.cpp` - CPU Dijkstra benchmarks
+- `experiments/experiment_deltastep.cpp` - GPU DeltaStep benchmarks
+- `experiments/experiment_bellmanford.cpp` - GPU BellmanFord benchmarks
+
+### Shaders
+- `src/delta_step.comp` - GLSL compute shader implementing delta-stepping algorithm
+- `src/bellman_ford.comp` - GLSL compute shader implementing Bellman-Ford algorithm
+
+### Core Libraries
 - `include/common/` - Core data structures (graphs, coordinates, I/O utilities)
+  - `weighted_graph.hpp` - Main graph data structure
+  - `dijkstra.hpp` - CPU Dijkstra implementation
+  - `constants.hpp` - Shared constants (INF_WEIGHT, INVALID_ID, etc.)
 - `include/gpu/` - Vulkan compute pipeline and GPU management
+  - `vulkan_context.hpp` - Vulkan instance and device setup
+  - `deltastep.hpp` - DeltaStep GPU algorithm wrapper
+  - `bellmanford.hpp` - BellmanFord GPU algorithm wrapper
+  - `*_buffers.hpp` - GPU memory management for algorithms
 - `include/preprocessing/` - OSM data preprocessing utilities
+
+## Algorithms
+
+The project implements three shortest path algorithms:
+
+1. **Dijkstra (CPU)** - Classic CPU implementation used as baseline for correctness
+   - Located in `include/common/dijkstra.hpp`
+   - Used for validation of GPU algorithms
+   
+2. **Delta-Stepping (GPU)** - Parallel shortest path algorithm optimized for GPUs
+   - Shader: `src/delta_step.comp`
+   - Host code: `include/gpu/deltastep.hpp`
+   - Splits edges into "light" and "heavy" buckets based on delta parameter
+   - Main target algorithm for this project
+   
+3. **Bellman-Ford (GPU)** - Naive GPU implementation for comparison
+   - Shader: `src/bellman_ford.comp`
+   - Host code: `include/gpu/bellmanford.hpp`
+   - Simpler but typically slower than delta-stepping
+
+All GPU algorithms use Vulkan compute shaders and process road network graphs from OpenStreetMap data.
 
 ## Development Guidelines
 
 ### Code Style
 
+#### Namespaces
 - Always reference `std` functions with `std::` and don't use `using namespace std;`
 - Same rule applies for Vulkan's `vk::` and other third-party libraries
-- Exception: Using `using namespace gpusssp` is permitted in executable files in `src/`
+- Exception: Using `using namespace gpusssp` is permitted in executable files in `src/` and `experiments/`
+- Use nested namespace declarations: `namespace gpusssp::common` instead of nested blocks
+- Close namespaces with comment: `} // namespace gpusssp::common`
+
+#### Header Files
+- Use include guards with pattern: `#ifndef GPUSSSP_[PATH]_[FILE]_HPP`
+- Example: `include/gpu/deltastep.hpp` → `#ifndef GPUSSSP_GPU_DELTASTEP_HPP`
+- Include order: Standard library headers first, then third-party, then project headers
+- Always use `#include "path/to/header.hpp"` for project headers (quotes, not angle brackets)
+
+#### Formatting
+- Code is formatted using clang-format with the configuration in `.clang-format`
+- Run `cmake --build build --target format` to format all code
+- Key style points from .clang-format:
+  - Allman brace style (braces on new lines)
+  - 4-space indentation
+  - 100 character line limit
+  - No bin-packing of arguments/parameters (one per line for readability)
+
+#### Documentation
 - In general avoid comments. Only add them when absolutely necessary
 - We do not need documentation for functions and classes
+- Code should be self-explanatory through good naming
 
 ### Testing
 
 - If you add new helper functions, create the simplest test possible to verify their functionality
 - Tests are located in `tests/` and use Catch2 v3.5.2
+- Test files use `gpusssp::` prefix (no `using namespace` in tests)
+- Run tests with `ctest` or `./gpusssp_tests` from the build directory
+- Tests depend on compiled shaders (automatic via CMake dependencies)
 
 ### Git Workflow
 
-- After creating sub-tasks always create a git commit
+- After completing sub-tasks always create a git commit
 - Use one-line git commit messages unless additional context is absolutely necessary
+- Commit message style should match existing commits (check `git log`)
+- Don't commit generated files:
+  - `build/` directory (compiled binaries, .spv shaders)
+  - `.cache/` directory (preprocessed data)
+  - Jupyter notebook checkpoints
+
+### Build System
+
+- CMake 3.20+ is required
+- Build outputs go to `build/` directory
+- Shaders are automatically compiled during build via custom CMake commands
+- The build system creates several executables and test binaries
+- Use `CMAKE_BUILD_TYPE=Release` for performance benchmarks
 
 ## Common Tasks
 
@@ -97,9 +179,27 @@ This converts OSM PBF format to the internal graph format used by the solver.
 Format: `./gpusssp <graph_path> [<src_lon,src_lat>|random] [<dst_lon,dst_lat>|random] <delta> <num_queries>`
 
 Parameters:
-- `graph_path` - Path to preprocessed graph data
+- `graph_path` - Path to preprocessed graph data (without extension)
 - `src_lon,src_lat` - Source coordinates (longitude, latitude)
 - `dst_lon,dst_lat` - Destination coordinates (longitude, latitude)
-- `random` - Picks a random coordinate
-- `delta` - Delta parameter for delta-stepping algorithm
+- `random` - Use "random" instead of coordinates to pick random nodes
+- `delta` - Delta parameter for delta-stepping algorithm (typically 300-3600)
 - `num_queries` - Number of queries to run
+
+The executable runs all three algorithms (Dijkstra, DeltaStep, BellmanFord) and compares results.
+
+## Data Flow
+
+1. **Input**: OSM PBF files (e.g., `data/berlin.osm.pbf`)
+2. **Preprocessing**: `osm2graph` converts OSM to binary graph format
+   - Outputs: `<name>.graph`, `<name>.coords`, etc. in cache directory
+3. **Query Execution**: `gpusssp` loads preprocessed graph and runs queries
+4. **Experiments**: Experiment executables for detailed benchmarking
+
+## Useful Tips
+
+- Graph preprocessing is one-time per dataset - reuse cached graphs
+- Delta parameter affects performance: smaller = more buckets but finer-grained parallelism
+- Always validate GPU results against CPU Dijkstra implementation
+- Use Release build for meaningful performance measurements
+- Vulkan validation layers are helpful for debugging GPU code
