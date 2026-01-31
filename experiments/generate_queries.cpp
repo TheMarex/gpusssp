@@ -112,6 +112,8 @@ int main(int argc, char **argv)
         }
 
         std::cout << "Generated " << queries.size() << " rank queries." << std::endl;
+        std::shuffle(queries.begin(), queries.end(), gen);
+        std::cout << "Shuffled all rank queries." << std::endl;
     }
 
     experiments::write_queries(base_path, queries);
