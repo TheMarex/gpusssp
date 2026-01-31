@@ -43,15 +43,16 @@ int main(int argc, char **argv)
     std::cout << "Loaded " << queries.size() << " queries." << std::endl;
 
     // Generate output filename with delta parameter
+    gpu::VulkanContext vk_ctx("DeltaStepExperiment", gpu::detail::selectDevice());
     uint64_t timestamp = experiments::get_unix_timestamp();
     std::string queries_hash = experiments::hash_queries_content(queries);
+    std::string device_hash = experiments::hash_device_name(vk_ctx.device_name());
     std::ostringstream params_stream;
     params_stream << "delta" << delta;
     std::string output_filename = experiments::generate_experiment_filename(
-        timestamp, queries_hash, params_stream.str(), "deltastep");
+        timestamp, queries_hash, device_hash, params_stream.str(), "deltastep");
     std::cout << "Output file: " << output_filename << std::endl;
 
-    gpu::VulkanContext vk_ctx("DeltaStepExperiment", gpu::detail::selectDevice());
     auto device = vk_ctx.device();
     auto queue = vk_ctx.queue();
     auto cmdPool = vk_ctx.command_pool();

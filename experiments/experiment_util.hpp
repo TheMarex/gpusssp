@@ -44,13 +44,27 @@ inline std::string hash_queries_content(const std::vector<Query> &queries)
     return hex_stream.str();
 }
 
+inline std::string hash_device_name(const std::string &device_name)
+{
+    std::hash<std::string> hasher;
+    size_t hash_value = hasher(device_name);
+
+    // Format as 8-character hex string
+    std::ostringstream hex_stream;
+    hex_stream << std::hex << std::setw(8) << std::setfill('0')
+               << (hash_value & 0xFFFFFFFF); // Use lower 32 bits
+
+    return hex_stream.str();
+}
+
 inline std::string generate_experiment_filename(uint64_t timestamp,
                                                 const std::string &queries_hash,
+                                                const std::string &device_hash,
                                                 const std::string &params,
                                                 const std::string &algorithm)
 {
     std::ostringstream filename;
-    filename << timestamp << "_" << queries_hash << "_";
+    filename << timestamp << "_" << queries_hash << "_" << device_hash << "_";
 
     if (!params.empty())
     {

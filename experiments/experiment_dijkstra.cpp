@@ -34,8 +34,9 @@ int main(int argc, char **argv)
     // Generate output filename
     uint64_t timestamp = experiments::get_unix_timestamp();
     std::string queries_hash = experiments::hash_queries_content(queries);
+    std::string device_hash = experiments::hash_device_name("cpu");
     std::string output_filename =
-        experiments::generate_experiment_filename(timestamp, queries_hash, "", "dijkstra");
+        experiments::generate_experiment_filename(timestamp, queries_hash, device_hash, "", "dijkstra");
     std::cout << "Output file: " << output_filename << std::endl;
 
     common::MinIDQueue queue(graph.num_nodes());
