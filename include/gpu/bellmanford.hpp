@@ -149,8 +149,7 @@ template <typename GraphT> class BellmanFord
         {
             cmd_buf.fillBuffer(dist_buffer, 0, src_node * sizeof(uint32_t), common::INF_WEIGHT);
         }
-        cmd_buf.fillBuffer(
-            dist_buffer, src_node * sizeof(uint32_t), (src_node + 1) * sizeof(uint32_t), 0);
+        cmd_buf.fillBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), 0);
         if (src_node < num_nodes - 1)
         {
             cmd_buf.fillBuffer(

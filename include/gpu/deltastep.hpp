@@ -277,8 +277,7 @@ template <typename GraphT> class DeltaStep
         {
             cmd_buf.fillBuffer(dist_buffer, 0, src_node * sizeof(uint32_t), common::INF_WEIGHT);
         }
-        cmd_buf.fillBuffer(
-            dist_buffer, src_node * sizeof(uint32_t), (src_node + 1) * sizeof(uint32_t), 0);
+        cmd_buf.fillBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), 0);
         if (src_node < num_nodes - 1)
         {
             cmd_buf.fillBuffer(
@@ -377,7 +376,8 @@ template <typename GraphT> class DeltaStep
                 queue.waitIdle();
 
                 // std::cout << bucket << " " << *gpu_num_changed << " max distance "
-                //           << *gpu_max_distance << std::endl;
+                //           << *gpu_max_distance << " best distance " << *gpu_best_distance
+                //           << std::endl;
             } while (*gpu_num_changed > 0);
 
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
@@ -417,7 +417,8 @@ template <typename GraphT> class DeltaStep
             queue.waitIdle();
 
             // std::cout << bucket << " heavy " << *gpu_num_changed << " max distance "
-            //           << gpu_max_distance << std::endl;
+            //           << *gpu_max_distance << " best distance " << *gpu_best_distance <<
+            //           std::endl;
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {
