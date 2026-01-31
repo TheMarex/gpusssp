@@ -12,13 +12,14 @@ inline auto find_memory_type_index(const vk::PhysicalDeviceMemoryProperties &mem
 {
     for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
     {
-        if ((mr.memoryTypeBits & (1 << i)) && (mem_props.memoryTypes[i].propertyFlags & flags))
+        if ((mr.memoryTypeBits & (1 << i)) &&
+            (mem_props.memoryTypes[i].propertyFlags & flags) == flags)
         {
             return i;
         }
     }
 
-    return 0u;
+    throw std::runtime_error("Couldn't find matching memory");
 }
 
 inline auto alloc_and_bind(vk::Device &device,

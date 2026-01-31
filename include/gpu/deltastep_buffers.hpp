@@ -14,7 +14,7 @@ class DeltaStepBuffers
     DeltaStepBuffers(size_t num_nodes,
                      vk::Device &device,
                      const vk::PhysicalDeviceMemoryProperties &mem_props)
-        : num_nodes(num_nodes), device(device)
+        : device(device)
     {
         // Device-local distance buffer (no longer needs host visibility)
         buf_dist = gpu::create_exclusive_buffer<uint32_t>(
@@ -35,14 +35,20 @@ class DeltaStepBuffers
 
         mem_dist = gpu::alloc_and_bind(
             device, mem_props, buf_dist, vk::MemoryPropertyFlagBits::eDeviceLocal);
-        mem_results = gpu::alloc_and_bind(
-            device, mem_props, buf_results, vk::MemoryPropertyFlagBits::eHostVisible);
+        mem_results = gpu::alloc_and_bind(device,
+                                          mem_props,
+                                          buf_results,
+                                          vk::MemoryPropertyFlagBits::eHostVisible |
+                                              vk::MemoryPropertyFlagBits::eHostCoherent);
         mem_changed_0 = gpu::alloc_and_bind(
             device, mem_props, buf_changed_0, vk::MemoryPropertyFlagBits::eDeviceLocal);
         mem_changed_1 = gpu::alloc_and_bind(
             device, mem_props, buf_changed_1, vk::MemoryPropertyFlagBits::eDeviceLocal);
-        mem_num_changed = gpu::alloc_and_bind(
-            device, mem_props, buf_num_changed, vk::MemoryPropertyFlagBits::eHostVisible);
+        mem_num_changed = gpu::alloc_and_bind(device,
+                                              mem_props,
+                                              buf_num_changed,
+                                              vk::MemoryPropertyFlagBits::eHostVisible |
+                                                  vk::MemoryPropertyFlagBits::eHostCoherent);
 
         gpu_results = (uint32_t *)device.mapMemory(mem_results, 0, 2 * sizeof(uint32_t));
         gpu_num_changed = (uint32_t *)device.mapMemory(mem_num_changed, 0, sizeof(uint32_t));
@@ -90,7 +96,6 @@ class DeltaStepBuffers
     uint32_t *gpu_results;
     uint32_t *gpu_num_changed;
 
-    size_t num_nodes;
     vk::Device &device;
 };
 
