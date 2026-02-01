@@ -5,6 +5,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64: enable
 #extension GL_EXT_shader_atomic_int64: enable
 
+#include "bit_vector.glsl"
 #include "statistics.glsl"
 
 layout(constant_id = 0) const uint WORKGROUP_SIZE = 64;
@@ -35,13 +36,14 @@ layout(push_constant) uniform PushConsts {
     uint max_weight;
 } pc;
 
-bool was_node_changed(uint node) {
-  return (previous_changed[node / 16] & (1u << (node % 16))) > 0;
+bool was_node_changed(uint node)
+{
+    return bit_vector_get(previous_changed, node);
 }
 
-bool set_node_changed(uint node) {
-  uint old = atomicOr(current_changed[node / 16] , 1U << (node % 16));
-  return (old & (1u << (node % 16))) > 0;
+bool set_node_changed(uint node)
+{
+    return bit_vector_set(current_changed, node);
 }
 
 void main() {

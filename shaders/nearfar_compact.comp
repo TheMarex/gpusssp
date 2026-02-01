@@ -5,22 +5,21 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64: enable
 #extension GL_EXT_shader_atomic_int64: enable
 
+#include "bit_vector.glsl"
 #include "nearfar_constants.glsl"
 #include "statistics.glsl"
 
 layout(constant_id = 0) const uint WORKGROUP_SIZE = 64;
 layout(local_size_x_id = 0) in;
 
-layout(std430, binding = 0) readonly buffer FirstEdges { uint first_edges[]; };
-layout(std430, binding = 1) readonly buffer Targets { uint targets[]; };
-layout(std430, binding = 2) readonly buffer Weight { uint weight[]; };
-layout(std430, binding = 3) readonly buffer Dist { uint dist[]; };
-layout(std430, binding = 4) coherent buffer Results { uint results[]; };
-layout(std430, binding = 5) readonly buffer Far { uint far[]; };
-layout(std430, binding = 6) writeonly buffer Near { uint near[]; };
-layout(std430, binding = 7) writeonly buffer NextFar { uint next_far[]; };
-layout(std430, binding = 8) coherent buffer Counters { uint counters[]; };
-layout(std430, binding = 9) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
+layout(std430, binding = 0) readonly buffer Dist { uint dist[]; };
+layout(std430, binding = 1) coherent buffer Results { uint results[]; };
+layout(std430, binding = 2) readonly buffer Far { uint far[]; };
+layout(std430, binding = 3) writeonly buffer Near { uint near[]; };
+layout(std430, binding = 4) writeonly buffer NextFar { uint next_far[]; };
+layout(std430, binding = 5) coherent buffer Counters { uint counters[]; };
+layout(std430, binding = 6) coherent buffer Processed { uint processed[]; };
+layout(std430, binding = 7) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
@@ -34,9 +33,14 @@ void main() {
     uint tid = gl_GlobalInvocationID.x;
     if (tid >= counters[COUNTER_NUM_FAR]) return;
 
+    uint node = far[tid];
+    
+    if (bit_vector_set(processed, node)) {
+        return;
+    }
+
     statisticsCount(STAT_NEARFAR_COMPACT_NODES);
 
-    uint node = far[tid];
     uint d = dist[node];
 
     if (node == pc.dst_node) {

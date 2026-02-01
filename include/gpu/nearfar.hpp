@@ -74,29 +74,16 @@ template <typename GraphT> class NearFar
               far_0_buffer,
               far_1_buffer,
               counters_buffer,
-              dispatch_relax_buffer] = nearfar_buffers.buffers();
+              dispatch_relax_buffer,
+              processed_buffer] = nearfar_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
-        for (auto i = 0u; i < graph_bufs.size(); i++)
+        for (auto i = 0u; i < 10; i++)
         {
             bindings.push_back(
                 {i, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
         }
-        bindings.push_back(
-            {3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {4, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {5, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {6, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {7, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {8, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {9, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
 
         relax_desc_set_layout =
             device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
@@ -127,7 +114,7 @@ template <typename GraphT> class NearFar
                 auto far_buffer = current_far_buffer == 0 ? far_0_buffer : far_1_buffer;
 
                 std::vector<vk::DescriptorBufferInfo> dbis;
-                dbis.reserve(9);
+                dbis.reserve(10);
 
                 for (auto i = 0u; i < graph_bufs.size(); ++i)
                 {
@@ -161,7 +148,6 @@ template <typename GraphT> class NearFar
 
     void initialize_compact_descriptor_sets()
     {
-        auto graph_bufs = graph_buffers.buffers();
         auto [dist_buffer,
               results_buffer,
               near_0_buffer,
@@ -169,30 +155,16 @@ template <typename GraphT> class NearFar
               far_0_buffer,
               far_1_buffer,
               counters_buffer,
-              dispatch_relax_buffer] = nearfar_buffers.buffers();
+              dispatch_relax_buffer,
+              processed_buffer] = nearfar_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
-        for (auto i = 0u; i < graph_bufs.size(); i++)
+        for (auto i = 0u; i < 8; i++)
         {
             bindings.push_back(
                 {i, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
         }
-        bindings.push_back(
-            {3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {4, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {5, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {6, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {7, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {8, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {9, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-
         compact_desc_set_layout =
             device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
 
@@ -216,18 +188,15 @@ template <typename GraphT> class NearFar
             auto next_far_buffer = current_far_buffer == 0 ? far_1_buffer : far_0_buffer;
 
             std::vector<vk::DescriptorBufferInfo> dbis;
-            dbis.reserve(10);
+            dbis.reserve(8);
 
-            for (auto i = 0u; i < graph_bufs.size(); ++i)
-            {
-                dbis.push_back({graph_bufs[i], 0, VK_WHOLE_SIZE});
-            }
             dbis.push_back({dist_buffer, 0, VK_WHOLE_SIZE});
             dbis.push_back({results_buffer, 0, VK_WHOLE_SIZE});
             dbis.push_back({far_buffer, 0, VK_WHOLE_SIZE});
             dbis.push_back({near_0_buffer, 0, VK_WHOLE_SIZE});
             dbis.push_back({next_far_buffer, 0, VK_WHOLE_SIZE});
             dbis.push_back({counters_buffer, 0, VK_WHOLE_SIZE});
+            dbis.push_back({processed_buffer, 0, VK_WHOLE_SIZE});
             dbis.push_back({statistics_buffer, 0, VK_WHOLE_SIZE});
 
             std::vector<vk::WriteDescriptorSet> writes;
@@ -256,7 +225,8 @@ template <typename GraphT> class NearFar
               far_0_buffer,
               far_1_buffer,
               counters_buffer,
-              dispatch_relax_buffer] = nearfar_buffers.buffers();
+              dispatch_relax_buffer,
+              processed_buffer] = nearfar_buffers.buffers();
 
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
         bindings.push_back(
@@ -375,7 +345,8 @@ template <typename GraphT> class NearFar
               far_0_buffer,
               far_1_buffer,
               counters_buffer,
-              dispatch_relax_buffer] = nearfar_buffers.buffers();
+              dispatch_relax_buffer,
+              processed_buffer] = nearfar_buffers.buffers();
 
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
@@ -552,6 +523,7 @@ template <typename GraphT> class NearFar
 
             cmd_buf.fillBuffer(counters_buffer, 0 * sizeof(uint32_t), sizeof(uint32_t), 0);
             cmd_buf.fillBuffer(counters_buffer, 3 * sizeof(uint32_t), sizeof(uint32_t), 0);
+            cmd_buf.fillBuffer(processed_buffer, 0, VK_WHOLE_SIZE, 0);
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                     vk::PipelineStageFlagBits::eComputeShader,
                                     vk::DependencyFlags{},
