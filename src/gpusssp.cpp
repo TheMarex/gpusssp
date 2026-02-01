@@ -24,6 +24,7 @@
 #include "gpu/graph_buffers.hpp"
 #include "gpu/nearfar.hpp"
 #include "gpu/nearfar_buffers.hpp"
+#include "gpu/statistics.hpp"
 #include "gpu/vulkan_context.hpp"
 
 using namespace gpusssp;
@@ -171,6 +172,7 @@ int main(int argc, char **argv)
         gpu::BellmanFordBuffers bellmanford_buffers(
             graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, vk_ctx.memory_properties());
+        gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
 
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
         deltastep.initialize();
@@ -178,7 +180,7 @@ int main(int argc, char **argv)
         gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device);
         bellmanford.initialize();
 
-        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device);
+        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, gpu_statistics);
         nearfar.initialize();
 
         std::uint32_t checksum = 0;
@@ -250,7 +252,7 @@ int main(int argc, char **argv)
 
 #ifdef ENABLE_STATISTICS
         std::cout << "Statistics: " << std::endl
-                  << common::Statistics::get().summary() << std::endl;
+                  << common::Statistics::get().summary() << gpu_statistics.summary() << std::endl;
 #endif
     }
 

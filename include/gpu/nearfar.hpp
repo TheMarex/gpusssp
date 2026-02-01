@@ -8,6 +8,7 @@
 #include "common/statistics.hpp"
 #include "gpu/graph_buffers.hpp"
 #include "gpu/nearfar_buffers.hpp"
+#include "gpu/statistics.hpp"
 
 #include <iostream>
 
@@ -35,9 +36,10 @@ template <typename GraphT> class NearFar
     NearFar(const GraphBuffers<GraphT> &graph_buffers,
             NearFarBuffers &nearfar_buffers,
             vk::Device &device,
+            Statistics &statistics,
             uint32_t workgroup_size = DEFAULT_WORKGROUP_SIZE)
         : graph_buffers(graph_buffers), nearfar_buffers(nearfar_buffers), device(device),
-          workgroup_size(workgroup_size)
+          statistics(statistics), workgroup_size(workgroup_size)
     {
     }
 
@@ -73,6 +75,7 @@ template <typename GraphT> class NearFar
               far_1_buffer,
               counters_buffer,
               dispatch_relax_buffer] = nearfar_buffers.buffers();
+        auto statistics_buffer = statistics.buffer();
 
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
         for (auto i = 0u; i < graph_bufs.size(); i++)
@@ -92,6 +95,8 @@ template <typename GraphT> class NearFar
             {7, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
         bindings.push_back(
             {8, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
+        bindings.push_back(
+            {9, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
 
         relax_desc_set_layout =
             device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
@@ -134,6 +139,7 @@ template <typename GraphT> class NearFar
                 dbis.push_back({next_near_buffer, 0, VK_WHOLE_SIZE});
                 dbis.push_back({far_buffer, 0, VK_WHOLE_SIZE});
                 dbis.push_back({counters_buffer, 0, VK_WHOLE_SIZE});
+                dbis.push_back({statistics_buffer, 0, VK_WHOLE_SIZE});
 
                 std::vector<vk::WriteDescriptorSet> writes;
                 for (auto i = 0u; i < dbis.size(); ++i)
@@ -605,6 +611,8 @@ template <typename GraphT> class NearFar
   private:
     const GraphBuffers<GraphT> &graph_buffers;
     NearFarBuffers &nearfar_buffers;
+
+    Statistics &statistics;
 
     std::array<vk::DescriptorSet, 4> relax_desc_sets;
     vk::DescriptorSetLayout relax_desc_set_layout;
