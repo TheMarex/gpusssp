@@ -1,5 +1,6 @@
 #include "common/csv.hpp"
 #include "common/files.hpp"
+#include "common/statistics.hpp"
 #include "common/weighted_graph.hpp"
 #include "experiment_util.hpp"
 #include "queries.hpp"
@@ -64,6 +65,7 @@ int main(int argc, char **argv)
         bellmanford.initialize();
 
         int progress_counter = 0;
+        uint64_t total_duration = 0;
         for (const auto &query : queries)
         {
             auto start_time = std::chrono::high_resolution_clock::now();
@@ -77,15 +79,23 @@ int main(int argc, char **argv)
 
             writer.write({query.from, query.to, query.rank, dist, duration});
 
+            total_duration += duration;
             progress_counter++;
             if (progress_counter % 100 == 0)
             {
                 std::cout << "Processed " << progress_counter << " queries." << std::endl;
             }
         }
-    }
 
-    std::cout << "Done." << std::endl;
+        std::cout << "Done." << std::endl;
+        std::cout << "Processed " << queries.size() << " queries in "
+                  << (total_duration / queries.size()) << "us/req (average)" << std::endl;
+
+#ifdef ENABLE_STATISTICS
+        std::cout << "Statistics: " << std::endl
+                  << common::Statistics::get().summary() << gpu_statistics.summary() << std::endl;
+#endif
+    }
 
     return 0;
 }

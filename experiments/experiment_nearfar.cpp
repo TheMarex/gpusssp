@@ -1,5 +1,6 @@
 #include "common/csv.hpp"
 #include "common/files.hpp"
+#include "common/statistics.hpp"
 #include "common/weighted_graph.hpp"
 #include "experiment_util.hpp"
 #include "queries.hpp"
@@ -63,13 +64,13 @@ int main(int argc, char **argv)
 
     {
         gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool, queue);
-        gpu::NearFarBuffers nearfar_buffers(
-            graph.num_nodes(), device, vk_ctx.memory_properties());
+        gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::Statistics statistics(device, vk_ctx.memory_properties());
         gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics);
         nearfar.initialize();
 
         int progress_counter = 0;
+        uint64_t total_duration = 0;
         for (const auto &query : queries)
         {
             auto start_time = std::chrono::high_resolution_clock::now();
@@ -83,15 +84,23 @@ int main(int argc, char **argv)
 
             writer.write({query.from, query.to, query.rank, dist, duration});
 
+            total_duration += duration;
             progress_counter++;
             if (progress_counter % 100 == 0)
             {
                 std::cout << "Processed " << progress_counter << " queries." << std::endl;
             }
         }
-    }
 
-    std::cout << "Done." << std::endl;
+        std::cout << "Done." << std::endl;
+        std::cout << "Processed " << queries.size() << " queries in "
+                  << (total_duration / queries.size()) << "us/req (average)" << std::endl;
+
+#ifdef ENABLE_STATISTICS
+        std::cout << "Statistics: " << std::endl
+                  << common::Statistics::get().summary() << statistics.summary() << std::endl;
+#endif
+    }
 
     return 0;
 }
