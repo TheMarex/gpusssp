@@ -170,8 +170,7 @@ int main(int argc, char **argv)
             graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::BellmanFordBuffers bellmanford_buffers(
             graph.num_nodes(), device, vk_ctx.memory_properties());
-        gpu::NearFarBuffers nearfar_buffers(
-            graph.num_nodes(), device, vk_ctx.memory_properties());
+        gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, vk_ctx.memory_properties());
 
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
         deltastep.initialize();
@@ -248,6 +247,11 @@ int main(int argc, char **argv)
                   << (nf_duration / num_reachable) << "ms/req (nearfar "
                   << (dij_duration / (double)nf_duration) << ")" << std::endl;
         std::cout << "Checksum: " << (checksum / num_reachable) << std::endl;
+
+#ifdef ENABLE_STATISTICS
+        std::cout << "Statistics: " << std::endl
+                  << common::Statistics::get().summary() << std::endl;
+#endif
     }
 
     return 0;

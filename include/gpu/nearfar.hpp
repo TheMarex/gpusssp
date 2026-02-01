@@ -5,6 +5,7 @@
 
 #include "common/constants.hpp"
 #include "common/shader.hpp"
+#include "common/statistics.hpp"
 #include "gpu/graph_buffers.hpp"
 #include "gpu/nearfar_buffers.hpp"
 
@@ -346,6 +347,9 @@ template <typename GraphT> class NearFar
                  uint32_t delta,
                  uint32_t relax_batch_size = 64)
     {
+        auto init_start =
+            common::Statistics::get().start(common::StatisticsEvent::NEARFAR_INIT_DURATION);
+
         vk::CommandBuffer cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
 
@@ -402,10 +406,18 @@ template <typename GraphT> class NearFar
         uint32_t num_near = 1;
         uint32_t num_far = 0;
 
+        common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_INIT_DURATION, init_start);
+
         while (true)
         {
+            common::Statistics::get().count(common::StatisticsEvent::NEARFAR_PHASE);
+
+            auto relax_start =
+                common::Statistics::get().start(common::StatisticsEvent::NEARFAR_RELAX_DURATION);
+
             while (num_near > 0)
             {
+                common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
                 // std::cout << phase << " " << num_near << " best distance " << *gpu_best_distance
                 //           << std::endl;
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
@@ -499,6 +511,9 @@ template <typename GraphT> class NearFar
                 num_near = *gpu_num_near;
             }
 
+            common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_RELAX_DURATION,
+                                           relax_start);
+
             if (*gpu_best_distance != common::INF_WEIGHT)
             {
                 if (*gpu_best_distance < phase * delta)
@@ -508,6 +523,9 @@ template <typename GraphT> class NearFar
             }
 
             phase++;
+
+            auto compact_start =
+                common::Statistics::get().start(common::StatisticsEvent::NEARFAR_COMPACT_DURATION);
 
             num_far = *gpu_num_far;
             if (num_far == 0)
@@ -576,6 +594,9 @@ template <typename GraphT> class NearFar
 
             // std::cout << phase << " compacted to: far " << num_far << " near " << num_near
             //           << std::endl;
+
+            common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_COMPACT_DURATION,
+                                           compact_start);
         }
 
         return *gpu_best_distance;

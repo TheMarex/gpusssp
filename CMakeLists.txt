@@ -31,6 +31,12 @@ find_program(GLSLANG_VALIDATOR glslangValidator
     REQUIRED
 )
 
+option(ENABLE_STATISTICS "Enable capturing algorithm statistics" OFF)
+
+if(ENABLE_STATISTICS)
+    add_compile_definitions(ENABLE_STATISTICS)
+endif()
+
 # GPU SSSP executable
 add_executable(gpusssp
     src/gpusssp.cpp
