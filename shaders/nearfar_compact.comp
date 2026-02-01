@@ -1,6 +1,9 @@
 #version 450
 
+#extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_arithmetic: enable
+
+#include "nearfar_constants.glsl"
 
 layout(constant_id = 0) const uint WORKGROUP_SIZE = 64;
 layout(local_size_x_id = 0) in;
@@ -22,12 +25,6 @@ layout(push_constant) uniform PushConsts {
     uint phase;
     uint delta;
 } pc;
-
-#define COUNTER_NUM_NEAR 0
-#define COUNTER_NUM_FAR 2
-#define COUNTER_NUM_FAR_NEXT 3
-
-#define RESULT_BEST_DISTANCE 0
 
 void main() {
     uint tid = gl_GlobalInvocationID.x;
