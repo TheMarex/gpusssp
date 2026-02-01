@@ -1,0 +1,61 @@
+#version 450
+
+#extension GL_KHR_shader_subgroup_arithmetic: enable
+
+layout(constant_id = 0) const uint WORKGROUP_SIZE = 64;
+layout(local_size_x_id = 0) in;
+
+layout(std430, binding = 0) readonly buffer FirstEdges { uint first_edges[]; };
+layout(std430, binding = 1) readonly buffer Targets { uint targets[]; };
+layout(std430, binding = 2) readonly buffer Weight { uint weight[]; };
+layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
+layout(std430, binding = 4) coherent buffer Results { uint results[]; };
+layout(std430, binding = 5) readonly buffer Near { uint near[]; };
+layout(std430, binding = 6) writeonly buffer NextNear { uint next_near[]; };
+layout(std430, binding = 7) writeonly buffer Far { uint far[]; };
+layout(std430, binding = 8) coherent buffer Counters { uint counters[]; };
+
+#define COUNTER_NUM_NEAR 0
+#define COUNTER_NUM_NEAR_NEXT 1
+#define COUNTER_NUM_FAR 2
+
+#define RESULT_BEST_DISTANCE 0
+
+layout(push_constant) uniform PushConsts {
+    uint src_node;
+    uint dst_node;
+    uint n;
+    uint phase;
+    uint delta;
+} pc;
+
+void main() {
+    uint tid = gl_GlobalInvocationID.x;
+    if (tid >= counters[COUNTER_NUM_NEAR]) return;
+
+    uint u = near[tid];
+    uint du = dist[u];
+
+    if (u == pc.dst_node) {
+        atomicMin(results[RESULT_BEST_DISTANCE], du);
+    }
+
+    uint threshold = pc.delta * (pc.phase + 1);
+
+    for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
+        uint v = targets[eid];
+        uint w = weight[eid];
+        uint new_dist = du + w;
+        uint old_dist = atomicMin(dist[v], new_dist);
+
+        if (new_dist < old_dist) {
+            if (new_dist < threshold) {
+                uint idx = atomicAdd(counters[COUNTER_NUM_NEAR_NEXT], 1);
+                next_near[idx] = v;
+            } else {
+                uint idx = atomicAdd(counters[COUNTER_NUM_FAR], 1);
+                far[idx] = v;
+            }
+        }
+    }
+}

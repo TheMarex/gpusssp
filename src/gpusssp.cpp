@@ -22,6 +22,8 @@
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/device_info.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/nearfar.hpp"
+#include "gpu/nearfar_buffers.hpp"
 #include "gpu/vulkan_context.hpp"
 
 using namespace gpusssp;
@@ -168,6 +170,8 @@ int main(int argc, char **argv)
             graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::BellmanFordBuffers bellmanford_buffers(
             graph.num_nodes(), device, vk_ctx.memory_properties());
+        gpu::NearFarBuffers nearfar_buffers(
+            graph.num_nodes(), device, vk_ctx.memory_properties());
 
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
         deltastep.initialize();
@@ -175,10 +179,14 @@ int main(int argc, char **argv)
         gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device);
         bellmanford.initialize();
 
+        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device);
+        nearfar.initialize();
+
         std::uint32_t checksum = 0;
         std::uint32_t dij_duration = 0;
         std::uint32_t ds_duration = 0;
         std::uint32_t bf_duration = 0;
+        std::uint32_t nf_duration = 0;
         std::size_t num_unreachable = 0;
         for (auto i = 0u; i < num_queries; i++)
         {
@@ -193,6 +201,9 @@ int main(int argc, char **argv)
             auto bf_dist = bellmanford.run(cmdPool, queue, src_nodes[i], dst_nodes[i]);
             common::DoNotOptimize(bf_dist);
             auto time_4 = std::chrono::high_resolution_clock::now();
+            auto nf_dist = nearfar.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
+            common::DoNotOptimize(nf_dist);
+            auto time_5 = std::chrono::high_resolution_clock::now();
 
             if (expected_dist == common::INF_WEIGHT)
             {
@@ -206,6 +217,8 @@ int main(int argc, char **argv)
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_3 - time_2).count();
             bf_duration +=
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_4 - time_3).count();
+            nf_duration +=
+                std::chrono::duration_cast<std::chrono::milliseconds>(time_5 - time_4).count();
             if (dist != expected_dist)
             {
                 std::cout << "Error: DeltaStep distance " << src_nodes[i] << "->" << dst_nodes[i]
@@ -218,6 +231,12 @@ int main(int argc, char **argv)
                           << " mismatch. expected: " << expected_dist << " actual: " << bf_dist
                           << std::endl;
             }
+            if (nf_dist != expected_dist)
+            {
+                std::cout << "Error: NearFar distance " << src_nodes[i] << "->" << dst_nodes[i]
+                          << " mismatch. expected: " << expected_dist << " actual: " << nf_dist
+                          << std::endl;
+            }
             checksum += dist;
         }
         auto num_reachable = num_queries - num_unreachable;
@@ -225,8 +244,9 @@ int main(int argc, char **argv)
                   << " unreachable) in " << (dij_duration / num_reachable) << "ms/req (dijkstra) "
                   << (ds_duration / num_reachable) << "ms/req (deltastep "
                   << (dij_duration / (double)ds_duration) << ") " << (bf_duration / num_reachable)
-                  << "ms/req (bellmanford " << (dij_duration / (double)bf_duration) << ")"
-                  << std::endl;
+                  << "ms/req (bellmanford " << (dij_duration / (double)bf_duration) << ") "
+                  << (nf_duration / num_reachable) << "ms/req (nearfar "
+                  << (dij_duration / (double)nf_duration) << ")" << std::endl;
         std::cout << "Checksum: " << (checksum / num_reachable) << std::endl;
     }
 

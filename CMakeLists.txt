@@ -106,8 +106,30 @@ add_custom_command(
     VERBATIM
 )
 
+set(NEARFAR_RELAX_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/nearfar_relax.comp)
+set(NEARFAR_RELAX_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/nearfar_relax.spv)
+
+add_custom_command(
+    OUTPUT ${NEARFAR_RELAX_SHADER_OUTPUT}
+    COMMAND ${GLSLANG_VALIDATOR} -V ${NEARFAR_RELAX_SHADER_SOURCE} --target-env vulkan1.1 -o ${NEARFAR_RELAX_SHADER_OUTPUT}
+    DEPENDS ${NEARFAR_RELAX_SHADER_SOURCE}
+    COMMENT "Compiling nearfar_relax compute shader to SPIR-V"
+    VERBATIM
+)
+
+set(NEARFAR_COMPACT_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/nearfar_compact.comp)
+set(NEARFAR_COMPACT_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/nearfar_compact.spv)
+
+add_custom_command(
+    OUTPUT ${NEARFAR_COMPACT_SHADER_OUTPUT}
+    COMMAND ${GLSLANG_VALIDATOR} -V ${NEARFAR_COMPACT_SHADER_SOURCE} --target-env vulkan1.1 -o ${NEARFAR_COMPACT_SHADER_OUTPUT}
+    DEPENDS ${NEARFAR_COMPACT_SHADER_SOURCE}
+    COMMENT "Compiling nearfar_compact compute shader to SPIR-V"
+    VERBATIM
+)
+
 add_custom_target(shaders
-    DEPENDS ${DELTA_STEP_SHADER_OUTPUT} ${BELLMAN_FORD_SHADER_OUTPUT}
+    DEPENDS ${DELTA_STEP_SHADER_OUTPUT} ${BELLMAN_FORD_SHADER_OUTPUT} ${NEARFAR_RELAX_SHADER_OUTPUT} ${NEARFAR_COMPACT_SHADER_OUTPUT}
 )
 add_dependencies(gpusssp shaders)
 add_dependencies(experiment_deltastep shaders)
@@ -163,6 +185,7 @@ if(BUILD_TESTS)
     add_executable(gpusssp_tests
         tests/test_main.cpp
         tests/test_deltastep.cpp
+        tests/test_nearfar.cpp
         tests/test_string_util.cpp
         tests/test_graph_metrics.cpp
     )

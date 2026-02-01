@@ -1,0 +1,44 @@
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+
+#include <limits>
+#include <vulkan/vulkan.hpp>
+
+#include "mock_graph.hpp"
+#include "vulkan_test_fixture.hpp"
+
+#include "gpu/graph_buffers.hpp"
+#include "gpu/nearfar.hpp"
+#include "gpu/nearfar_buffers.hpp"
+
+TEST_CASE("NearFar computes correct shortest paths", "[nearfar]")
+{
+    auto graph = gpusssp::test::create_mock_graph();
+    gpusssp::test::VulkanTestFixture vk_fixture;
+
+    auto device = vk_fixture.get_device();
+    auto queue = vk_fixture.get_queue();
+    auto cmd_pool = vk_fixture.get_command_pool();
+    auto mem_props = vk_fixture.get_memory_properties();
+
+    gpusssp::gpu::GraphBuffers<gpusssp::common::WeightedGraph<uint32_t>> graph_buffers(
+        graph, device, mem_props, cmd_pool, queue);
+    gpusssp::gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, mem_props);
+
+    gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device);
+    nearfar.initialize();
+
+    const uint32_t delta = 3600;
+
+    for (uint32_t src_node = 0; src_node < graph.num_nodes(); ++src_node)
+    {
+        for (uint32_t dst_node = 0; dst_node < graph.num_nodes(); ++dst_node)
+        {
+            uint32_t computed_dist = nearfar.run(cmd_pool, queue, src_node, dst_node, delta);
+
+            INFO("Source: " << src_node << ", Destination: " << dst_node);
+            auto expected = gpusssp::test::get_expected_distances(src_node, dst_node);
+            REQUIRE(computed_dist == expected);
+        }
+    }
+}
