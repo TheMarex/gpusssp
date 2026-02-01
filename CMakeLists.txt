@@ -83,6 +83,16 @@ target_link_libraries(experiment_bellmanford
         Vulkan::Vulkan
 )
 
+# Experiment NearFar
+add_executable(experiment_nearfar
+    experiments/experiment_nearfar.cpp
+)
+
+target_link_libraries(experiment_nearfar
+    PRIVATE
+        Vulkan::Vulkan
+)
+
 # Custom command to compile GLSL shaders to SPIR-V
 set(DELTA_STEP_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/delta_step.comp)
 set(DELTA_STEP_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/delta_step.spv)
@@ -134,6 +144,7 @@ add_custom_target(shaders
 add_dependencies(gpusssp shaders)
 add_dependencies(experiment_deltastep shaders)
 add_dependencies(experiment_bellmanford shaders)
+add_dependencies(experiment_nearfar shaders)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
