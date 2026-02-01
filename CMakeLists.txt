@@ -99,70 +99,39 @@ target_link_libraries(experiment_nearfar
         Vulkan::Vulkan
 )
 
-# Custom command to compile GLSL shaders to SPIR-V
-set(DELTA_STEP_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/delta_step.comp)
-set(DELTA_STEP_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/delta_step.spv)
-
-add_custom_command(
-    OUTPUT ${DELTA_STEP_SHADER_OUTPUT}
-    COMMAND ${GLSLANG_VALIDATOR} -V ${DELTA_STEP_SHADER_SOURCE} --target-env vulkan1.1 -o ${DELTA_STEP_SHADER_OUTPUT}
-    DEPENDS ${DELTA_STEP_SHADER_SOURCE}
-    COMMENT "Compiling delta_step compute shader to SPIR-V"
-    VERBATIM
-)
-
-set(BELLMAN_FORD_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/bellman_ford.comp)
-set(BELLMAN_FORD_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/bellman_ford.spv)
-
-add_custom_command(
-    OUTPUT ${BELLMAN_FORD_SHADER_OUTPUT}
-    COMMAND ${GLSLANG_VALIDATOR} -V ${BELLMAN_FORD_SHADER_SOURCE} --target-env vulkan1.1 -o ${BELLMAN_FORD_SHADER_OUTPUT}
-    DEPENDS ${BELLMAN_FORD_SHADER_SOURCE}
-    COMMENT "Compiling bellman_ford compute shader to SPIR-V"
-    VERBATIM
-)
-
-set(NEARFAR_RELAX_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/nearfar_relax.comp)
-set(NEARFAR_RELAX_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/nearfar_relax.spv)
-
 set(SHADER_COMPILE_FLAGS "")
 if(ENABLE_STATISTICS)
     list(APPEND SHADER_COMPILE_FLAGS -DENABLE_STATISTICS)
 endif()
 
-add_custom_command(
-    OUTPUT ${NEARFAR_RELAX_SHADER_OUTPUT}
-    COMMAND ${GLSLANG_VALIDATOR} -V ${NEARFAR_RELAX_SHADER_SOURCE} --target-env vulkan1.1 ${SHADER_COMPILE_FLAGS} -I${CMAKE_CURRENT_SOURCE_DIR}/include/gpu -o ${NEARFAR_RELAX_SHADER_OUTPUT}
-    DEPENDS ${NEARFAR_RELAX_SHADER_SOURCE}
-    COMMENT "Compiling nearfar_relax compute shader to SPIR-V"
-    VERBATIM
-)
+set(SHADER_OUTPUTS "")
+function(add_compute_shader SHADER_NAME)
+    set(SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${SHADER_NAME}.comp)
+    set(SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_NAME}.spv)
+    
+    set(EXTRA_FLAGS ${ARGN})
+    
+    add_custom_command(
+        OUTPUT ${SHADER_OUTPUT}
+        COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} --target-env vulkan1.1 ${SHADER_COMPILE_FLAGS} ${EXTRA_FLAGS} -I${CMAKE_CURRENT_SOURCE_DIR}/shaders -o ${SHADER_OUTPUT}
+        DEPENDS ${SHADER_SOURCE}
+        COMMENT "Compiling ${SHADER_NAME} compute shader to SPIR-V"
+        VERBATIM
+    )
+    
+    list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
+    set(SHADER_OUTPUTS ${SHADER_OUTPUTS} PARENT_SCOPE)
+    set(${SHADER_NAME}_SHADER_OUTPUT ${SHADER_OUTPUT} PARENT_SCOPE)
+endfunction()
 
-set(NEARFAR_COMPACT_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/nearfar_compact.comp)
-set(NEARFAR_COMPACT_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/nearfar_compact.spv)
+add_compute_shader(delta_step)
+add_compute_shader(bellman_ford)
+add_compute_shader(nearfar_relax)
+add_compute_shader(nearfar_compact)
+add_compute_shader(nearfar_prepare_dispatch)
 
-add_custom_command(
-    OUTPUT ${NEARFAR_COMPACT_SHADER_OUTPUT}
-    COMMAND ${GLSLANG_VALIDATOR} -V ${NEARFAR_COMPACT_SHADER_SOURCE} --target-env vulkan1.1 -o ${NEARFAR_COMPACT_SHADER_OUTPUT}
-    DEPENDS ${NEARFAR_COMPACT_SHADER_SOURCE}
-    COMMENT "Compiling nearfar_compact compute shader to SPIR-V"
-    VERBATIM
-)
+add_custom_target(shaders DEPENDS ${SHADER_OUTPUTS})
 
-set(NEARFAR_PREPARE_DISPATCH_SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/nearfar_prepare_dispatch.comp)
-set(NEARFAR_PREPARE_DISPATCH_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/nearfar_prepare_dispatch.spv)
-
-add_custom_command(
-    OUTPUT ${NEARFAR_PREPARE_DISPATCH_SHADER_OUTPUT}
-    COMMAND ${GLSLANG_VALIDATOR} -V ${NEARFAR_PREPARE_DISPATCH_SHADER_SOURCE} --target-env vulkan1.1 -o ${NEARFAR_PREPARE_DISPATCH_SHADER_OUTPUT}
-    DEPENDS ${NEARFAR_PREPARE_DISPATCH_SHADER_SOURCE}
-    COMMENT "Compiling nearfar_prepare_dispatch compute shader to SPIR-V"
-    VERBATIM
-)
-
-add_custom_target(shaders
-    DEPENDS ${DELTA_STEP_SHADER_OUTPUT} ${BELLMAN_FORD_SHADER_OUTPUT} ${NEARFAR_RELAX_SHADER_OUTPUT} ${NEARFAR_COMPACT_SHADER_OUTPUT} ${NEARFAR_PREPARE_DISPATCH_SHADER_OUTPUT}
-)
 add_dependencies(gpusssp shaders)
 add_dependencies(experiment_deltastep shaders)
 add_dependencies(experiment_bellmanford shaders)
