@@ -344,7 +344,7 @@ template <typename GraphT> class NearFar
                  uint32_t src_node,
                  uint32_t dst_node,
                  uint32_t delta,
-                 uint32_t relax_batch_size = 4)
+                 uint32_t relax_batch_size = 64)
     {
         vk::CommandBuffer cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
