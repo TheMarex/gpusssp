@@ -7,6 +7,7 @@
 #include "common/shader.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/statistics.hpp"
 
 #include <iostream>
 
@@ -31,9 +32,10 @@ template <typename GraphT> class DeltaStep
     DeltaStep(const GraphBuffers<GraphT> &graph_buffers,
               DeltaStepBuffers &deltastep_buffers,
               vk::Device &device,
+              Statistics &statistics,
               uint32_t workgroup_size = DEFAULT_WORKGROUP_SIZE)
-        : graph_buffers(graph_buffers), deltastep_buffers(deltastep_buffers), device(device),
-          workgroup_size(workgroup_size)
+        : graph_buffers(graph_buffers), deltastep_buffers(deltastep_buffers),
+          statistics(statistics), device(device), workgroup_size(workgroup_size)
     {
     }
 
@@ -51,6 +53,7 @@ template <typename GraphT> class DeltaStep
         auto graph_bufs = graph_buffers.buffers();
         auto [dist_buffer, results_buffer, changed_buffer_0, changed_buffer_1, num_changed_buffer] =
             deltastep_buffers.buffers();
+        auto statistics_buffer = statistics.buffer();
 
         // Create bindings for all buffers
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
@@ -75,6 +78,9 @@ template <typename GraphT> class DeltaStep
         // Binding 7: num_changed counter buffer
         bindings.push_back(
             {7, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
+        // Binding 8: statistics counters
+        bindings.push_back(
+            {8, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
 
         desc_set_layout =
             device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
@@ -92,7 +98,7 @@ template <typename GraphT> class DeltaStep
         // Update descriptor set 0: changed_buffer_0 as current, changed_buffer_1 as previous
         std::vector<vk::DescriptorBufferInfo> dbis_0;
         // Pre-allocate to avoid reallocation
-        dbis_0.reserve(8);
+        dbis_0.reserve(9);
 
         for (auto i = 0u; i < graph_bufs.size(); ++i)
         {
@@ -103,6 +109,7 @@ template <typename GraphT> class DeltaStep
         dbis_0.push_back({changed_buffer_0, 0, VK_WHOLE_SIZE});
         dbis_0.push_back({changed_buffer_1, 0, VK_WHOLE_SIZE});
         dbis_0.push_back({num_changed_buffer, 0, VK_WHOLE_SIZE});
+        dbis_0.push_back({statistics_buffer, 0, VK_WHOLE_SIZE});
 
         std::vector<vk::WriteDescriptorSet> writes_0;
         for (auto i = 0u; i < graph_bufs.size(); ++i)
@@ -156,12 +163,20 @@ template <typename GraphT> class DeltaStep
                             nullptr,
                             &dbis_0[7],
                             nullptr});
+        writes_0.push_back({desc_set_0,
+                            8,
+                            0,
+                            1,
+                            vk::DescriptorType::eStorageBuffer,
+                            nullptr,
+                            &dbis_0[8],
+                            nullptr});
 
         device.updateDescriptorSets(writes_0, {});
 
         // Update descriptor set 1: changed_buffer_1 as current, changed_buffer_0 as previous
         std::vector<vk::DescriptorBufferInfo> dbis_1;
-        dbis_1.reserve(8);
+        dbis_1.reserve(9);
 
         for (auto i = 0u; i < graph_bufs.size(); ++i)
         {
@@ -172,6 +187,7 @@ template <typename GraphT> class DeltaStep
         dbis_1.push_back({changed_buffer_1, 0, VK_WHOLE_SIZE});
         dbis_1.push_back({changed_buffer_0, 0, VK_WHOLE_SIZE});
         dbis_1.push_back({num_changed_buffer, 0, VK_WHOLE_SIZE});
+        dbis_1.push_back({statistics_buffer, 0, VK_WHOLE_SIZE});
 
         std::vector<vk::WriteDescriptorSet> writes_1;
         for (auto i = 0u; i < graph_bufs.size(); ++i)
@@ -224,6 +240,14 @@ template <typename GraphT> class DeltaStep
                             vk::DescriptorType::eStorageBuffer,
                             nullptr,
                             &dbis_1[7],
+                            nullptr});
+        writes_1.push_back({desc_set_1,
+                            8,
+                            0,
+                            1,
+                            vk::DescriptorType::eStorageBuffer,
+                            nullptr,
+                            &dbis_1[8],
                             nullptr});
 
         device.updateDescriptorSets(writes_1, {});
@@ -444,6 +468,7 @@ template <typename GraphT> class DeltaStep
   private:
     const GraphBuffers<GraphT> &graph_buffers;
     DeltaStepBuffers &deltastep_buffers;
+    Statistics &statistics;
 
     vk::DescriptorSet desc_set_0;
     vk::DescriptorSet desc_set_1;

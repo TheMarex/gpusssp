@@ -38,8 +38,8 @@ template <typename GraphT> class NearFar
             vk::Device &device,
             Statistics &statistics,
             uint32_t workgroup_size = DEFAULT_WORKGROUP_SIZE)
-        : graph_buffers(graph_buffers), nearfar_buffers(nearfar_buffers), device(device),
-          statistics(statistics), workgroup_size(workgroup_size)
+        : graph_buffers(graph_buffers), nearfar_buffers(nearfar_buffers), statistics(statistics),
+          device(device), workgroup_size(workgroup_size)
     {
     }
 

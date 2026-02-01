@@ -7,6 +7,7 @@
 #include "gpu/bellmanford.hpp"
 #include "gpu/bellmanford_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/statistics.hpp"
 #include "gpu/vulkan_context.hpp"
 
 #include <chrono>
@@ -57,8 +58,9 @@ int main(int argc, char **argv)
         gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool, queue);
         gpu::BellmanFordBuffers bellmanford_buffers(
             graph.num_nodes(), device, vk_ctx.memory_properties());
+        gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
 
-        gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device);
+        gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device, gpu_statistics);
         bellmanford.initialize();
 
         int progress_counter = 0;

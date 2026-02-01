@@ -10,6 +10,7 @@
 #include "gpu/deltastep.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/statistics.hpp"
 
 TEST_CASE("DeltaStep computes correct shortest paths", "[deltastep]")
 {
@@ -25,8 +26,9 @@ TEST_CASE("DeltaStep computes correct shortest paths", "[deltastep]")
     gpusssp::gpu::GraphBuffers<gpusssp::common::WeightedGraph<uint32_t>> graph_buffers(
         graph, device, mem_props, cmd_pool, queue);
     gpusssp::gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device, mem_props);
+    gpusssp::gpu::Statistics gpu_statistics(device, mem_props);
 
-    gpusssp::gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
+    gpusssp::gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics);
     deltastep.initialize();
 
     // Test parameters

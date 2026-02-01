@@ -174,10 +174,10 @@ int main(int argc, char **argv)
         gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
 
-        gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
+        gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics);
         deltastep.initialize();
 
-        gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device);
+        gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device, gpu_statistics);
         bellmanford.initialize();
 
         gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, gpu_statistics);

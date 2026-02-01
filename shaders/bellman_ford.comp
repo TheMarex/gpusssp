@@ -1,6 +1,11 @@
 #version 450
 
+#extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_arithmetic: enable
+#extension GL_EXT_shader_explicit_arithmetic_types_int64: enable
+#extension GL_EXT_shader_atomic_int64: enable
+
+#include "statistics.glsl"
 
 layout(constant_id = 0) const uint WORKGROUP_SIZE = 128;
 layout(local_size_x_id = 0) in;
@@ -13,6 +18,8 @@ layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
 layout(std430, binding = 4) coherent buffer Results { uint results[]; };
 // Changed flag: set to 1 if any distance was updated
 layout(std430, binding = 5) coherent buffer Changed { uint changed; };
+// Statistics counters
+layout(std430, binding = 6) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
@@ -34,11 +41,14 @@ void main() {
     if (du < INF_WEIGHT) {
         uint local_changed = 0;
         for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
+            statisticsCount(STAT_BELLMANFORD_EDGES_RELAXED);
+            
             uint v = targets[eid];
             uint w = weight[eid];
             uint alt = du + w;
             uint prev = atomicMin(dist[v], alt);
             if (alt < prev) {
+                statisticsCount(STAT_BELLMANFORD_EDGES_IMPROVED);
                 local_changed++;
             }
         }

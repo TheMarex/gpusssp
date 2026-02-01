@@ -7,6 +7,7 @@
 #include "gpu/deltastep.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/statistics.hpp"
 #include "gpu/vulkan_context.hpp"
 
 #include <chrono>
@@ -67,8 +68,9 @@ int main(int argc, char **argv)
         gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool, queue);
         gpu::DeltaStepBuffers deltastep_buffers(
             graph.num_nodes(), device, vk_ctx.memory_properties());
+        gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
 
-        gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device);
+        gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics);
         deltastep.initialize();
 
         int progress_counter = 0;

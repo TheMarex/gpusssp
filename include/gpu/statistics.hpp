@@ -21,13 +21,23 @@ enum class StatisticsEvent : uint8_t
     NEARFAR_RELAX_EDGES,
     NEARFAR_RELAX_IMPROVED,
     NEARFAR_COMPACT_NODES,
+    DELTASTEP_EDGES_RELAXED,
+    DELTASTEP_EDGES_IMPROVED,
+    BELLMANFORD_EDGES_RELAXED,
+    BELLMANFORD_EDGES_IMPROVED,
     NUM_EVENTS
 };
 
 inline const char *event_to_name(StatisticsEvent event)
 {
     static std::array<const char *, static_cast<std::size_t>(StatisticsEvent::NUM_EVENTS)> names{
-        {"NEARFAR_RELAX_EDGES", "NEARFAR_RELAX_IMPROVED", "NEARFAR_COMPACT_NODES"}};
+        {"NEARFAR_RELAX_EDGES",
+         "NEARFAR_RELAX_IMPROVED",
+         "NEARFAR_COMPACT_NODES",
+         "DELTASTEP_EDGES_RELAXED",
+         "DELTASTEP_EDGES_IMPROVED",
+         "BELLMANFORD_EDGES_RELAXED",
+         "BELLMANFORD_EDGES_IMPROVED"}};
     return names[static_cast<std::size_t>(event)];
 }
 

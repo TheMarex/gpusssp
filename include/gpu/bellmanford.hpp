@@ -7,6 +7,7 @@
 #include "common/shader.hpp"
 #include "gpu/bellmanford_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/statistics.hpp"
 
 #include <iostream>
 
@@ -27,9 +28,10 @@ template <typename GraphT> class BellmanFord
     BellmanFord(const GraphBuffers<GraphT> &graph_buffers,
                 BellmanFordBuffers &bellmanford_buffers,
                 vk::Device &device,
+                Statistics &statistics,
                 uint32_t workgroup_size = DEFAULT_WORKGROUP_SIZE)
-        : graph_buffers(graph_buffers), bellmanford_buffers(bellmanford_buffers), device(device),
-          workgroup_size(workgroup_size)
+        : graph_buffers(graph_buffers), bellmanford_buffers(bellmanford_buffers),
+          statistics(statistics), device(device), workgroup_size(workgroup_size)
     {
     }
 
@@ -46,6 +48,7 @@ template <typename GraphT> class BellmanFord
     {
         auto graph_bufs = graph_buffers.buffers();
         auto [dist_buffer, results_buffer, changed_buffer] = bellmanford_buffers.buffers();
+        auto statistics_buffer = statistics.buffer();
 
         // Create bindings for all buffers
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
@@ -64,6 +67,9 @@ template <typename GraphT> class BellmanFord
         // Binding 5: changed flag
         bindings.push_back(
             {5, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
+        // Binding 6: statistics counters
+        bindings.push_back(
+            {6, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
 
         desc_set_layout =
             device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
@@ -78,7 +84,7 @@ template <typename GraphT> class BellmanFord
 
         // Update descriptor set
         std::vector<vk::DescriptorBufferInfo> dbis;
-        dbis.reserve(6);
+        dbis.reserve(7);
 
         for (auto i = 0u; i < graph_bufs.size(); ++i)
         {
@@ -87,6 +93,7 @@ template <typename GraphT> class BellmanFord
         dbis.push_back({dist_buffer, 0, VK_WHOLE_SIZE});
         dbis.push_back({results_buffer, 0, VK_WHOLE_SIZE});
         dbis.push_back({changed_buffer, 0, VK_WHOLE_SIZE});
+        dbis.push_back({statistics_buffer, 0, VK_WHOLE_SIZE});
 
         std::vector<vk::WriteDescriptorSet> writes;
         for (auto i = 0u; i < graph_bufs.size(); ++i)
@@ -106,6 +113,8 @@ template <typename GraphT> class BellmanFord
             {desc_set, 4, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbis[4], nullptr});
         writes.push_back(
             {desc_set, 5, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbis[5], nullptr});
+        writes.push_back(
+            {desc_set, 6, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbis[6], nullptr});
 
         device.updateDescriptorSets(writes, {});
     }
@@ -218,6 +227,7 @@ template <typename GraphT> class BellmanFord
   private:
     const GraphBuffers<GraphT> &graph_buffers;
     BellmanFordBuffers &bellmanford_buffers;
+    Statistics &statistics;
 
     vk::DescriptorSet desc_set;
     vk::DescriptorSetLayout desc_set_layout;
