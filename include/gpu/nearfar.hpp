@@ -24,6 +24,11 @@ template <typename GraphT> class NearFar
         uint32_t phase;
         uint32_t delta;
     };
+    struct PrepareDispatchPushConsts
+    {
+        uint32_t workgroup_size;
+        uint32_t counter_index;
+    };
 
   public:
     NearFar(const GraphBuffers<GraphT> &graph_buffers,
@@ -48,6 +53,12 @@ template <typename GraphT> class NearFar
         device.destroyPipelineLayout(compact_pipeline_layout);
         device.destroyDescriptorSetLayout(compact_desc_set_layout);
         device.destroyDescriptorPool(compact_desc_pool);
+
+        device.destroyShaderModule(prepare_dispatch_shader);
+        device.destroyPipeline(prepare_dispatch_pipeline);
+        device.destroyPipelineLayout(prepare_dispatch_pipeline_layout);
+        device.destroyDescriptorSetLayout(prepare_dispatch_desc_set_layout);
+        device.destroyDescriptorPool(prepare_dispatch_desc_pool);
     }
 
     void initialize_relax_descriptor_sets()
@@ -59,7 +70,8 @@ template <typename GraphT> class NearFar
               near_1_buffer,
               far_0_buffer,
               far_1_buffer,
-              counters_buffer] = nearfar_buffers.buffers();
+              counters_buffer,
+              dispatch_relax_buffer] = nearfar_buffers.buffers();
 
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
         for (auto i = 0u; i < graph_bufs.size(); i++)
@@ -149,7 +161,8 @@ template <typename GraphT> class NearFar
               near_1_buffer,
               far_0_buffer,
               far_1_buffer,
-              counters_buffer] = nearfar_buffers.buffers();
+              counters_buffer,
+              dispatch_relax_buffer] = nearfar_buffers.buffers();
 
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
         for (auto i = 0u; i < graph_bufs.size(); i++)
@@ -223,10 +236,58 @@ template <typename GraphT> class NearFar
         }
     }
 
+    void initialize_prepare_dispatch_descriptor_sets()
+    {
+        auto [dist_buffer,
+              results_buffer,
+              near_0_buffer,
+              near_1_buffer,
+              far_0_buffer,
+              far_1_buffer,
+              counters_buffer,
+              dispatch_relax_buffer] = nearfar_buffers.buffers();
+
+        std::vector<vk::DescriptorSetLayoutBinding> bindings;
+        bindings.push_back(
+            {0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
+        bindings.push_back(
+            {1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
+
+        prepare_dispatch_desc_set_layout =
+            device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
+
+        vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer,
+                                        (uint32_t)(bindings.size())};
+        prepare_dispatch_desc_pool = device.createDescriptorPool({{}, 1, 1, &poolSize});
+
+        prepare_dispatch_desc_set = device.allocateDescriptorSets(
+            {prepare_dispatch_desc_pool, 1, &prepare_dispatch_desc_set_layout})[0];
+
+        std::vector<vk::DescriptorBufferInfo> dbis;
+        dbis.push_back({counters_buffer, 0, VK_WHOLE_SIZE});
+        dbis.push_back({dispatch_relax_buffer, 0, VK_WHOLE_SIZE});
+
+        std::vector<vk::WriteDescriptorSet> writes;
+        for (auto i = 0u; i < dbis.size(); ++i)
+        {
+            writes.push_back({prepare_dispatch_desc_set,
+                              i,
+                              0,
+                              1,
+                              vk::DescriptorType::eStorageBuffer,
+                              nullptr,
+                              &dbis[i],
+                              nullptr});
+        }
+
+        device.updateDescriptorSets(writes, {});
+    }
+
     void initialize()
     {
         initialize_relax_descriptor_sets();
         initialize_compact_descriptor_sets();
+        initialize_prepare_dispatch_descriptor_sets();
 
         std::vector<uint32_t> relax_spv = common::read_spv("nearfar_relax.spv");
         relax_shader = device.createShaderModule({{}, relax_spv.size() * 4, relax_spv.data()});
@@ -257,6 +318,25 @@ template <typename GraphT> class NearFar
         compact_pipeline =
             device.createComputePipeline({}, {{}, compact_shader_stage, compact_pipeline_layout})
                 .value;
+
+        std::vector<uint32_t> prepare_dispatch_spv =
+            common::read_spv("nearfar_prepare_dispatch.spv");
+        prepare_dispatch_shader = device.createShaderModule(
+            {{}, prepare_dispatch_spv.size() * 4, prepare_dispatch_spv.data()});
+
+        vk::PushConstantRange prepare_dispatch_pcRange{
+            vk::ShaderStageFlagBits::eCompute, 0, sizeof(PrepareDispatchPushConsts)};
+        prepare_dispatch_pipeline_layout = device.createPipelineLayout(
+            {{}, 1, &prepare_dispatch_desc_set_layout, 1, &prepare_dispatch_pcRange});
+
+        vk::PipelineShaderStageCreateInfo prepare_dispatch_shader_stage{
+            {}, vk::ShaderStageFlagBits::eCompute, prepare_dispatch_shader, "main", nullptr};
+
+        prepare_dispatch_pipeline =
+            device
+                .createComputePipeline(
+                    {}, {{}, prepare_dispatch_shader_stage, prepare_dispatch_pipeline_layout})
+                .value;
     }
 
     uint32_t run(vk::CommandPool &cmd_pool,
@@ -264,7 +344,7 @@ template <typename GraphT> class NearFar
                  uint32_t src_node,
                  uint32_t dst_node,
                  uint32_t delta,
-                 uint32_t relax_batch_size = 1)
+                 uint32_t relax_batch_size = 4)
     {
         vk::CommandBuffer cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
@@ -280,7 +360,8 @@ template <typename GraphT> class NearFar
               near_1_buffer,
               far_0_buffer,
               far_1_buffer,
-              counters_buffer] = nearfar_buffers.buffers();
+              counters_buffer,
+              dispatch_relax_buffer] = nearfar_buffers.buffers();
 
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
@@ -325,8 +406,8 @@ template <typename GraphT> class NearFar
         {
             while (num_near > 0)
             {
-                std::cout << phase << " " << num_near << " best distance " << *gpu_best_distance
-                          << std::endl;
+                // std::cout << phase << " " << num_near << " best distance " << *gpu_best_distance
+                //           << std::endl;
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
                 for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
@@ -344,6 +425,32 @@ template <typename GraphT> class NearFar
                                             {},
                                             {});
 
+                    cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute,
+                                         prepare_dispatch_pipeline);
+                    cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                               prepare_dispatch_pipeline_layout,
+                                               0,
+                                               prepare_dispatch_desc_set,
+                                               {});
+
+                    PrepareDispatchPushConsts prepare_pc{workgroup_size, 0};
+                    cmd_buf.pushConstants(prepare_dispatch_pipeline_layout,
+                                          vk::ShaderStageFlagBits::eCompute,
+                                          0,
+                                          sizeof(prepare_pc),
+                                          &prepare_pc);
+                    cmd_buf.dispatch(1, 1, 1);
+
+                    cmd_buf.pipelineBarrier(
+                        vk::PipelineStageFlagBits::eComputeShader,
+                        vk::PipelineStageFlagBits::eComputeShader,
+                        vk::DependencyFlags{},
+                        vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                          vk::AccessFlagBits::eShaderRead |
+                                              vk::AccessFlagBits::eIndirectCommandRead},
+                        {},
+                        {});
+
                     cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, relax_pipeline);
                     cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
                                                relax_pipeline_layout,
@@ -357,7 +464,7 @@ template <typename GraphT> class NearFar
                                           0,
                                           sizeof(pc),
                                           &pc);
-                    cmd_buf.dispatch((num_near + workgroup_size - 1) / workgroup_size, 1, 1);
+                    cmd_buf.dispatchIndirect(dispatch_relax_buffer, 0);
 
                     cmd_buf.pipelineBarrier(
                         vk::PipelineStageFlagBits::eComputeShader,
@@ -408,8 +515,8 @@ template <typename GraphT> class NearFar
                 break;
             }
 
-            std::cout << phase << " far " << num_far << " best distance " << *gpu_best_distance
-                      << std::endl;
+            // std::cout << phase << " far " << num_far << " best distance " << *gpu_best_distance
+            //           << std::endl;
 
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
@@ -467,8 +574,8 @@ template <typename GraphT> class NearFar
             num_near = *gpu_num_near;
             num_far = *gpu_num_far;
 
-            std::cout << phase << " compacted to: far " << num_far << " near " << num_near
-                      << std::endl;
+            // std::cout << phase << " compacted to: far " << num_far << " near " << num_near
+            //           << std::endl;
         }
 
         return *gpu_best_distance;
@@ -491,6 +598,13 @@ template <typename GraphT> class NearFar
     vk::ShaderModule compact_shader;
     vk::Pipeline compact_pipeline;
     vk::PipelineLayout compact_pipeline_layout;
+
+    vk::DescriptorSet prepare_dispatch_desc_set;
+    vk::DescriptorSetLayout prepare_dispatch_desc_set_layout;
+    vk::DescriptorPool prepare_dispatch_desc_pool;
+    vk::ShaderModule prepare_dispatch_shader;
+    vk::Pipeline prepare_dispatch_pipeline;
+    vk::PipelineLayout prepare_dispatch_pipeline_layout;
 
     vk::Device &device;
     uint32_t workgroup_size;
