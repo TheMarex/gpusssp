@@ -33,10 +33,6 @@ find_program(GLSLANG_VALIDATOR glslangValidator
 
 option(ENABLE_STATISTICS "Enable capturing algorithm statistics" OFF)
 
-if(ENABLE_STATISTICS)
-    add_compile_definitions(ENABLE_STATISTICS)
-endif()
-
 # GPU SSSP executable
 add_executable(gpusssp
     src/gpusssp.cpp
@@ -46,6 +42,10 @@ target_link_libraries(gpusssp
     PRIVATE
         Vulkan::Vulkan
 )
+
+if(ENABLE_STATISTICS)
+    target_compile_definitions(gpusssp PRIVATE ENABLE_STATISTICS)
+endif()
 
 # OSM to Graph converter executable
 add_executable(osm2graph
@@ -79,6 +79,10 @@ target_link_libraries(experiment_deltastep
         Vulkan::Vulkan
 )
 
+if(ENABLE_STATISTICS)
+    target_compile_definitions(experiment_deltastep PRIVATE ENABLE_STATISTICS)
+endif()
+
 # Experiment BellmanFord
 add_executable(experiment_bellmanford
     experiments/experiment_bellmanford.cpp
@@ -89,6 +93,10 @@ target_link_libraries(experiment_bellmanford
         Vulkan::Vulkan
 )
 
+if(ENABLE_STATISTICS)
+    target_compile_definitions(experiment_bellmanford PRIVATE ENABLE_STATISTICS)
+endif()
+
 # Experiment NearFar
 add_executable(experiment_nearfar
     experiments/experiment_nearfar.cpp
@@ -98,6 +106,10 @@ target_link_libraries(experiment_nearfar
     PRIVATE
         Vulkan::Vulkan
 )
+
+if(ENABLE_STATISTICS)
+    target_compile_definitions(experiment_nearfar PRIVATE ENABLE_STATISTICS)
+endif()
 
 set(SHADER_COMPILE_FLAGS "")
 if(ENABLE_STATISTICS)
