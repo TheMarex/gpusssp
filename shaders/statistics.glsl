@@ -4,6 +4,8 @@
 #ifndef GPUSSSP_GPU_STATISTICS_GLSL
 #define GPUSSSP_GPU_STATISTICS_GLSL
 
+#extension GL_EXT_shader_subgroup_extended_types_int64: enable
+
 #define STAT_NEARFAR_RELAX_EDGES 0
 #define STAT_NEARFAR_RELAX_IMPROVED 1
 #define STAT_NEARFAR_COMPACT_NODES 2
@@ -14,11 +16,55 @@
 #define STAT_NUM_EVENTS 7
 
 #ifdef ENABLE_STATISTICS
-    #define statisticsCount(counter_id) atomicAdd(statistics_counters[counter_id], 1)
-    #define statisticsAdd(counter_id, value) atomicAdd(statistics_counters[counter_id], value)
+
+shared uint64_t local_statistics[STAT_NUM_EVENTS];
+uint thread_local_stats[STAT_NUM_EVENTS];
+
+void statisticsInit()
+{
+    for (uint i = 0; i < STAT_NUM_EVENTS; i++)
+    {
+        thread_local_stats[i] = 0;
+    }
+    
+    if (gl_LocalInvocationID.x < STAT_NUM_EVENTS)
+    {
+        local_statistics[gl_LocalInvocationID.x] = 0;
+    }
+    barrier();
+}
+
+#define statisticsCount(counter_id) thread_local_stats[counter_id]++
+#define statisticsAdd(counter_id, value) thread_local_stats[counter_id] += (value)
+
+#define statisticsSync(statistics_buffer) \
+    for (uint i = 0; i < STAT_NUM_EVENTS; i++) \
+    { \
+        uint64_t subgroup_sum = subgroupAdd(uint64_t(thread_local_stats[i])); \
+        if (subgroupElect()) \
+        { \
+            atomicAdd(local_statistics[i], subgroup_sum); \
+        } \
+    } \
+    \
+    barrier(); \
+    \
+    if (gl_LocalInvocationID.x < STAT_NUM_EVENTS) \
+    { \
+        if (local_statistics[gl_LocalInvocationID.x] > 0) \
+        { \
+            atomicAdd(statistics_buffer[gl_LocalInvocationID.x], \
+                     local_statistics[gl_LocalInvocationID.x]); \
+        } \
+    }
+
 #else
-    #define statisticsCount(counter_id)
-    #define statisticsAdd(counter_id, value)
+
+void statisticsInit() {}
+#define statisticsCount(counter_id)
+#define statisticsAdd(counter_id, value)
+#define statisticsSync(statistics_buffer)
+
 #endif
 
 #endif

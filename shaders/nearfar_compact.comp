@@ -30,30 +30,33 @@ layout(push_constant) uniform PushConsts {
 } pc;
 
 void main() {
-    uint tid = gl_GlobalInvocationID.x;
-    if (tid >= counters[COUNTER_NUM_FAR]) return;
-
-    uint node = far[tid];
+    statisticsInit();
     
-    if (bit_vector_set(processed, node)) {
-        return;
+    uint tid = gl_GlobalInvocationID.x;
+
+    if (tid < counters[COUNTER_NUM_FAR]) {
+        uint node = far[tid];
+        
+        if (!bit_vector_set(processed, node)) {
+            statisticsCount(STAT_NEARFAR_COMPACT_NODES);
+
+            uint d = dist[node];
+
+            if (node == pc.dst_node) {
+                atomicMin(results[RESULT_BEST_DISTANCE], d);
+            }
+
+            uint threshold = pc.delta * (pc.phase + 1);
+
+            if (d < threshold) {
+                uint idx = atomicAdd(counters[COUNTER_NUM_NEAR], 1);
+                near[idx] = node;
+            } else {
+                uint idx = atomicAdd(counters[COUNTER_NUM_FAR_NEXT], 1);
+                next_far[idx] = node;
+            }
+        }
     }
-
-    statisticsCount(STAT_NEARFAR_COMPACT_NODES);
-
-    uint d = dist[node];
-
-    if (node == pc.dst_node) {
-        atomicMin(results[RESULT_BEST_DISTANCE], d);
-    }
-
-    uint threshold = pc.delta * (pc.phase + 1);
-
-    if (d < threshold) {
-        uint idx = atomicAdd(counters[COUNTER_NUM_NEAR], 1);
-        near[idx] = node;
-    } else {
-        uint idx = atomicAdd(counters[COUNTER_NUM_FAR_NEXT], 1);
-        next_far[idx] = node;
-    }
+    
+    statisticsSync(statistics_counters);
 }

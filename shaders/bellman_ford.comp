@@ -30,31 +30,36 @@ layout(push_constant) uniform PushConsts {
 #define INF_WEIGHT 0x3fffffff
 
 void main() {
+    statisticsInit();
+    
     uint u = gl_GlobalInvocationID.x;
-    if (u >= pc.n) return;
 
-    if (u == pc.dst_node) {
-        atomicMin(results[0], dist[u]);
-    }
+    if (u < pc.n) {
+        if (u == pc.dst_node) {
+            atomicMin(results[0], dist[u]);
+        }
 
-    uint du = dist[u];
-    if (du < INF_WEIGHT) {
-        uint local_changed = 0;
-        for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
-            statisticsCount(STAT_BELLMANFORD_EDGES_RELAXED);
-            
-            uint v = targets[eid];
-            uint w = weight[eid];
-            uint alt = du + w;
-            uint prev = atomicMin(dist[v], alt);
-            if (alt < prev) {
-                statisticsCount(STAT_BELLMANFORD_EDGES_IMPROVED);
-                local_changed++;
+        uint du = dist[u];
+        if (du < INF_WEIGHT) {
+            uint local_changed = 0;
+            for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
+                statisticsCount(STAT_BELLMANFORD_EDGES_RELAXED);
+                
+                uint v = targets[eid];
+                uint w = weight[eid];
+                uint alt = du + w;
+                uint prev = atomicMin(dist[v], alt);
+                if (alt < prev) {
+                    statisticsCount(STAT_BELLMANFORD_EDGES_IMPROVED);
+                    local_changed++;
+                }
+            }
+            uint all_changed = subgroupMax(local_changed);
+            if (subgroupElect() && all_changed > 0) {
+                atomicMax(changed, 1);
             }
         }
-        uint all_changed = subgroupMax(local_changed);
-        if (subgroupElect() && all_changed > 0) {
-            atomicMax(changed, 1);
-        }
     }
+    
+    statisticsSync(statistics_counters);
 }

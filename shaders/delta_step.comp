@@ -47,44 +47,49 @@ bool set_node_changed(uint node)
 }
 
 void main() {
+    statisticsInit();
+    
     uint u = gl_GlobalInvocationID.x;
-    if (u >= pc.n) return;
 
-    // Update best_distance if this thread is processing the destination node
-    if (u == pc.dst_node) {
-        atomicMin(results[0], dist[u]);
-    }
+    if (u < pc.n) {
+        // Update best_distance if this thread is processing the destination node
+        if (u == pc.dst_node) {
+            atomicMin(results[0], dist[u]);
+        }
 
-    uint du = dist[u];
-    if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta && was_node_changed(u)) {
-        uint local_changed = 0;
-        uint local_max = 0;
+        uint du = dist[u];
+        if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta && was_node_changed(u)) {
+            uint local_changed = 0;
+            uint local_max = 0;
 
-        for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
-            statisticsCount(STAT_DELTASTEP_EDGES_RELAXED);
-            
-            uint w = weight[eid];
-            if (w < pc.max_weight) {
-              uint v = targets[eid];
-              uint alt = du + w;
-              uint prev = atomicMin(dist[v], alt);
-              if (alt < prev) {
-                statisticsCount(STAT_DELTASTEP_EDGES_IMPROVED);
+            for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
+                statisticsCount(STAT_DELTASTEP_EDGES_RELAXED);
                 
-                // Update max_distance in results buffer
-                local_max = max(local_max, alt);
-                bool was_set = set_node_changed(v);
-                if (!was_set) local_changed++;
-              }
+                uint w = weight[eid];
+                if (w < pc.max_weight) {
+                  uint v = targets[eid];
+                  uint alt = du + w;
+                  uint prev = atomicMin(dist[v], alt);
+                  if (alt < prev) {
+                    statisticsCount(STAT_DELTASTEP_EDGES_IMPROVED);
+                    
+                    // Update max_distance in results buffer
+                    local_max = max(local_max, alt);
+                    bool was_set = set_node_changed(v);
+                    if (!was_set) local_changed++;
+                  }
+                }
+            }
+
+            uint all_changed = subgroupAdd(local_changed);
+            uint all_max = subgroupAdd(local_max);
+
+            if (subgroupElect() && all_changed > 0) {
+                atomicAdd(num_changed, all_changed);
+                atomicMax(results[1], all_max);
             }
         }
-
-        uint all_changed = subgroupAdd(local_changed);
-        uint all_max = subgroupAdd(local_max);
-
-        if (subgroupElect() && all_changed > 0) {
-            atomicAdd(num_changed, all_changed);
-            atomicMax(results[1], all_max);
-        }
     }
+    
+    statisticsSync(statistics_counters);
 }

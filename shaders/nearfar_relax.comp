@@ -31,36 +31,41 @@ layout(push_constant) uniform PushConsts {
 } pc;
 
 void main() {
+    statisticsInit();
+    
     uint tid = gl_GlobalInvocationID.x;
-    if (tid >= counters[COUNTER_NUM_NEAR]) return;
 
-    uint u = near[tid];
-    uint du = dist[u];
+    if (tid < counters[COUNTER_NUM_NEAR]) {
+        uint u = near[tid];
+        uint du = dist[u];
 
-    if (u == pc.dst_node) {
-        atomicMin(results[RESULT_BEST_DISTANCE], du);
-    }
+        if (u == pc.dst_node) {
+            atomicMin(results[RESULT_BEST_DISTANCE], du);
+        }
 
-    uint threshold = pc.delta * (pc.phase + 1);
+        uint threshold = pc.delta * (pc.phase + 1);
 
-    for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
-        statisticsCount(STAT_NEARFAR_RELAX_EDGES);
-        
-        uint v = targets[eid];
-        uint w = weight[eid];
-        uint new_dist = du + w;
-        uint old_dist = atomicMin(dist[v], new_dist);
-
-        if (new_dist < old_dist) {
-            statisticsCount(STAT_NEARFAR_RELAX_IMPROVED);
+        for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
+            statisticsCount(STAT_NEARFAR_RELAX_EDGES);
             
-            if (new_dist < threshold) {
-                uint idx = atomicAdd(counters[COUNTER_NUM_NEAR_NEXT], 1);
-                next_near[idx] = v;
-            } else {
-                uint idx = atomicAdd(counters[COUNTER_NUM_FAR], 1);
-                far[idx] = v;
+            uint v = targets[eid];
+            uint w = weight[eid];
+            uint new_dist = du + w;
+            uint old_dist = atomicMin(dist[v], new_dist);
+
+            if (new_dist < old_dist) {
+                statisticsCount(STAT_NEARFAR_RELAX_IMPROVED);
+                
+                if (new_dist < threshold) {
+                    uint idx = atomicAdd(counters[COUNTER_NUM_NEAR_NEXT], 1);
+                    next_near[idx] = v;
+                } else {
+                    uint idx = atomicAdd(counters[COUNTER_NUM_FAR], 1);
+                    far[idx] = v;
+                }
             }
         }
     }
+    
+    statisticsSync(statistics_counters);
 }
