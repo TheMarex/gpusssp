@@ -29,7 +29,6 @@ template <typename GraphT> class NearFar
     struct PrepareDispatchPushConsts
     {
         uint32_t workgroup_size;
-        uint32_t counter_index;
     };
 
   public:
@@ -408,6 +407,7 @@ template <typename GraphT> class NearFar
                     uint32_t relax_desc_idx = current_near_buffer * 2 + current_far_buffer;
                     auto relax_desc_set = relax_desc_sets[relax_desc_idx];
 
+                    // clear size of next_near
                     cmd_buf.fillBuffer(counters_buffer, 1 * sizeof(uint32_t), sizeof(uint32_t), 0);
                     cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                             vk::PipelineStageFlagBits::eComputeShader,
@@ -426,7 +426,7 @@ template <typename GraphT> class NearFar
                                                prepare_dispatch_desc_set,
                                                {});
 
-                    PrepareDispatchPushConsts prepare_pc{workgroup_size, 0};
+                    PrepareDispatchPushConsts prepare_pc{workgroup_size};
                     cmd_buf.pushConstants(prepare_dispatch_pipeline_layout,
                                           vk::ShaderStageFlagBits::eCompute,
                                           0,
@@ -469,6 +469,7 @@ template <typename GraphT> class NearFar
                         {},
                         {});
 
+                    // copy size of next_near to current
                     vk::BufferCopy copy_region{
                         1 * sizeof(uint32_t), 0 * sizeof(uint32_t), sizeof(uint32_t)};
                     cmd_buf.copyBuffer(counters_buffer, counters_buffer, 1, &copy_region);

@@ -1,5 +1,9 @@
 #version 450
 
+#extension GL_GOOGLE_include_directive : enable
+
+#include "nearfar_constants.glsl"
+
 layout(std430, binding = 0) readonly buffer Counters { uint counters[]; };
 layout(std430, binding = 1) writeonly buffer DispatchIndirect {
     uint num_groups_x;
@@ -9,14 +13,12 @@ layout(std430, binding = 1) writeonly buffer DispatchIndirect {
 
 layout(push_constant) uniform PushConsts {
     uint workgroup_size;
-    uint counter_index;
 } pc;
 
 layout(local_size_x = 1) in;
 
 void main() {
-    uint num_items = counters[pc.counter_index];
-    num_groups_x = (num_items + pc.workgroup_size - 1) / pc.workgroup_size;
+    num_groups_x = (counters[COUNTER_NUM_NEAR] + pc.workgroup_size - 1) / pc.workgroup_size;
     num_groups_y = 1;
     num_groups_z = 1;
 }
