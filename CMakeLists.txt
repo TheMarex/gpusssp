@@ -180,12 +180,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-# Testing support
-option(BUILD_TESTS "Build tests" ON)
-
-if(BUILD_TESTS)
-    enable_testing()
-    
+include(CTest)
+if(BUILD_TESTING)
     # Fetch Catch2
     include(FetchContent)
     FetchContent_Declare(
@@ -224,7 +220,6 @@ if(BUILD_TESTS)
     
     # Discover tests
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
-    include(CTest)
     include(Catch)
     catch_discover_tests(gpusssp_tests)
     
