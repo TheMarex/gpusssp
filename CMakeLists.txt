@@ -36,6 +36,7 @@ option(ENABLE_STATISTICS "Enable capturing algorithm statistics" OFF)
 # GPU SSSP executable
 add_executable(gpusssp
     src/gpusssp.cpp
+    src/common/logger.cpp
 )
 
 target_link_libraries(gpusssp
@@ -50,6 +51,7 @@ endif()
 # OSM to Graph converter executable
 add_executable(osm2graph
     src/osm2graph.cpp
+    src/common/logger.cpp
 )
 
 target_link_libraries(osm2graph
@@ -62,16 +64,19 @@ target_link_libraries(osm2graph
 # Generate queries executable
 add_executable(generate_queries
     experiments/generate_queries.cpp
+    src/common/logger.cpp
 )
 
 # Experiment Dijkstra
 add_executable(experiment_dijkstra
     experiments/experiment_dijkstra.cpp
+    src/common/logger.cpp
 )
 
 # Experiment DeltaStep
 add_executable(experiment_deltastep
     experiments/experiment_deltastep.cpp
+    src/common/logger.cpp
 )
 
 target_link_libraries(experiment_deltastep
@@ -86,6 +91,7 @@ endif()
 # Experiment BellmanFord
 add_executable(experiment_bellmanford
     experiments/experiment_bellmanford.cpp
+    src/common/logger.cpp
 )
 
 target_link_libraries(experiment_bellmanford
@@ -100,6 +106,7 @@ endif()
 # Experiment NearFar
 add_executable(experiment_nearfar
     experiments/experiment_nearfar.cpp
+    src/common/logger.cpp
 )
 
 target_link_libraries(experiment_nearfar
@@ -199,6 +206,7 @@ if(BUILD_TESTING)
         tests/test_nearfar.cpp
         tests/test_string_util.cpp
         tests/test_graph_metrics.cpp
+        src/common/logger.cpp
     )
     
     target_link_libraries(gpusssp_tests
