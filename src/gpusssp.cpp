@@ -67,9 +67,10 @@ int main(int argc, char **argv)
     // Parse command line arguments
     if (argc < 2 || argc > 6)
     {
-        common::log_error() << "Usage: " << argv[0]
-                            << " <graph_path> [SRC_LON,SRC_LAT DEST_LON,DEST_LAT] [DELTA] [NUM_QUERIES]"
-                            << std::endl;
+        common::log_error()
+            << "Usage: " << argv[0]
+            << " <graph_path> [SRC_LON,SRC_LAT DEST_LON,DEST_LAT] [DELTA] [NUM_QUERIES]"
+            << std::endl;
         common::log_error() << "Example: " << argv[0]
                             << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600 1" << std::endl;
         return 1;
@@ -222,9 +223,9 @@ int main(int argc, char **argv)
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_5 - time_4).count();
             if (dist != expected_dist)
             {
-                common::log_error() << "Error: DeltaStep distance " << src_nodes[i] << "->"
-                                    << dst_nodes[i] << " mismatch. expected: " << expected_dist
-                                    << " actual: " << dist << std::endl;
+                common::log_error()
+                    << "Error: DeltaStep distance " << src_nodes[i] << "->" << dst_nodes[i]
+                    << " mismatch. expected: " << expected_dist << " actual: " << dist << std::endl;
             }
             if (bf_dist != expected_dist)
             {
@@ -242,17 +243,19 @@ int main(int argc, char **argv)
         }
         auto num_reachable = num_queries - num_unreachable;
         common::log() << "Processed " << num_reachable << " queries (" << num_unreachable
-                      << " unreachable) in " << (dij_duration / num_reachable) << "ms/req (dijkstra) "
-                      << (ds_duration / num_reachable) << "ms/req (deltastep "
-                      << (dij_duration / (double)ds_duration) << ") " << (bf_duration / num_reachable)
-                      << "ms/req (bellmanford " << (dij_duration / (double)bf_duration) << ") "
+                      << " unreachable) in " << (dij_duration / num_reachable)
+                      << "ms/req (dijkstra) " << (ds_duration / num_reachable)
+                      << "ms/req (deltastep " << (dij_duration / (double)ds_duration) << ") "
+                      << (bf_duration / num_reachable) << "ms/req (bellmanford "
+                      << (dij_duration / (double)bf_duration) << ") "
                       << (nf_duration / num_reachable) << "ms/req (nearfar "
                       << (dij_duration / (double)nf_duration) << ")" << std::endl;
         common::log() << "Checksum: " << (checksum / num_reachable) << std::endl;
 
 #ifdef ENABLE_STATISTICS
         common::log() << "Statistics: " << std::endl
-                      << common::Statistics::get().summary() << gpu_statistics.summary() << std::endl;
+                      << common::Statistics::get().summary() << gpu_statistics.summary()
+                      << std::endl;
 #endif
     }
 

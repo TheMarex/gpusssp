@@ -34,8 +34,9 @@ class VulkanContext
 
         if (device_index >= physDevices.size())
         {
-            common::log_error() << "Error: device_index " << device_index << " is out of range. Found "
-                                << physDevices.size() << " device(s)." << std::endl;
+            common::log_error() << "Error: device_index " << device_index
+                                << " is out of range. Found " << physDevices.size() << " device(s)."
+                                << std::endl;
             m_instance.destroy();
             throw std::runtime_error("Invalid device_index value");
         }

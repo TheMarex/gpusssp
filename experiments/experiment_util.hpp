@@ -3,10 +3,14 @@
 
 #include "queries.hpp"
 
+#include <array>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <filesystem>
 #include <functional>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -19,6 +23,32 @@ inline uint64_t get_unix_timestamp()
     auto now = std::chrono::system_clock::now();
     auto duration = now.time_since_epoch();
     return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+}
+
+inline std::string get_git_sha()
+{
+    std::array<char, 128> buffer;
+    std::string result;
+    auto pipe_deleter = [](FILE *f)
+    {
+        if (f)
+            pclose(f);
+    };
+    std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(
+        popen("git rev-parse --short HEAD 2>/dev/null", "r"), pipe_deleter);
+    if (!pipe)
+    {
+        return "unknown";
+    }
+    while (std::fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
+    {
+        result += buffer.data();
+    }
+    if (!result.empty() && result.back() == '\n')
+    {
+        result.pop_back();
+    }
+    return result.empty() ? "unknown" : result;
 }
 
 inline std::string hash_queries_content(const std::vector<Query> &queries)
@@ -57,23 +87,40 @@ inline std::string hash_device_name(const std::string &device_name)
     return hex_stream.str();
 }
 
-inline std::string generate_experiment_filename(uint64_t timestamp,
-                                                const std::string &queries_hash,
-                                                const std::string &device_hash,
-                                                const std::string &params,
-                                                const std::string &algorithm)
+inline std::string extract_graph_name(const std::string &graph_base_path)
 {
+    std::filesystem::path path(graph_base_path);
+    return path.filename().string();
+}
+
+inline void create_experiment_directories(const std::string &xp_base_path,
+                                          const std::string &xp_name,
+                                          const std::string &graph_name,
+                                          const std::string &query_hash,
+                                          const std::string &device_id)
+{
+    std::filesystem::path dir_path = std::filesystem::path(xp_base_path) / xp_name / graph_name /
+                                     query_hash / device_id;
+    std::filesystem::create_directories(dir_path);
+}
+
+inline std::string generate_experiment_filename(const std::string &xp_base_path,
+                                                const std::string &xp_name,
+                                                const std::string &graph_name,
+                                                const std::string &query_hash,
+                                                const std::string &device_id,
+                                                uint64_t timestamp,
+                                                const std::string &variant)
+{
+    std::filesystem::path dir_path = std::filesystem::path(xp_base_path) / xp_name / graph_name /
+                                     query_hash / device_id;
+
+    std::string git_sha = get_git_sha();
     std::ostringstream filename;
-    filename << timestamp << "_" << queries_hash << "_" << device_hash << "_";
+    filename << timestamp << "_" << git_sha << "_" << variant << ".csv";
 
-    if (!params.empty())
-    {
-        filename << params << "_";
-    }
-
-    filename << algorithm << ".csv";
-
-    return filename.str();
+    std::filesystem::path full_path = dir_path / filename.str();
+    return full_path.string();
 }
 
 } // namespace gpusssp::experiments
