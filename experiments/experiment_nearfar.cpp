@@ -30,7 +30,7 @@ int main(int argc, char **argv)
     std::string graph_base_path = argv[1];
     std::string xp_base_path = argv[2];
 
-    std::string xp_name = "algorithm";
+    std::string xp_name = "compare_algorithm";
     if (argc >= 4)
     {
         xp_name = argv[3];
@@ -60,7 +60,8 @@ int main(int argc, char **argv)
     variant_stream << "nearfar_delta" << delta;
     std::string variant = variant_stream.str();
 
-    experiments::create_experiment_directories(xp_base_path, xp_name, graph_name, query_hash, device_id);
+    experiments::create_experiment_directories(
+        xp_base_path, xp_name, graph_name, query_hash, device_id);
     std::string output_filename = experiments::generate_experiment_filename(
         xp_base_path, xp_name, graph_name, query_hash, device_id, timestamp, variant);
     common::log() << "Output file: " << output_filename << std::endl;
