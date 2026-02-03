@@ -3,7 +3,9 @@ import seaborn as sns
 import numpy as np
 
 
-def plot_histogram(variant_dfs, title):
+def plot_histogram(variant_dfs, title, filter=None):
+    if filter is not None:
+        variant_dfs = {name: df for name, df in variant_dfs.items() if filter in name}
     fig, ax = plt.subplots(figsize=(10, 6))
     
     all_times = np.concatenate([df['time'].values for df in variant_dfs.values()])
