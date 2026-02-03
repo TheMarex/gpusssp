@@ -188,6 +188,29 @@ Parameters:
 
 The executable runs all three algorithms (Dijkstra, DeltaStep, BellmanFord) and compares results.
 
+### Running Experiments
+
+The project includes a unified experiment management tool `experiments/xps.py` for systematic benchmarking:
+
+**Create a new experiment:**
+```bash
+./experiments/xps.py create my_experiment
+```
+CAUTION: This changes the current branch to `experiment/my_experiment`.
+Verify if there are no staged changes that belong on `main` before doing that.
+
+**Add an instrumentation commit:**
+```bash
+./experiments/xps.py add "deltastep,nearfar" "delta=900,1800,3600 data=berlin"
+```
+
+**Run all experiments:**
+```bash
+./experiments/xps.py run
+```
+
+For detailed workflow and examples, see `experiments/README.md`.
+
 ## Data Flow
 
 1. **Input**: OSM PBF files (e.g., `data/berlin.osm.pbf`)
