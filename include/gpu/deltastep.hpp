@@ -92,10 +92,10 @@ template <typename GraphT> class DeltaStep
         // Binding 7: current min/max changed id buffer
         bindings.push_back(
             {7, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 7: previous min/max changed id buffer
+        // Binding 8: previous min/max changed id buffer
         bindings.push_back(
             {8, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 8: statistics counters
+        // Binding 9: statistics counters
         bindings.push_back(
             {9, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
 
