@@ -1,7 +1,8 @@
 #pragma once
 
+#include "common/logger.hpp"
+
 #include <cstdlib>
-#include <iostream>
 #include <vulkan/vulkan.hpp>
 
 namespace gpusssp::gpu
@@ -33,14 +34,14 @@ class VulkanContext
 
         if (device_index >= physDevices.size())
         {
-            std::cerr << "Error: device_index " << device_index << " is out of range. Found "
-                      << physDevices.size() << " device(s)." << std::endl;
+            common::log_error() << "Error: device_index " << device_index << " is out of range. Found "
+                                << physDevices.size() << " device(s)." << std::endl;
             m_instance.destroy();
             throw std::runtime_error("Invalid device_index value");
         }
         m_physical_device = physDevices[device_index];
-        std::cout << "Using device " << device_index << ": "
-                  << m_physical_device.getProperties().deviceName << std::endl;
+        common::log() << "Using device " << device_index << ": "
+                      << m_physical_device.getProperties().deviceName << std::endl;
 
         float queuePriority = 1.0f;
         vk::DeviceQueueCreateInfo queueInfo({}, 0, 1, &queuePriority);

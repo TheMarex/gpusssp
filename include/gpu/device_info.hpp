@@ -1,9 +1,9 @@
 #ifndef GPUSSSP_GPU_DEVICE_INFO_HPP
 #define GPUSSSP_GPU_DEVICE_INFO_HPP
 
+#include "common/logger.hpp"
 #include "gpu/vulkan_context.hpp"
 
-#include <iostream>
 #include <vulkan/vulkan.hpp>
 
 namespace gpusssp::gpu
@@ -31,21 +31,21 @@ inline void printDeviceInfo(const VulkanContext &context)
         }
     }
 
-    std::cout << "\n=== Device Information ===" << std::endl;
-    std::cout << "Device: " << properties.deviceName << std::endl;
+    common::log() << "\n=== Device Information ===" << std::endl;
+    common::log() << "Device: " << properties.deviceName << std::endl;
 
     uint32_t apiVersion = properties.apiVersion;
-    std::cout << "Max Vulkan Version: " << VK_API_VERSION_MAJOR(apiVersion) << "."
-              << VK_API_VERSION_MINOR(apiVersion) << "." << VK_API_VERSION_PATCH(apiVersion)
-              << std::endl;
+    common::log() << "Max Vulkan Version: " << VK_API_VERSION_MAJOR(apiVersion) << "."
+                  << VK_API_VERSION_MINOR(apiVersion) << "." << VK_API_VERSION_PATCH(apiVersion)
+                  << std::endl;
 
-    std::cout << "Subgroup Size: " << subgroupProps.subgroupSize << " threads" << std::endl;
+    common::log() << "Subgroup Size: " << subgroupProps.subgroupSize << " threads" << std::endl;
 
-    std::cout << "Max Workgroup Size: " << properties.limits.maxComputeWorkGroupInvocations
-              << " invocations" << std::endl;
+    common::log() << "Max Workgroup Size: " << properties.limits.maxComputeWorkGroupInvocations
+                  << " invocations" << std::endl;
 
-    std::cout << "Device Memory: " << (totalMemory / 1024 / 1024) << " MB" << std::endl;
-    std::cout << "==========================\n" << std::endl;
+    common::log() << "Device Memory: " << (totalMemory / 1024 / 1024) << " MB" << std::endl;
+    common::log() << "==========================\n" << std::endl;
 }
 
 } // namespace gpusssp::gpu

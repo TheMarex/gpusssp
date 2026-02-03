@@ -71,7 +71,7 @@ inline std::ostream &log_error() { return Logger::get().log(LogLevel::ERROR); }
 #ifdef NDEBUG
 inline NullStream log_debug() { return NullStream(); }
 #else
-inline std::ostream &log_debug() { return Logger::instance().log(LogLevel::DEBUG); }
+inline std::ostream &log_debug() { return Logger::get().log(LogLevel::DEBUG); }
 #endif
 
 } // namespace common

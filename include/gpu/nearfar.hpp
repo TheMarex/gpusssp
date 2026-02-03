@@ -4,14 +4,13 @@
 #include <vulkan/vulkan.hpp>
 
 #include "common/constants.hpp"
+#include "common/logger.hpp"
 #include "common/statistics.hpp"
 #include "gpu/graph_buffers.hpp"
 #include "gpu/memory.hpp"
 #include "gpu/nearfar_buffers.hpp"
 #include "gpu/shader.hpp"
 #include "gpu/statistics.hpp"
-
-#include <iostream>
 
 namespace gpusssp::gpu
 {
@@ -224,8 +223,8 @@ template <typename GraphT> class NearFar
             while (num_near > 0)
             {
                 common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
-                // std::cout << phase << " " << num_near << " best distance " << *gpu_best_distance
-                //           << std::endl;
+                common::log_debug() << phase << " " << num_near << " best distance "
+                                    << *gpu_best_distance << std::endl;
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
                 for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
@@ -334,8 +333,8 @@ template <typename GraphT> class NearFar
                 break;
             }
 
-            // std::cout << phase << " far " << num_far << " best distance " << *gpu_best_distance
-            //           << std::endl;
+            common::log_debug() << phase << " far " << num_far << " best distance "
+                                << *gpu_best_distance << std::endl;
 
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
@@ -394,8 +393,8 @@ template <typename GraphT> class NearFar
             num_near = *gpu_num_near;
             num_far = *gpu_num_far;
 
-            // std::cout << phase << " compacted to: far " << num_far << " near " << num_near
-            //           << std::endl;
+            common::log_debug() << phase << " compacted to: far " << num_far << " near " << num_near
+                                << std::endl;
 
             common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_COMPACT_DURATION,
                                            compact_start);

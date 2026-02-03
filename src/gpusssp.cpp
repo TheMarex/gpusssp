@@ -1,7 +1,6 @@
 #include <cassert>
 #include <chrono>
 #include <cstdlib>
-#include <iostream>
 #include <optional>
 #include <random>
 #include <vector>
@@ -13,6 +12,7 @@
 #include "common/files.hpp"
 #include "common/graph_metrics.hpp"
 #include "common/id_queue.hpp"
+#include "common/logger.hpp"
 #include "common/nearest_neighbour.hpp"
 #include "common/weighted_graph.hpp"
 
@@ -67,11 +67,11 @@ int main(int argc, char **argv)
     // Parse command line arguments
     if (argc < 2 || argc > 6)
     {
-        std::cerr << "Usage: " << argv[0]
-                  << " <graph_path> [SRC_LON,SRC_LAT DEST_LON,DEST_LAT] [DELTA] [NUM_QUERIES]"
-                  << std::endl;
-        std::cerr << "Example: " << argv[0]
-                  << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600 1" << std::endl;
+        common::log_error() << "Usage: " << argv[0]
+                            << " <graph_path> [SRC_LON,SRC_LAT DEST_LON,DEST_LAT] [DELTA] [NUM_QUERIES]"
+                            << std::endl;
+        common::log_error() << "Example: " << argv[0]
+                            << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600 1" << std::endl;
         return 1;
     }
 
@@ -99,7 +99,7 @@ int main(int argc, char **argv)
         num_queries = std::stoi(argv[5]);
     }
 
-    std::cout << "Loading graph from: " << graph_path << std::endl;
+    common::log() << "Loading graph from: " << graph_path << std::endl;
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_path);
     auto coordinates = common::files::read_coordinates(graph_path);
 
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
     {
         delta = std::stoi(argv[4]);
     }
-    std::cout << "Using delta value " << delta << std::endl;
+    common::log() << "Using delta value " << delta << std::endl;
 
     auto num_heavy = 0u;
     for (uint32_t eid = 0u; eid < graph.num_edges(); ++eid)
@@ -116,8 +116,8 @@ int main(int argc, char **argv)
         num_heavy += graph.weight(eid) >= delta;
     }
 
-    std::cout << "Graph loaded: " << graph.num_nodes() << " nodes, " << graph.num_edges()
-              << " edges (" << num_heavy << " heavy)" << std::endl;
+    common::log() << "Graph loaded: " << graph.num_nodes() << " nodes, " << graph.num_edges()
+                  << " edges (" << num_heavy << " heavy)" << std::endl;
 
     common::NearestNeighbour nn(coordinates);
 
@@ -222,37 +222,37 @@ int main(int argc, char **argv)
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_5 - time_4).count();
             if (dist != expected_dist)
             {
-                std::cout << "Error: DeltaStep distance " << src_nodes[i] << "->" << dst_nodes[i]
-                          << " mismatch. expected: " << expected_dist << " actual: " << dist
-                          << std::endl;
+                common::log_error() << "Error: DeltaStep distance " << src_nodes[i] << "->"
+                                    << dst_nodes[i] << " mismatch. expected: " << expected_dist
+                                    << " actual: " << dist << std::endl;
             }
             if (bf_dist != expected_dist)
             {
-                std::cout << "Error: BellmanFord distance " << src_nodes[i] << "->" << dst_nodes[i]
-                          << " mismatch. expected: " << expected_dist << " actual: " << bf_dist
-                          << std::endl;
+                common::log_error() << "Error: BellmanFord distance " << src_nodes[i] << "->"
+                                    << dst_nodes[i] << " mismatch. expected: " << expected_dist
+                                    << " actual: " << bf_dist << std::endl;
             }
             if (nf_dist != expected_dist)
             {
-                std::cout << "Error: NearFar distance " << src_nodes[i] << "->" << dst_nodes[i]
-                          << " mismatch. expected: " << expected_dist << " actual: " << nf_dist
-                          << std::endl;
+                common::log_error() << "Error: NearFar distance " << src_nodes[i] << "->"
+                                    << dst_nodes[i] << " mismatch. expected: " << expected_dist
+                                    << " actual: " << nf_dist << std::endl;
             }
             checksum += dist;
         }
         auto num_reachable = num_queries - num_unreachable;
-        std::cout << "Processed " << num_reachable << " queries (" << num_unreachable
-                  << " unreachable) in " << (dij_duration / num_reachable) << "ms/req (dijkstra) "
-                  << (ds_duration / num_reachable) << "ms/req (deltastep "
-                  << (dij_duration / (double)ds_duration) << ") " << (bf_duration / num_reachable)
-                  << "ms/req (bellmanford " << (dij_duration / (double)bf_duration) << ") "
-                  << (nf_duration / num_reachable) << "ms/req (nearfar "
-                  << (dij_duration / (double)nf_duration) << ")" << std::endl;
-        std::cout << "Checksum: " << (checksum / num_reachable) << std::endl;
+        common::log() << "Processed " << num_reachable << " queries (" << num_unreachable
+                      << " unreachable) in " << (dij_duration / num_reachable) << "ms/req (dijkstra) "
+                      << (ds_duration / num_reachable) << "ms/req (deltastep "
+                      << (dij_duration / (double)ds_duration) << ") " << (bf_duration / num_reachable)
+                      << "ms/req (bellmanford " << (dij_duration / (double)bf_duration) << ") "
+                      << (nf_duration / num_reachable) << "ms/req (nearfar "
+                      << (dij_duration / (double)nf_duration) << ")" << std::endl;
+        common::log() << "Checksum: " << (checksum / num_reachable) << std::endl;
 
 #ifdef ENABLE_STATISTICS
-        std::cout << "Statistics: " << std::endl
-                  << common::Statistics::get().summary() << gpu_statistics.summary() << std::endl;
+        common::log() << "Statistics: " << std::endl
+                      << common::Statistics::get().summary() << gpu_statistics.summary() << std::endl;
 #endif
     }
 

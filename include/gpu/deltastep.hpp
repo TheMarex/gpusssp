@@ -4,13 +4,12 @@
 #include <vulkan/vulkan.hpp>
 
 #include "common/constants.hpp"
+#include "common/logger.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
 #include "gpu/memory.hpp"
 #include "gpu/shader.hpp"
 #include "gpu/statistics.hpp"
-
-#include <iostream>
 
 namespace gpusssp::gpu
 {
@@ -256,9 +255,9 @@ template <typename GraphT> class DeltaStep
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
 
-                // std::cout << bucket << " changed " << *gpu_prev_min_changed_id << "-"
-                //           << *gpu_prev_max_changed_id << " max " << *gpu_max_distance << " best "
-                //           << *gpu_best_distance << std::endl;
+                common::log_debug() << bucket << " changed " << *gpu_prev_min_changed_id << "-"
+                                    << *gpu_prev_max_changed_id << " max " << *gpu_max_distance
+                                    << " best " << *gpu_best_distance << std::endl;
 
                 // start a new command buffer either for next iteration here or the heavy pass
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
@@ -300,9 +299,9 @@ template <typename GraphT> class DeltaStep
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
             queue.waitIdle();
 
-            // std::cout << bucket << " heavy changed " << *gpu_current_min_changed_id << "-"
-            //           << *gpu_current_max_changed_id << " max " << *gpu_max_distance << " best "
-            //           << *gpu_best_distance << std::endl;
+            common::log_debug() << bucket << " heavy changed " << *gpu_current_min_changed_id << "-"
+                                << *gpu_current_max_changed_id << " max " << *gpu_max_distance
+                                << " best " << *gpu_best_distance << std::endl;
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {

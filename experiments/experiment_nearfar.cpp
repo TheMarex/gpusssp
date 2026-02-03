@@ -1,5 +1,6 @@
 #include "common/csv.hpp"
 #include "common/files.hpp"
+#include "common/logger.hpp"
 #include "common/statistics.hpp"
 #include "common/weighted_graph.hpp"
 #include "experiment_util.hpp"
@@ -11,7 +12,6 @@
 #include "gpu/vulkan_context.hpp"
 
 #include <chrono>
-#include <iostream>
 #include <sstream>
 #include <vector>
 #include <vulkan/vulkan.hpp>
@@ -22,7 +22,7 @@ int main(int argc, char **argv)
 {
     if (argc < 2 || argc > 3)
     {
-        std::cerr << "Usage: " << argv[0] << " <base_path> [delta]" << std::endl;
+        common::log_error() << "Usage: " << argv[0] << " <base_path> [delta]" << std::endl;
         return 1;
     }
 
@@ -34,13 +34,13 @@ int main(int argc, char **argv)
         delta = std::stoi(argv[2]);
     }
 
-    std::cout << "Loading graph from: " << base_path << std::endl;
+    common::log() << "Loading graph from: " << base_path << std::endl;
     auto graph = common::files::read_weighted_graph<uint32_t>(base_path);
-    std::cout << "Graph loaded: " << graph.num_nodes() << " nodes." << std::endl;
+    common::log() << "Graph loaded: " << graph.num_nodes() << " nodes." << std::endl;
 
-    std::cout << "Loading queries from: " << base_path << "/queries.csv" << std::endl;
+    common::log() << "Loading queries from: " << base_path << "/queries.csv" << std::endl;
     auto queries = experiments::read_queries(base_path);
-    std::cout << "Loaded " << queries.size() << " queries." << std::endl;
+    common::log() << "Loaded " << queries.size() << " queries." << std::endl;
 
     gpu::VulkanContext vk_ctx("NearFarExperiment", gpu::detail::selectDevice());
     uint64_t timestamp = experiments::get_unix_timestamp();
@@ -50,7 +50,7 @@ int main(int argc, char **argv)
     params_stream << "delta" << delta;
     std::string output_filename = experiments::generate_experiment_filename(
         timestamp, queries_hash, device_hash, params_stream.str(), "nearfar");
-    std::cout << "Output file: " << output_filename << std::endl;
+    common::log() << "Output file: " << output_filename << std::endl;
 
     auto device = vk_ctx.device();
     auto queue = vk_ctx.queue();
@@ -60,7 +60,7 @@ int main(int argc, char **argv)
         output_filename);
     writer.write_header({"from_node_id", "to_node_id", "rank", "distance", "time"});
 
-    std::cout << "Running queries with delta = " << delta << "..." << std::endl;
+    common::log() << "Running queries with delta = " << delta << "..." << std::endl;
 
     {
         gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool, queue);
@@ -88,17 +88,17 @@ int main(int argc, char **argv)
             progress_counter++;
             if (progress_counter % 100 == 0)
             {
-                std::cout << "Processed " << progress_counter << " queries." << std::endl;
+                common::log() << "Processed " << progress_counter << " queries." << std::endl;
             }
         }
 
-        std::cout << "Done." << std::endl;
-        std::cout << "Processed " << queries.size() << " queries in "
-                  << (total_duration / queries.size()) << "us/req (average)" << std::endl;
+        common::log() << "Done." << std::endl;
+        common::log() << "Processed " << queries.size() << " queries in "
+                      << (total_duration / queries.size()) << "us/req (average)" << std::endl;
 
 #ifdef ENABLE_STATISTICS
-        std::cout << "Statistics: " << std::endl
-                  << common::Statistics::get().summary() << statistics.summary() << std::endl;
+        common::log() << "Statistics: " << std::endl
+                      << common::Statistics::get().summary() << statistics.summary() << std::endl;
 #endif
     }
 
