@@ -1,0 +1,29 @@
+#version 450
+
+layout(local_size_x = 1) in;
+
+// Previous min/max values
+layout(std430, binding = 0) readonly buffer MinMaxChanged { uint min_max_changed_id[]; }; // [0] = min, [1] = max
+// Dispatch arguments for next run
+layout(std430, binding = 1) writeonly buffer DispatchIndirect {
+    uint num_groups_x;
+    uint num_groups_y;
+    uint num_groups_z;
+};
+
+layout(push_constant) uniform PushConsts {
+    uint workgroup_size;
+} pc;
+
+void main() {
+    uint min_id = min_max_changed_id[0];
+    uint max_id = min_max_changed_id[1];
+    if (min_id > max_id) {
+        num_groups_x = 0;
+    } else {
+        uint count = max_id - min_id + 1;
+        num_groups_x = (count + pc.workgroup_size - 1) / pc.workgroup_size;
+    }
+    num_groups_y = 1;
+    num_groups_z = 1;
+}

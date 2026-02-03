@@ -21,10 +21,12 @@ layout(std430, binding = 4) coherent buffer Results { uint results[]; };
 layout(std430, binding = 5) coherent buffer CurrentChanged { uint current_changed[]; };
 // Nodes modified in the previous iteration (read from)
 layout(std430, binding = 6) readonly buffer PreviousChanged { uint previous_changed[]; };
-// Counter for number of changed nodes
-layout(std430, binding = 7) coherent buffer NumChanged { uint num_changed; };
+// Min/max of changed node IDs from the current iteration (written to)
+layout(std430, binding = 7) coherent buffer CurrentMinMaxChanged { uint current_min_max_changed_id[]; }; // [0] = min, [1] = max
+// Min/max of changed node IDs from the previous iteration (read from)
+layout(std430, binding = 8) readonly buffer PreviousMinMaxChanged { uint previous_min_max_changed_id[]; }; // [0] = min, [1] = max
 // Statistics counters
-layout(std430, binding = 8) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
+layout(std430, binding = 9) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
@@ -32,7 +34,6 @@ layout(push_constant) uniform PushConsts {
     uint n;
     uint bucket_idx;
     uint delta;
-    uint iteration;
     uint max_weight;
 } pc;
 
@@ -49,9 +50,9 @@ bool set_node_changed(uint node)
 void main() {
     statisticsInit();
     
-    uint u = gl_GlobalInvocationID.x;
+    uint u = previous_min_max_changed_id[0] + gl_GlobalInvocationID.x;
 
-    if (u < pc.n) {
+    if (u <= previous_min_max_changed_id[1]) {
         // Update best_distance if this thread is processing the destination node
         if (u == pc.dst_node) {
             atomicMin(results[0], dist[u]);
@@ -59,8 +60,9 @@ void main() {
 
         uint du = dist[u];
         if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta && was_node_changed(u)) {
-            uint local_changed = 0;
             uint local_max = 0;
+            uint local_min_changed_id = 0xFFFFFFFF;
+            uint local_max_changed_id = 0;
 
             for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
                 statisticsCount(STAT_DELTASTEP_EDGES_RELAXED);
@@ -76,17 +78,22 @@ void main() {
                     // Update max_distance in results buffer
                     local_max = max(local_max, alt);
                     bool was_set = set_node_changed(v);
-                    if (!was_set) local_changed++;
+                    if (!was_set) {
+                        local_min_changed_id = min(local_min_changed_id, v);
+                        local_max_changed_id = max(local_max_changed_id, v);
+                    }
                   }
                 }
             }
 
-            uint all_changed = subgroupAdd(local_changed);
-            uint all_max = subgroupAdd(local_max);
+            uint subgroup_max_dist = subgroupMax(local_max);
+            uint subgroup_min_id = subgroupMin(local_min_changed_id);
+            uint subgroup_max_id = subgroupMax(local_max_changed_id);
 
-            if (subgroupElect() && all_changed > 0) {
-                atomicAdd(num_changed, all_changed);
-                atomicMax(results[1], all_max);
+            if (subgroupElect() && subgroup_min_id < pc.n) {
+                atomicMax(results[1], subgroup_max_dist);
+                atomicMin(current_min_max_changed_id[0], subgroup_min_id);
+                atomicMax(current_min_max_changed_id[1], subgroup_max_id);
             }
         }
     }

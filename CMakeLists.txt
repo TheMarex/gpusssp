@@ -137,6 +137,7 @@ function(add_compute_shader SHADER_NAME)
 endfunction()
 
 add_compute_shader(delta_step)
+add_compute_shader(deltastep_prepare_dispatch)
 add_compute_shader(bellman_ford)
 add_compute_shader(nearfar_relax)
 add_compute_shader(nearfar_compact)

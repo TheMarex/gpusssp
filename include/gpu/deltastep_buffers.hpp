@@ -29,9 +29,19 @@ class DeltaStepBuffers
             device, num_blocks, vk::BufferUsageFlagBits::eStorageBuffer);
         buf_changed_1 = gpu::create_exclusive_buffer<uint32_t>(
             device, num_blocks, vk::BufferUsageFlagBits::eStorageBuffer);
-        // Separate buffer for the number of changed nodes counter
-        buf_num_changed = gpu::create_exclusive_buffer<uint32_t>(
-            device, 1, vk::BufferUsageFlagBits::eStorageBuffer);
+        // Min/max of changed node IDs: [0] = min, [1] = max
+        buf_min_max_changed_id_0 = gpu::create_exclusive_buffer<uint32_t>(
+            device,
+            2,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
+        buf_min_max_changed_id_1 = gpu::create_exclusive_buffer<uint32_t>(
+            device,
+            2,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
+        buf_dispatch_deltastep = gpu::create_exclusive_buffer<uint32_t>(
+            device,
+            3,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eIndirectBuffer);
 
         mem_dist = gpu::alloc_and_bind(
             device, mem_props, buf_dist, vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -44,40 +54,67 @@ class DeltaStepBuffers
             device, mem_props, buf_changed_0, vk::MemoryPropertyFlagBits::eDeviceLocal);
         mem_changed_1 = gpu::alloc_and_bind(
             device, mem_props, buf_changed_1, vk::MemoryPropertyFlagBits::eDeviceLocal);
-        mem_num_changed = gpu::alloc_and_bind(device,
-                                              mem_props,
-                                              buf_num_changed,
-                                              vk::MemoryPropertyFlagBits::eHostVisible |
-                                                  vk::MemoryPropertyFlagBits::eHostCoherent);
+        mem_min_max_changed_id_0 =
+            gpu::alloc_and_bind(device,
+                                mem_props,
+                                buf_min_max_changed_id_0,
+                                vk::MemoryPropertyFlagBits::eHostVisible |
+                                    vk::MemoryPropertyFlagBits::eHostCoherent);
+        mem_min_max_changed_id_1 =
+            gpu::alloc_and_bind(device,
+                                mem_props,
+                                buf_min_max_changed_id_1,
+                                vk::MemoryPropertyFlagBits::eHostVisible |
+                                    vk::MemoryPropertyFlagBits::eHostCoherent);
+        mem_dispatch_deltastep =
+            gpu::alloc_and_bind(device,
+                                mem_props,
+                                buf_dispatch_deltastep,
+                                vk::MemoryPropertyFlagBits::eDeviceLocal);
 
         gpu_results = (uint32_t *)device.mapMemory(mem_results, 0, 2 * sizeof(uint32_t));
-        gpu_num_changed = (uint32_t *)device.mapMemory(mem_num_changed, 0, sizeof(uint32_t));
+        gpu_min_max_changed_id_0 =
+            (uint32_t *)device.mapMemory(mem_min_max_changed_id_0, 0, 2 * sizeof(uint32_t));
+        gpu_min_max_changed_id_1 =
+            (uint32_t *)device.mapMemory(mem_min_max_changed_id_1, 0, 2 * sizeof(uint32_t));
     }
 
     ~DeltaStepBuffers()
     {
         device.unmapMemory(mem_results);
-        device.unmapMemory(mem_num_changed);
+        device.unmapMemory(mem_min_max_changed_id_0);
+        device.unmapMemory(mem_min_max_changed_id_1);
         device.destroyBuffer(buf_dist);
         device.destroyBuffer(buf_results);
         device.destroyBuffer(buf_changed_0);
         device.destroyBuffer(buf_changed_1);
-        device.destroyBuffer(buf_num_changed);
+        device.destroyBuffer(buf_min_max_changed_id_0);
+        device.destroyBuffer(buf_min_max_changed_id_1);
+        device.destroyBuffer(buf_dispatch_deltastep);
         device.freeMemory(mem_dist);
         device.freeMemory(mem_results);
         device.freeMemory(mem_changed_0);
         device.freeMemory(mem_changed_1);
-        device.freeMemory(mem_num_changed);
+        device.freeMemory(mem_min_max_changed_id_0);
+        device.freeMemory(mem_min_max_changed_id_1);
+        device.freeMemory(mem_dispatch_deltastep);
     }
 
     uint32_t *best_distance() { return gpu_results; }
     uint32_t *max_distance() { return gpu_results + 1; }
 
-    uint32_t *num_changed() { return gpu_num_changed; }
+    uint32_t *min_max_changed_id_0() { return gpu_min_max_changed_id_0; }
+    uint32_t *min_max_changed_id_1() { return gpu_min_max_changed_id_1; }
 
-    std::array<const vk::Buffer, 5> buffers() const
+    std::array<const vk::Buffer, 7> buffers() const
     {
-        return {buf_dist, buf_results, buf_changed_0, buf_changed_1, buf_num_changed};
+        return {buf_dist,
+                buf_results,
+                buf_changed_0,
+                buf_changed_1,
+                buf_min_max_changed_id_0,
+                buf_min_max_changed_id_1,
+                buf_dispatch_deltastep};
     }
 
   private:
@@ -85,16 +122,21 @@ class DeltaStepBuffers
     vk::Buffer buf_results;
     vk::Buffer buf_changed_0;
     vk::Buffer buf_changed_1;
-    vk::Buffer buf_num_changed;
+    vk::Buffer buf_min_max_changed_id_0;
+    vk::Buffer buf_min_max_changed_id_1;
+    vk::Buffer buf_dispatch_deltastep;
 
     vk::DeviceMemory mem_dist;
     vk::DeviceMemory mem_results;
     vk::DeviceMemory mem_changed_0;
     vk::DeviceMemory mem_changed_1;
-    vk::DeviceMemory mem_num_changed;
+    vk::DeviceMemory mem_min_max_changed_id_0;
+    vk::DeviceMemory mem_min_max_changed_id_1;
+    vk::DeviceMemory mem_dispatch_deltastep;
 
     uint32_t *gpu_results;
-    uint32_t *gpu_num_changed;
+    uint32_t *gpu_min_max_changed_id_0;
+    uint32_t *gpu_min_max_changed_id_1;
 
     vk::Device &device;
 };
