@@ -7,6 +7,7 @@
 #include "common/shader.hpp"
 #include "gpu/bellmanford_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/memory.hpp"
 #include "gpu/statistics.hpp"
 
 #include <iostream>
@@ -40,83 +41,24 @@ template <typename GraphT> class BellmanFord
         device.destroyShaderModule(shader);
         device.destroyPipeline(pipeline);
         device.destroyPipelineLayout(pipeline_layout);
-        device.destroyDescriptorSetLayout(desc_set_layout);
-        device.destroyDescriptorPool(desc_pool);
+        device.destroyDescriptorSetLayout(desc_bundle.layout);
+        device.destroyDescriptorPool(desc_bundle.pool);
     }
 
     void initialize_descriptor_sets()
     {
-        auto graph_bufs = graph_buffers.buffers();
+        auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto [dist_buffer, results_buffer, changed_buffer] = bellmanford_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
-        // Create bindings for all buffers
-        std::vector<vk::DescriptorSetLayoutBinding> bindings;
-        // Bindings 0-2: Graph buffers (first_edges, targets, weight)
-        for (auto i = 0u; i < graph_bufs.size(); i++)
-        {
-            bindings.push_back(
-                {i, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        }
-        // Binding 3: dist buffer
-        bindings.push_back(
-            {3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 4: results buffer (best_distance)
-        bindings.push_back(
-            {4, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 5: changed flag
-        bindings.push_back(
-            {5, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 6: statistics counters
-        bindings.push_back(
-            {6, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-
-        desc_set_layout =
-            device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
-
-        // Create descriptor pool
-        vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer,
-                                        (uint32_t)bindings.size()};
-        desc_pool = device.createDescriptorPool({{}, 1, 1, &poolSize});
-
-        auto desc_sets = device.allocateDescriptorSets({desc_pool, 1, &desc_set_layout});
-        desc_set = desc_sets[0];
-
-        // Update descriptor set
-        std::vector<vk::DescriptorBufferInfo> dbis;
-        dbis.reserve(7);
-
-        for (auto i = 0u; i < graph_bufs.size(); ++i)
-        {
-            dbis.push_back({graph_bufs[i], 0, VK_WHOLE_SIZE});
-        }
-        dbis.push_back({dist_buffer, 0, VK_WHOLE_SIZE});
-        dbis.push_back({results_buffer, 0, VK_WHOLE_SIZE});
-        dbis.push_back({changed_buffer, 0, VK_WHOLE_SIZE});
-        dbis.push_back({statistics_buffer, 0, VK_WHOLE_SIZE});
-
-        std::vector<vk::WriteDescriptorSet> writes;
-        for (auto i = 0u; i < graph_bufs.size(); ++i)
-        {
-            writes.push_back({desc_set,
-                              i,
-                              0,
-                              1,
-                              vk::DescriptorType::eStorageBuffer,
-                              nullptr,
-                              &dbis[i],
-                              nullptr});
-        }
-        writes.push_back(
-            {desc_set, 3, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbis[3], nullptr});
-        writes.push_back(
-            {desc_set, 4, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbis[4], nullptr});
-        writes.push_back(
-            {desc_set, 5, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbis[5], nullptr});
-        writes.push_back(
-            {desc_set, 6, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &dbis[6], nullptr});
-
-        device.updateDescriptorSets(writes, {});
+        desc_bundle = create_descriptor_sets(device,
+                                             {{first_edges_buffer,
+                                               targets_buffer,
+                                               weights_buffer,
+                                               dist_buffer,
+                                               results_buffer,
+                                               changed_buffer,
+                                               statistics_buffer}});
     }
 
     void initialize()
@@ -127,7 +69,7 @@ template <typename GraphT> class BellmanFord
         shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
 
         vk::PushConstantRange pcRange{vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};
-        pipeline_layout = device.createPipelineLayout({{}, 1, &desc_set_layout, 1, &pcRange});
+        pipeline_layout = device.createPipelineLayout({{}, 1, &desc_bundle.layout, 1, &pcRange});
 
         // Setup specialization constant for workgroup size
         vk::SpecializationMapEntry spec_entry{0, 0, sizeof(uint32_t)};
@@ -182,7 +124,7 @@ template <typename GraphT> class BellmanFord
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
             cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
             cmd_buf.bindDescriptorSets(
-                vk::PipelineBindPoint::eCompute, pipeline_layout, 0, desc_set, {});
+                vk::PipelineBindPoint::eCompute, pipeline_layout, 0, desc_bundle.descriptor_sets[0], {});
 
             for (unsigned i = 0; i < BATCH_SIZE; ++i)
             {
@@ -229,9 +171,7 @@ template <typename GraphT> class BellmanFord
     BellmanFordBuffers &bellmanford_buffers;
     Statistics &statistics;
 
-    vk::DescriptorSet desc_set;
-    vk::DescriptorSetLayout desc_set_layout;
-    vk::DescriptorPool desc_pool;
+    DescriptorSetBundle desc_bundle;
     vk::ShaderModule shader;
     vk::Pipeline pipeline;
     vk::PipelineLayout pipeline_layout;

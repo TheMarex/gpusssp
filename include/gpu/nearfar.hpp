@@ -7,6 +7,7 @@
 #include "common/shader.hpp"
 #include "common/statistics.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/memory.hpp"
 #include "gpu/nearfar_buffers.hpp"
 #include "gpu/statistics.hpp"
 
@@ -47,25 +48,25 @@ template <typename GraphT> class NearFar
         device.destroyShaderModule(relax_shader);
         device.destroyPipeline(relax_pipeline);
         device.destroyPipelineLayout(relax_pipeline_layout);
-        device.destroyDescriptorSetLayout(relax_desc_set_layout);
-        device.destroyDescriptorPool(relax_desc_pool);
+        device.destroyDescriptorSetLayout(relax_desc_bundle.layout);
+        device.destroyDescriptorPool(relax_desc_bundle.pool);
 
         device.destroyShaderModule(compact_shader);
         device.destroyPipeline(compact_pipeline);
         device.destroyPipelineLayout(compact_pipeline_layout);
-        device.destroyDescriptorSetLayout(compact_desc_set_layout);
-        device.destroyDescriptorPool(compact_desc_pool);
+        device.destroyDescriptorSetLayout(compact_desc_bundle.layout);
+        device.destroyDescriptorPool(compact_desc_bundle.pool);
 
         device.destroyShaderModule(prepare_dispatch_shader);
         device.destroyPipeline(prepare_dispatch_pipeline);
         device.destroyPipelineLayout(prepare_dispatch_pipeline_layout);
-        device.destroyDescriptorSetLayout(prepare_dispatch_desc_set_layout);
-        device.destroyDescriptorPool(prepare_dispatch_desc_pool);
+        device.destroyDescriptorSetLayout(prepare_dispatch_desc_bundle.layout);
+        device.destroyDescriptorPool(prepare_dispatch_desc_bundle.pool);
     }
 
     void initialize_relax_descriptor_sets()
     {
-        auto graph_bufs = graph_buffers.buffers();
+        auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto [dist_buffer,
               results_buffer,
               near_0_buffer,
@@ -77,72 +78,48 @@ template <typename GraphT> class NearFar
               processed_buffer] = nearfar_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
-        std::vector<vk::DescriptorSetLayoutBinding> bindings;
-        for (auto i = 0u; i < 10; i++)
-        {
-            bindings.push_back(
-                {i, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        }
-
-        relax_desc_set_layout =
-            device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
-
-        vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer,
-                                        (uint32_t)(bindings.size() * 4)};
-        relax_desc_pool = device.createDescriptorPool({{}, 4, 1, &poolSize});
-
-        std::vector<vk::DescriptorSetLayout> layouts = {relax_desc_set_layout,
-                                                        relax_desc_set_layout,
-                                                        relax_desc_set_layout,
-                                                        relax_desc_set_layout};
-        auto desc_sets = device.allocateDescriptorSets({relax_desc_pool, 4, layouts.data()});
-        for (size_t i = 0; i < 4; ++i)
-        {
-            relax_desc_sets[i] = desc_sets[i];
-        }
-
-        for (uint32_t current_near_buffer = 0; current_near_buffer < 2; ++current_near_buffer)
-        {
-            for (uint32_t current_far_buffer = 0; current_far_buffer < 2; ++current_far_buffer)
-            {
-                uint32_t desc_idx = current_near_buffer * 2 + current_far_buffer;
-                auto desc_set = relax_desc_sets[desc_idx];
-
-                auto near_buffer = current_near_buffer == 0 ? near_0_buffer : near_1_buffer;
-                auto next_near_buffer = current_near_buffer == 0 ? near_1_buffer : near_0_buffer;
-                auto far_buffer = current_far_buffer == 0 ? far_0_buffer : far_1_buffer;
-
-                std::vector<vk::DescriptorBufferInfo> dbis;
-                dbis.reserve(10);
-
-                for (auto i = 0u; i < graph_bufs.size(); ++i)
-                {
-                    dbis.push_back({graph_bufs[i], 0, VK_WHOLE_SIZE});
-                }
-                dbis.push_back({dist_buffer, 0, VK_WHOLE_SIZE});
-                dbis.push_back({results_buffer, 0, VK_WHOLE_SIZE});
-                dbis.push_back({near_buffer, 0, VK_WHOLE_SIZE});
-                dbis.push_back({next_near_buffer, 0, VK_WHOLE_SIZE});
-                dbis.push_back({far_buffer, 0, VK_WHOLE_SIZE});
-                dbis.push_back({counters_buffer, 0, VK_WHOLE_SIZE});
-                dbis.push_back({statistics_buffer, 0, VK_WHOLE_SIZE});
-
-                std::vector<vk::WriteDescriptorSet> writes;
-                for (auto i = 0u; i < dbis.size(); ++i)
-                {
-                    writes.push_back({desc_set,
-                                      i,
-                                      0,
-                                      1,
-                                      vk::DescriptorType::eStorageBuffer,
-                                      nullptr,
-                                      &dbis[i],
-                                      nullptr});
-                }
-
-                device.updateDescriptorSets(writes, {});
-            }
-        }
+        relax_desc_bundle = create_descriptor_sets(
+            device,
+            {{first_edges_buffer,
+              targets_buffer,
+              weights_buffer,
+              dist_buffer,
+              results_buffer,
+              near_0_buffer,
+              near_1_buffer,
+              far_0_buffer,
+              counters_buffer,
+              statistics_buffer},
+             {first_edges_buffer,
+              targets_buffer,
+              weights_buffer,
+              dist_buffer,
+              results_buffer,
+              near_0_buffer,
+              near_1_buffer,
+              far_1_buffer,
+              counters_buffer,
+              statistics_buffer},
+             {first_edges_buffer,
+              targets_buffer,
+              weights_buffer,
+              dist_buffer,
+              results_buffer,
+              near_1_buffer,
+              near_0_buffer,
+              far_0_buffer,
+              counters_buffer,
+              statistics_buffer},
+             {first_edges_buffer,
+              targets_buffer,
+              weights_buffer,
+              dist_buffer,
+              results_buffer,
+              near_1_buffer,
+              near_0_buffer,
+              far_1_buffer,
+              counters_buffer,
+              statistics_buffer}});
     }
 
     void initialize_compact_descriptor_sets()
@@ -158,61 +135,24 @@ template <typename GraphT> class NearFar
               processed_buffer] = nearfar_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
-        std::vector<vk::DescriptorSetLayoutBinding> bindings;
-        for (auto i = 0u; i < 8; i++)
-        {
-            bindings.push_back(
-                {i, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        }
-        compact_desc_set_layout =
-            device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
-
-        vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer,
-                                        (uint32_t)(bindings.size() * 2)};
-        compact_desc_pool = device.createDescriptorPool({{}, 2, 1, &poolSize});
-
-        std::vector<vk::DescriptorSetLayout> layouts = {compact_desc_set_layout,
-                                                        compact_desc_set_layout};
-        auto desc_sets = device.allocateDescriptorSets({compact_desc_pool, 2, layouts.data()});
-        for (size_t i = 0; i < 2; ++i)
-        {
-            compact_desc_sets[i] = desc_sets[i];
-        }
-
-        for (uint32_t current_far_buffer = 0; current_far_buffer < 2; ++current_far_buffer)
-        {
-            auto desc_set = compact_desc_sets[current_far_buffer];
-
-            auto far_buffer = current_far_buffer == 0 ? far_0_buffer : far_1_buffer;
-            auto next_far_buffer = current_far_buffer == 0 ? far_1_buffer : far_0_buffer;
-
-            std::vector<vk::DescriptorBufferInfo> dbis;
-            dbis.reserve(8);
-
-            dbis.push_back({dist_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({results_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({far_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({near_0_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({next_far_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({counters_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({processed_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({statistics_buffer, 0, VK_WHOLE_SIZE});
-
-            std::vector<vk::WriteDescriptorSet> writes;
-            for (auto i = 0u; i < dbis.size(); ++i)
-            {
-                writes.push_back({desc_set,
-                                  i,
-                                  0,
-                                  1,
-                                  vk::DescriptorType::eStorageBuffer,
-                                  nullptr,
-                                  &dbis[i],
-                                  nullptr});
-            }
-
-            device.updateDescriptorSets(writes, {});
-        }
+        compact_desc_bundle =
+            create_descriptor_sets(device,
+                                   {{dist_buffer,
+                                     results_buffer,
+                                     far_0_buffer,
+                                     near_0_buffer,
+                                     far_1_buffer,
+                                     counters_buffer,
+                                     processed_buffer,
+                                     statistics_buffer},
+                                    {dist_buffer,
+                                     results_buffer,
+                                     far_1_buffer,
+                                     near_0_buffer,
+                                     far_0_buffer,
+                                     counters_buffer,
+                                     processed_buffer,
+                                     statistics_buffer}});
     }
 
     void initialize_prepare_dispatch_descriptor_sets()
@@ -227,40 +167,8 @@ template <typename GraphT> class NearFar
               dispatch_relax_buffer,
               processed_buffer] = nearfar_buffers.buffers();
 
-        std::vector<vk::DescriptorSetLayoutBinding> bindings;
-        bindings.push_back(
-            {0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-
-        prepare_dispatch_desc_set_layout =
-            device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
-
-        vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer,
-                                        (uint32_t)(bindings.size())};
-        prepare_dispatch_desc_pool = device.createDescriptorPool({{}, 1, 1, &poolSize});
-
-        prepare_dispatch_desc_set = device.allocateDescriptorSets(
-            {prepare_dispatch_desc_pool, 1, &prepare_dispatch_desc_set_layout})[0];
-
-        std::vector<vk::DescriptorBufferInfo> dbis;
-        dbis.push_back({counters_buffer, 0, VK_WHOLE_SIZE});
-        dbis.push_back({dispatch_relax_buffer, 0, VK_WHOLE_SIZE});
-
-        std::vector<vk::WriteDescriptorSet> writes;
-        for (auto i = 0u; i < dbis.size(); ++i)
-        {
-            writes.push_back({prepare_dispatch_desc_set,
-                              i,
-                              0,
-                              1,
-                              vk::DescriptorType::eStorageBuffer,
-                              nullptr,
-                              &dbis[i],
-                              nullptr});
-        }
-
-        device.updateDescriptorSets(writes, {});
+        prepare_dispatch_desc_bundle =
+            create_descriptor_sets(device, {{counters_buffer, dispatch_relax_buffer}});
     }
 
     void initialize()
@@ -274,7 +182,7 @@ template <typename GraphT> class NearFar
 
         vk::PushConstantRange pcRange{vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};
         relax_pipeline_layout =
-            device.createPipelineLayout({{}, 1, &relax_desc_set_layout, 1, &pcRange});
+            device.createPipelineLayout({{}, 1, &relax_desc_bundle.layout, 1, &pcRange});
 
         vk::SpecializationMapEntry spec_entry{0, 0, sizeof(uint32_t)};
         vk::SpecializationInfo spec_info{1, &spec_entry, sizeof(uint32_t), &workgroup_size};
@@ -290,7 +198,7 @@ template <typename GraphT> class NearFar
             device.createShaderModule({{}, compact_spv.size() * 4, compact_spv.data()});
 
         compact_pipeline_layout =
-            device.createPipelineLayout({{}, 1, &compact_desc_set_layout, 1, &pcRange});
+            device.createPipelineLayout({{}, 1, &compact_desc_bundle.layout, 1, &pcRange});
 
         vk::PipelineShaderStageCreateInfo compact_shader_stage{
             {}, vk::ShaderStageFlagBits::eCompute, compact_shader, "main", &spec_info};
@@ -307,7 +215,7 @@ template <typename GraphT> class NearFar
         vk::PushConstantRange prepare_dispatch_pcRange{
             vk::ShaderStageFlagBits::eCompute, 0, sizeof(PrepareDispatchPushConsts)};
         prepare_dispatch_pipeline_layout = device.createPipelineLayout(
-            {{}, 1, &prepare_dispatch_desc_set_layout, 1, &prepare_dispatch_pcRange});
+            {{}, 1, &prepare_dispatch_desc_bundle.layout, 1, &prepare_dispatch_pcRange});
 
         vk::PipelineShaderStageCreateInfo prepare_dispatch_shader_stage{
             {}, vk::ShaderStageFlagBits::eCompute, prepare_dispatch_shader, "main", nullptr};
@@ -405,7 +313,7 @@ template <typename GraphT> class NearFar
                 for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
                 {
                     uint32_t relax_desc_idx = current_near_buffer * 2 + current_far_buffer;
-                    auto relax_desc_set = relax_desc_sets[relax_desc_idx];
+                    auto relax_desc_set = relax_desc_bundle.descriptor_sets[relax_desc_idx];
 
                     // clear size of next_near
                     cmd_buf.fillBuffer(counters_buffer, 1 * sizeof(uint32_t), sizeof(uint32_t), 0);
@@ -423,7 +331,7 @@ template <typename GraphT> class NearFar
                     cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
                                                prepare_dispatch_pipeline_layout,
                                                0,
-                                               prepare_dispatch_desc_set,
+                                               prepare_dispatch_desc_bundle.descriptor_sets[0],
                                                {});
 
                     PrepareDispatchPushConsts prepare_pc{workgroup_size};
@@ -520,7 +428,7 @@ template <typename GraphT> class NearFar
 
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
-            auto compact_desc_set = compact_desc_sets[current_far_buffer];
+            auto compact_desc_set = compact_desc_bundle.descriptor_sets[current_far_buffer];
 
             cmd_buf.fillBuffer(counters_buffer, 0 * sizeof(uint32_t), sizeof(uint32_t), 0);
             cmd_buf.fillBuffer(counters_buffer, 3 * sizeof(uint32_t), sizeof(uint32_t), 0);
@@ -591,23 +499,17 @@ template <typename GraphT> class NearFar
 
     Statistics &statistics;
 
-    std::array<vk::DescriptorSet, 4> relax_desc_sets;
-    vk::DescriptorSetLayout relax_desc_set_layout;
-    vk::DescriptorPool relax_desc_pool;
+    DescriptorSetBundle relax_desc_bundle;
     vk::ShaderModule relax_shader;
     vk::Pipeline relax_pipeline;
     vk::PipelineLayout relax_pipeline_layout;
 
-    std::array<vk::DescriptorSet, 2> compact_desc_sets;
-    vk::DescriptorSetLayout compact_desc_set_layout;
-    vk::DescriptorPool compact_desc_pool;
+    DescriptorSetBundle compact_desc_bundle;
     vk::ShaderModule compact_shader;
     vk::Pipeline compact_pipeline;
     vk::PipelineLayout compact_pipeline_layout;
 
-    vk::DescriptorSet prepare_dispatch_desc_set;
-    vk::DescriptorSetLayout prepare_dispatch_desc_set_layout;
-    vk::DescriptorPool prepare_dispatch_desc_pool;
+    DescriptorSetBundle prepare_dispatch_desc_bundle;
     vk::ShaderModule prepare_dispatch_shader;
     vk::Pipeline prepare_dispatch_pipeline;
     vk::PipelineLayout prepare_dispatch_pipeline_layout;
