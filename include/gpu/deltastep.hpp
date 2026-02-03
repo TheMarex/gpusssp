@@ -4,10 +4,10 @@
 #include <vulkan/vulkan.hpp>
 
 #include "common/constants.hpp"
-#include "common/shader.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
 #include "gpu/memory.hpp"
+#include "gpu/shader.hpp"
 #include "gpu/statistics.hpp"
 
 #include <iostream>
@@ -41,15 +41,15 @@ template <typename GraphT> class DeltaStep
 
     ~DeltaStep()
     {
-        device.destroyShaderModule(shader);
-        device.destroyPipeline(pipeline);
-        device.destroyPipelineLayout(pipeline_layout);
+        device.destroyShaderModule(main_pipeline.shader);
+        device.destroyPipeline(main_pipeline.pipeline);
+        device.destroyPipelineLayout(main_pipeline.layout);
         device.destroyDescriptorSetLayout(desc_bundle.layout);
         device.destroyDescriptorPool(desc_bundle.pool);
 
-        device.destroyShaderModule(prepare_dispatch_shader);
-        device.destroyPipeline(prepare_dispatch_pipeline);
-        device.destroyPipelineLayout(prepare_dispatch_pipeline_layout);
+        device.destroyShaderModule(prepare_dispatch_pipeline.shader);
+        device.destroyPipeline(prepare_dispatch_pipeline.pipeline);
+        device.destroyPipelineLayout(prepare_dispatch_pipeline.layout);
         device.destroyDescriptorSetLayout(prepare_dispatch_desc_bundle.layout);
         device.destroyDescriptorPool(prepare_dispatch_desc_bundle.pool);
     }
@@ -109,45 +109,14 @@ template <typename GraphT> class DeltaStep
         initialize_descriptor_sets();
         initialize_prepare_dispatch_descriptor_sets();
 
-        std::vector<uint32_t> spv = common::read_spv("delta_step.spv");
-        shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
-
-        vk::PushConstantRange pcRange{vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};
-        pipeline_layout = device.createPipelineLayout({{}, 1, &desc_bundle.layout, 1, &pcRange});
-
-        // Setup specialization constant for workgroup size
-        vk::SpecializationMapEntry spec_entry{0, 0, sizeof(uint32_t)};
-        vk::SpecializationInfo spec_info{1, &spec_entry, sizeof(uint32_t), &workgroup_size};
-
-        vk::PipelineShaderStageCreateInfo shaderStage{
-            {}, vk::ShaderStageFlagBits::eCompute, shader, "main", &spec_info};
-
-        pipeline = device.createComputePipeline({}, {{}, shaderStage, pipeline_layout}).value;
-
-        std::vector<uint32_t> prepare_dispatch_spv =
-            common::read_spv("deltastep_prepare_dispatch.spv");
-        prepare_dispatch_shader = device.createShaderModule(
-            {{}, prepare_dispatch_spv.size() * 4, prepare_dispatch_spv.data()});
-
-        prepare_dispatch_pipeline_layout =
-            device.createPipelineLayout({{}, 1, &prepare_dispatch_desc_bundle.layout});
-
-        vk::SpecializationMapEntry prepare_dispatch_spec_entry{0, 0, sizeof(uint32_t)};
-        vk::SpecializationInfo prepare_dispatch_spec_info{
-            1, &prepare_dispatch_spec_entry, sizeof(uint32_t), &workgroup_size};
-
-        vk::PipelineShaderStageCreateInfo prepare_dispatch_shader_stage{
-            {},
-            vk::ShaderStageFlagBits::eCompute,
-            prepare_dispatch_shader,
-            "main",
-            &prepare_dispatch_spec_info};
+        main_pipeline = create_compute_pipeline<PushConsts>(
+            device, "delta_step.spv", desc_bundle.layout, {workgroup_size});
 
         prepare_dispatch_pipeline =
-            device
-                .createComputePipeline(
-                    {}, {{}, prepare_dispatch_shader_stage, prepare_dispatch_pipeline_layout})
-                .value;
+            create_compute_pipeline(device,
+                                    "deltastep_prepare_dispatch.spv",
+                                    prepare_dispatch_desc_bundle.layout,
+                                    {workgroup_size});
     }
 
     uint32_t run(vk::CommandPool &cmd_pool,
@@ -246,9 +215,9 @@ template <typename GraphT> class DeltaStep
                 {
 
                     cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute,
-                                         prepare_dispatch_pipeline);
+                                         prepare_dispatch_pipeline.pipeline);
                     cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-                                               prepare_dispatch_pipeline_layout,
+                                               prepare_dispatch_pipeline.layout,
                                                0,
                                                current_dispatch_desc_set,
                                                {});
@@ -263,9 +232,9 @@ template <typename GraphT> class DeltaStep
                         {},
                         {});
 
-                    cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
+                    cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, main_pipeline.pipeline);
                     cmd_buf.bindDescriptorSets(
-                        vk::PipelineBindPoint::eCompute, pipeline_layout, 0, current_desc_set, {});
+                        vk::PipelineBindPoint::eCompute, main_pipeline.layout, 0, current_desc_set, {});
 
                     cmd_buf.fillBuffer(current_changed_buffer, 0, VK_WHOLE_SIZE, 0);
                     cmd_buf.updateBuffer(
@@ -280,7 +249,7 @@ template <typename GraphT> class DeltaStep
                                             {});
 
                     cmd_buf.pushConstants(
-                        pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+                        main_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
                     cmd_buf.dispatchIndirect(dispatch_buffer, 0);
                     cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                             vk::PipelineStageFlagBits::eHost,
@@ -313,9 +282,9 @@ template <typename GraphT> class DeltaStep
                 // since we do this after the swap we need to look at prev not current
             } while (*gpu_prev_min_changed_id < num_nodes);
 
-            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
+            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, main_pipeline.pipeline);
             cmd_buf.bindDescriptorSets(
-                vk::PipelineBindPoint::eCompute, pipeline_layout, 0, current_desc_set, {});
+                vk::PipelineBindPoint::eCompute, main_pipeline.layout, 0, current_desc_set, {});
 
             *gpu_prev_min_changed_id = 0;
             *gpu_prev_max_changed_id = num_nodes - 1;
@@ -334,7 +303,7 @@ template <typename GraphT> class DeltaStep
 
             pc.max_weight = UINT32_MAX;
             cmd_buf.pushConstants(
-                pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+                main_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
             cmd_buf.dispatch((num_nodes + workgroup_size - 1) / workgroup_size, 1, 1);
             cmd_buf.pipelineBarrier(
                 vk::PipelineStageFlagBits::eComputeShader,
@@ -378,14 +347,10 @@ template <typename GraphT> class DeltaStep
     Statistics &statistics;
 
     DescriptorSetBundle desc_bundle;
-    vk::ShaderModule shader;
-    vk::Pipeline pipeline;
-    vk::PipelineLayout pipeline_layout;
+    ComputePipeline main_pipeline;
 
     DescriptorSetBundle prepare_dispatch_desc_bundle;
-    vk::ShaderModule prepare_dispatch_shader;
-    vk::Pipeline prepare_dispatch_pipeline;
-    vk::PipelineLayout prepare_dispatch_pipeline_layout;
+    ComputePipeline prepare_dispatch_pipeline;
 
     vk::Device &device;
     uint32_t workgroup_size;
