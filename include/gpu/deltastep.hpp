@@ -44,17 +44,17 @@ template <typename GraphT> class DeltaStep
         device.destroyShaderModule(main_pipeline.shader);
         device.destroyPipeline(main_pipeline.pipeline);
         device.destroyPipelineLayout(main_pipeline.layout);
-        device.destroyDescriptorSetLayout(desc_bundle.layout);
-        device.destroyDescriptorPool(desc_bundle.pool);
+        device.destroyDescriptorSetLayout(main_pipeline.descriptor_set_layout);
+        device.destroyDescriptorPool(main_pipeline.descriptor_pool);
 
         device.destroyShaderModule(prepare_dispatch_pipeline.shader);
         device.destroyPipeline(prepare_dispatch_pipeline.pipeline);
         device.destroyPipelineLayout(prepare_dispatch_pipeline.layout);
-        device.destroyDescriptorSetLayout(prepare_dispatch_desc_bundle.layout);
-        device.destroyDescriptorPool(prepare_dispatch_desc_bundle.pool);
+        device.destroyDescriptorSetLayout(prepare_dispatch_pipeline.descriptor_set_layout);
+        device.destroyDescriptorPool(prepare_dispatch_pipeline.descriptor_pool);
     }
 
-    void initialize_descriptor_sets()
+    void initialize()
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto [dist_buffer,
@@ -66,56 +66,36 @@ template <typename GraphT> class DeltaStep
               dispatch_buffer] = deltastep_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
-        desc_bundle = create_descriptor_sets(device,
-                                             {{first_edges_buffer,
-                                               targets_buffer,
-                                               weights_buffer,
-                                               dist_buffer,
-                                               results_buffer,
-                                               changed_buffer_0,
-                                               changed_buffer_1,
-                                               min_max_changed_id_0,
-                                               min_max_changed_id_1,
-                                               statistics_buffer},
-                                              {first_edges_buffer,
-                                               targets_buffer,
-                                               weights_buffer,
-                                               dist_buffer,
-                                               results_buffer,
-                                               changed_buffer_1,
-                                               changed_buffer_0,
-                                               min_max_changed_id_1,
-                                               min_max_changed_id_0,
-                                               statistics_buffer}});
-    }
-
-    void initialize_prepare_dispatch_descriptor_sets()
-    {
-        auto [dist_buffer,
-              results_buffer,
-              changed_buffer_0,
-              changed_buffer_1,
-              min_max_changed_id_0,
-              min_max_changed_id_1,
-              dispatch_buffer] = deltastep_buffers.buffers();
-
-        prepare_dispatch_desc_bundle = create_descriptor_sets(
-            device,
-            {{min_max_changed_id_1, dispatch_buffer}, {min_max_changed_id_0, dispatch_buffer}});
-    }
-
-    void initialize()
-    {
-        initialize_descriptor_sets();
-        initialize_prepare_dispatch_descriptor_sets();
-
-        main_pipeline = create_compute_pipeline<PushConsts>(
-            device, "delta_step.spv", desc_bundle.layout, {workgroup_size});
-
-        prepare_dispatch_pipeline = create_compute_pipeline(device,
-                                                            "deltastep_prepare_dispatch.spv",
-                                                            prepare_dispatch_desc_bundle.layout,
+        main_pipeline = create_compute_pipeline<PushConsts>(device,
+                                                            "delta_step.spv",
+                                                            {{first_edges_buffer,
+                                                              targets_buffer,
+                                                              weights_buffer,
+                                                              dist_buffer,
+                                                              results_buffer,
+                                                              changed_buffer_0,
+                                                              changed_buffer_1,
+                                                              min_max_changed_id_0,
+                                                              min_max_changed_id_1,
+                                                              statistics_buffer},
+                                                             {first_edges_buffer,
+                                                              targets_buffer,
+                                                              weights_buffer,
+                                                              dist_buffer,
+                                                              results_buffer,
+                                                              changed_buffer_1,
+                                                              changed_buffer_0,
+                                                              min_max_changed_id_1,
+                                                              min_max_changed_id_0,
+                                                              statistics_buffer}},
                                                             {workgroup_size});
+
+        prepare_dispatch_pipeline =
+            create_compute_pipeline(device,
+                                    "deltastep_prepare_dispatch.spv",
+                                    {{min_max_changed_id_1, dispatch_buffer},
+                                     {min_max_changed_id_0, dispatch_buffer}},
+                                    {workgroup_size});
     }
 
     uint32_t run(vk::CommandPool &cmd_pool,
@@ -185,10 +165,10 @@ template <typename GraphT> class DeltaStep
             auto *gpu_current_min_changed_id = gpu_min_max_changed_id_1;
             auto *gpu_prev_max_changed_id = gpu_min_max_changed_id_0 + 1;
             auto *gpu_current_max_changed_id = gpu_min_max_changed_id_1 + 1;
-            auto prev_dispatch_desc_set = prepare_dispatch_desc_bundle.descriptor_sets[0];
-            auto current_dispatch_desc_set = prepare_dispatch_desc_bundle.descriptor_sets[1];
-            auto prev_desc_set = desc_bundle.descriptor_sets[0];
-            auto current_desc_set = desc_bundle.descriptor_sets[1];
+            auto prev_dispatch_desc_set = prepare_dispatch_pipeline.descriptor_sets[0];
+            auto current_dispatch_desc_set = prepare_dispatch_pipeline.descriptor_sets[1];
+            auto prev_desc_set = main_pipeline.descriptor_sets[0];
+            auto current_desc_set = main_pipeline.descriptor_sets[1];
 
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
             // For each bucket we need to do the first pass with all nodes.
@@ -351,10 +331,7 @@ template <typename GraphT> class DeltaStep
     DeltaStepBuffers &deltastep_buffers;
     Statistics &statistics;
 
-    DescriptorSetBundle desc_bundle;
     ComputePipeline main_pipeline;
-
-    DescriptorSetBundle prepare_dispatch_desc_bundle;
     ComputePipeline prepare_dispatch_pipeline;
 
     vk::Device &device;

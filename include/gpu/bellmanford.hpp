@@ -41,32 +41,26 @@ template <typename GraphT> class BellmanFord
         device.destroyShaderModule(main_pipeline.shader);
         device.destroyPipeline(main_pipeline.pipeline);
         device.destroyPipelineLayout(main_pipeline.layout);
-        device.destroyDescriptorSetLayout(desc_bundle.layout);
-        device.destroyDescriptorPool(desc_bundle.pool);
+        device.destroyDescriptorSetLayout(main_pipeline.descriptor_set_layout);
+        device.destroyDescriptorPool(main_pipeline.descriptor_pool);
     }
 
-    void initialize_descriptor_sets()
+    void initialize()
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto [dist_buffer, results_buffer, changed_buffer] = bellmanford_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
-        desc_bundle = create_descriptor_sets(device,
-                                             {{first_edges_buffer,
-                                               targets_buffer,
-                                               weights_buffer,
-                                               dist_buffer,
-                                               results_buffer,
-                                               changed_buffer,
-                                               statistics_buffer}});
-    }
-
-    void initialize()
-    {
-        initialize_descriptor_sets();
-
-        main_pipeline = create_compute_pipeline<PushConsts>(
-            device, "bellman_ford.spv", desc_bundle.layout, {workgroup_size});
+        main_pipeline = create_compute_pipeline<PushConsts>(device,
+                                                            "bellman_ford.spv",
+                                                            {{first_edges_buffer,
+                                                              targets_buffer,
+                                                              weights_buffer,
+                                                              dist_buffer,
+                                                              results_buffer,
+                                                              changed_buffer,
+                                                              statistics_buffer}},
+                                                            {workgroup_size});
     }
 
     uint32_t run(vk::CommandPool &cmd_pool, vk::Queue &queue, uint32_t src_node, uint32_t dst_node)
@@ -114,7 +108,7 @@ template <typename GraphT> class BellmanFord
             cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
                                        main_pipeline.layout,
                                        0,
-                                       desc_bundle.descriptor_sets[0],
+                                       main_pipeline.descriptor_sets[0],
                                        {});
 
             for (unsigned i = 0; i < BATCH_SIZE; ++i)
@@ -162,7 +156,6 @@ template <typename GraphT> class BellmanFord
     BellmanFordBuffers &bellmanford_buffers;
     Statistics &statistics;
 
-    DescriptorSetBundle desc_bundle;
     ComputePipeline main_pipeline;
 
     vk::Device &device;

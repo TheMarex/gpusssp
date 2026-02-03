@@ -10,20 +10,101 @@
 namespace gpusssp::gpu
 {
 
+namespace detail
+{
+struct DescriptorSetBundle
+{
+    std::vector<vk::DescriptorSet> descriptor_sets;
+    vk::DescriptorSetLayout layout;
+    vk::DescriptorPool pool;
+};
+
+inline DescriptorSetBundle
+create_descriptor_sets(vk::Device &device, const std::vector<std::vector<vk::Buffer>> &buffer_sets)
+{
+    if (buffer_sets.empty())
+    {
+        throw std::runtime_error("buffer_sets cannot be empty");
+    }
+
+    const uint32_t num_descriptor_sets = static_cast<uint32_t>(buffer_sets.size());
+    const uint32_t num_bindings = static_cast<uint32_t>(buffer_sets[0].size());
+
+    std::vector<vk::DescriptorSetLayoutBinding> bindings;
+    bindings.reserve(num_bindings);
+    for (uint32_t i = 0; i < num_bindings; ++i)
+    {
+        bindings.push_back(
+            {i, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
+    }
+
+    vk::DescriptorSetLayout layout =
+        device.createDescriptorSetLayout({{}, num_bindings, bindings.data()});
+
+    vk::DescriptorPoolSize pool_size{vk::DescriptorType::eStorageBuffer,
+                                     num_bindings * num_descriptor_sets};
+    vk::DescriptorPool pool = device.createDescriptorPool({{}, num_descriptor_sets, 1, &pool_size});
+
+    std::vector<vk::DescriptorSetLayout> layouts(num_descriptor_sets, layout);
+    std::vector<vk::DescriptorSet> descriptor_sets =
+        device.allocateDescriptorSets({pool, num_descriptor_sets, layouts.data()});
+
+    for (uint32_t set_idx = 0; set_idx < num_descriptor_sets; ++set_idx)
+    {
+        const auto &buffers = buffer_sets[set_idx];
+        if (buffers.size() != num_bindings)
+        {
+            throw std::runtime_error("All descriptor sets must have the same number of buffers");
+        }
+
+        std::vector<vk::DescriptorBufferInfo> buffer_infos;
+        buffer_infos.reserve(num_bindings);
+        for (const auto &buffer : buffers)
+        {
+            buffer_infos.push_back({buffer, 0, VK_WHOLE_SIZE});
+        }
+
+        std::vector<vk::WriteDescriptorSet> writes;
+        writes.reserve(num_bindings);
+        for (uint32_t binding_idx = 0; binding_idx < num_bindings; ++binding_idx)
+        {
+            writes.push_back({descriptor_sets[set_idx],
+                              binding_idx,
+                              0,
+                              1,
+                              vk::DescriptorType::eStorageBuffer,
+                              nullptr,
+                              &buffer_infos[binding_idx],
+                              nullptr});
+        }
+
+        device.updateDescriptorSets(writes, {});
+    }
+
+    return {descriptor_sets, layout, pool};
+}
+} // namespace detail
+
 struct ComputePipeline
 {
     vk::ShaderModule shader;
     vk::Pipeline pipeline;
     vk::PipelineLayout layout;
+    std::vector<vk::DescriptorSet> descriptor_sets;
+    vk::DescriptorSetLayout descriptor_set_layout;
+    vk::DescriptorPool descriptor_pool;
 };
 
 template <typename PushConstantsT = void>
 inline ComputePipeline
 create_compute_pipeline(vk::Device &device,
                         const std::string &shader_path,
-                        vk::DescriptorSetLayout descriptor_set_layout,
+                        const std::vector<std::vector<vk::Buffer>> &buffer_sets,
                         const std::vector<uint32_t> &specialization_constants = {})
 {
+    auto [descriptor_sets, descriptor_set_layout, descriptor_pool] =
+        detail::create_descriptor_sets(device, buffer_sets);
+
     std::vector<uint32_t> spv = common::read_spv(shader_path);
     vk::ShaderModule shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
 
@@ -68,7 +149,12 @@ create_compute_pipeline(vk::Device &device,
     vk::Pipeline pipeline =
         device.createComputePipeline({}, {{}, shader_stage, pipeline_layout}).value;
 
-    return {shader, pipeline, pipeline_layout};
+    return {shader,
+            pipeline,
+            pipeline_layout,
+            std::move(descriptor_sets),
+            descriptor_set_layout,
+            descriptor_pool};
 }
 
 } // namespace gpusssp::gpu

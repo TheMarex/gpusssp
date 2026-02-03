@@ -44,23 +44,23 @@ template <typename GraphT> class NearFar
         device.destroyShaderModule(relax_pipeline.shader);
         device.destroyPipeline(relax_pipeline.pipeline);
         device.destroyPipelineLayout(relax_pipeline.layout);
-        device.destroyDescriptorSetLayout(relax_desc_bundle.layout);
-        device.destroyDescriptorPool(relax_desc_bundle.pool);
+        device.destroyDescriptorSetLayout(relax_pipeline.descriptor_set_layout);
+        device.destroyDescriptorPool(relax_pipeline.descriptor_pool);
 
         device.destroyShaderModule(compact_pipeline.shader);
         device.destroyPipeline(compact_pipeline.pipeline);
         device.destroyPipelineLayout(compact_pipeline.layout);
-        device.destroyDescriptorSetLayout(compact_desc_bundle.layout);
-        device.destroyDescriptorPool(compact_desc_bundle.pool);
+        device.destroyDescriptorSetLayout(compact_pipeline.descriptor_set_layout);
+        device.destroyDescriptorPool(compact_pipeline.descriptor_pool);
 
         device.destroyShaderModule(prepare_dispatch_pipeline.shader);
         device.destroyPipeline(prepare_dispatch_pipeline.pipeline);
         device.destroyPipelineLayout(prepare_dispatch_pipeline.layout);
-        device.destroyDescriptorSetLayout(prepare_dispatch_desc_bundle.layout);
-        device.destroyDescriptorPool(prepare_dispatch_desc_bundle.pool);
+        device.destroyDescriptorSetLayout(prepare_dispatch_pipeline.descriptor_set_layout);
+        device.destroyDescriptorPool(prepare_dispatch_pipeline.descriptor_pool);
     }
 
-    void initialize_relax_descriptor_sets()
+    void initialize()
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto [dist_buffer,
@@ -74,113 +74,75 @@ template <typename GraphT> class NearFar
               processed_buffer] = nearfar_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
-        relax_desc_bundle = create_descriptor_sets(device,
-                                                   {{first_edges_buffer,
-                                                     targets_buffer,
-                                                     weights_buffer,
-                                                     dist_buffer,
-                                                     results_buffer,
-                                                     near_0_buffer,
-                                                     near_1_buffer,
-                                                     far_0_buffer,
-                                                     counters_buffer,
-                                                     statistics_buffer},
-                                                    {first_edges_buffer,
-                                                     targets_buffer,
-                                                     weights_buffer,
-                                                     dist_buffer,
-                                                     results_buffer,
-                                                     near_0_buffer,
-                                                     near_1_buffer,
-                                                     far_1_buffer,
-                                                     counters_buffer,
-                                                     statistics_buffer},
-                                                    {first_edges_buffer,
-                                                     targets_buffer,
-                                                     weights_buffer,
-                                                     dist_buffer,
-                                                     results_buffer,
-                                                     near_1_buffer,
-                                                     near_0_buffer,
-                                                     far_0_buffer,
-                                                     counters_buffer,
-                                                     statistics_buffer},
-                                                    {first_edges_buffer,
-                                                     targets_buffer,
-                                                     weights_buffer,
-                                                     dist_buffer,
-                                                     results_buffer,
-                                                     near_1_buffer,
-                                                     near_0_buffer,
-                                                     far_1_buffer,
-                                                     counters_buffer,
-                                                     statistics_buffer}});
-    }
+        relax_pipeline = create_compute_pipeline<PushConsts>(device,
+                                                             "nearfar_relax.spv",
+                                                             {{first_edges_buffer,
+                                                               targets_buffer,
+                                                               weights_buffer,
+                                                               dist_buffer,
+                                                               results_buffer,
+                                                               near_0_buffer,
+                                                               near_1_buffer,
+                                                               far_0_buffer,
+                                                               counters_buffer,
+                                                               statistics_buffer},
+                                                              {first_edges_buffer,
+                                                               targets_buffer,
+                                                               weights_buffer,
+                                                               dist_buffer,
+                                                               results_buffer,
+                                                               near_0_buffer,
+                                                               near_1_buffer,
+                                                               far_1_buffer,
+                                                               counters_buffer,
+                                                               statistics_buffer},
+                                                              {first_edges_buffer,
+                                                               targets_buffer,
+                                                               weights_buffer,
+                                                               dist_buffer,
+                                                               results_buffer,
+                                                               near_1_buffer,
+                                                               near_0_buffer,
+                                                               far_0_buffer,
+                                                               counters_buffer,
+                                                               statistics_buffer},
+                                                              {first_edges_buffer,
+                                                               targets_buffer,
+                                                               weights_buffer,
+                                                               dist_buffer,
+                                                               results_buffer,
+                                                               near_1_buffer,
+                                                               near_0_buffer,
+                                                               far_1_buffer,
+                                                               counters_buffer,
+                                                               statistics_buffer}},
+                                                             {workgroup_size});
 
-    void initialize_compact_descriptor_sets()
-    {
-        auto [dist_buffer,
-              results_buffer,
-              near_0_buffer,
-              near_1_buffer,
-              far_0_buffer,
-              far_1_buffer,
-              counters_buffer,
-              dispatch_relax_buffer,
-              processed_buffer] = nearfar_buffers.buffers();
-        auto statistics_buffer = statistics.buffer();
+        compact_pipeline = create_compute_pipeline<PushConsts>(device,
+                                                               "nearfar_compact.spv",
+                                                               {{dist_buffer,
+                                                                 results_buffer,
+                                                                 far_0_buffer,
+                                                                 near_0_buffer,
+                                                                 far_1_buffer,
+                                                                 counters_buffer,
+                                                                 processed_buffer,
+                                                                 statistics_buffer},
+                                                                {dist_buffer,
+                                                                 results_buffer,
+                                                                 far_1_buffer,
+                                                                 near_0_buffer,
+                                                                 far_0_buffer,
+                                                                 counters_buffer,
+                                                                 processed_buffer,
+                                                                 statistics_buffer}},
+                                                               {workgroup_size});
 
-        compact_desc_bundle = create_descriptor_sets(device,
-                                                     {{dist_buffer,
-                                                       results_buffer,
-                                                       far_0_buffer,
-                                                       near_0_buffer,
-                                                       far_1_buffer,
-                                                       counters_buffer,
-                                                       processed_buffer,
-                                                       statistics_buffer},
-                                                      {dist_buffer,
-                                                       results_buffer,
-                                                       far_1_buffer,
-                                                       near_0_buffer,
-                                                       far_0_buffer,
-                                                       counters_buffer,
-                                                       processed_buffer,
-                                                       statistics_buffer}});
-    }
-
-    void initialize_prepare_dispatch_descriptor_sets()
-    {
-        auto [dist_buffer,
-              results_buffer,
-              near_0_buffer,
-              near_1_buffer,
-              far_0_buffer,
-              far_1_buffer,
-              counters_buffer,
-              dispatch_relax_buffer,
-              processed_buffer] = nearfar_buffers.buffers();
-
-        prepare_dispatch_desc_bundle =
-            create_descriptor_sets(device, {{counters_buffer, dispatch_relax_buffer}});
-    }
-
-    void initialize()
-    {
-        initialize_relax_descriptor_sets();
-        initialize_compact_descriptor_sets();
-        initialize_prepare_dispatch_descriptor_sets();
-
-        relax_pipeline = create_compute_pipeline<PushConsts>(
-            device, "nearfar_relax.spv", relax_desc_bundle.layout, {workgroup_size});
-
-        compact_pipeline = create_compute_pipeline<PushConsts>(
-            device, "nearfar_compact.spv", compact_desc_bundle.layout, {workgroup_size});
-
-        prepare_dispatch_pipeline = create_compute_pipeline(device,
-                                                            "nearfar_prepare_dispatch.spv",
-                                                            prepare_dispatch_desc_bundle.layout,
-                                                            {workgroup_size});
+        prepare_dispatch_pipeline =
+            create_compute_pipeline(device,
+                                    "nearfar_prepare_dispatch.spv",
+                                    {{counters_buffer, dispatch_relax_buffer}},
+                                    {workgroup_size});
     }
 
     uint32_t run(vk::CommandPool &cmd_pool,
@@ -269,7 +231,7 @@ template <typename GraphT> class NearFar
                 for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
                 {
                     uint32_t relax_desc_idx = current_near_buffer * 2 + current_far_buffer;
-                    auto relax_desc_set = relax_desc_bundle.descriptor_sets[relax_desc_idx];
+                    auto relax_desc_set = relax_pipeline.descriptor_sets[relax_desc_idx];
 
                     // clear size of next_near
                     cmd_buf.fillBuffer(counters_buffer, 1 * sizeof(uint32_t), sizeof(uint32_t), 0);
@@ -287,7 +249,7 @@ template <typename GraphT> class NearFar
                     cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
                                                prepare_dispatch_pipeline.layout,
                                                0,
-                                               prepare_dispatch_desc_bundle.descriptor_sets[0],
+                                               prepare_dispatch_pipeline.descriptor_sets[0],
                                                {});
                     cmd_buf.dispatch(1, 1, 1);
 
@@ -377,7 +339,7 @@ template <typename GraphT> class NearFar
 
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
-            auto compact_desc_set = compact_desc_bundle.descriptor_sets[current_far_buffer];
+            auto compact_desc_set = compact_pipeline.descriptor_sets[current_far_buffer];
 
             cmd_buf.fillBuffer(counters_buffer, 0 * sizeof(uint32_t), sizeof(uint32_t), 0);
             cmd_buf.fillBuffer(counters_buffer, 3 * sizeof(uint32_t), sizeof(uint32_t), 0);
@@ -448,13 +410,8 @@ template <typename GraphT> class NearFar
 
     Statistics &statistics;
 
-    DescriptorSetBundle relax_desc_bundle;
     ComputePipeline relax_pipeline;
-
-    DescriptorSetBundle compact_desc_bundle;
     ComputePipeline compact_pipeline;
-
-    DescriptorSetBundle prepare_dispatch_desc_bundle;
     ComputePipeline prepare_dispatch_pipeline;
 
     vk::Device &device;
