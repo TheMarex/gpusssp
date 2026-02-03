@@ -23,23 +23,23 @@ int main(int argc, char **argv)
     if (argc < 3)
     {
         common::log_error() << "Usage: " << argv[0]
-                            << " <graph_base_path> <xp_base_path> [delta] [xp_name]" << std::endl;
+                            << " <graph_base_path> <xp_base_path> [xp_name] [delta]" << std::endl;
         return 1;
     }
 
     std::string graph_base_path = argv[1];
     std::string xp_base_path = argv[2];
 
-    uint32_t delta = 3600u;
+    std::string xp_name = "algorithm";
     if (argc >= 4)
     {
-        delta = std::stoi(argv[3]);
+        xp_name = argv[3];
     }
 
-    std::string xp_name = "algorithm";
+    uint32_t delta = 3600u;
     if (argc >= 5)
     {
-        xp_name = argv[4];
+        delta = std::stoi(argv[4]);
     }
 
     common::log() << "Loading graph from: " << graph_base_path << std::endl;

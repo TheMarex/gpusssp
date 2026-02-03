@@ -121,10 +121,10 @@ def format_cmd(
     binary = build_dir / f"experiment_{target}"
     base_cmd = [str(binary), str(cache_path), str(xp_base_path)]
     
-    if target in ["deltastep" or "nearfar"] and "delta" in params:
+    if target in ["deltastep", "nearfar"] and "delta" in params:
         cmds = []
         for delta in params["delta"]:
-            cmds.append(base_cmd + [str(delta), xp_name])
+            cmds.append(base_cmd + [xp_name, str(delta)])
         return cmds
     else:
         return [base_cmd + [xp_name]]
