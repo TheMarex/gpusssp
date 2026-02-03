@@ -27,10 +27,6 @@ template <typename GraphT> class DeltaStep
         uint32_t delta;
         uint32_t max_weight;
     };
-    struct PrepareDispatchPushConsts
-    {
-        uint32_t workgroup_size;
-    };
 
   public:
     DeltaStep(const GraphBuffers<GraphT> &graph_buffers,
@@ -133,13 +129,19 @@ template <typename GraphT> class DeltaStep
         prepare_dispatch_shader = device.createShaderModule(
             {{}, prepare_dispatch_spv.size() * 4, prepare_dispatch_spv.data()});
 
-        vk::PushConstantRange prepare_dispatch_pcRange{
-            vk::ShaderStageFlagBits::eCompute, 0, sizeof(PrepareDispatchPushConsts)};
-        prepare_dispatch_pipeline_layout = device.createPipelineLayout(
-            {{}, 1, &prepare_dispatch_desc_bundle.layout, 1, &prepare_dispatch_pcRange});
+        prepare_dispatch_pipeline_layout =
+            device.createPipelineLayout({{}, 1, &prepare_dispatch_desc_bundle.layout});
+
+        vk::SpecializationMapEntry prepare_dispatch_spec_entry{0, 0, sizeof(uint32_t)};
+        vk::SpecializationInfo prepare_dispatch_spec_info{
+            1, &prepare_dispatch_spec_entry, sizeof(uint32_t), &workgroup_size};
 
         vk::PipelineShaderStageCreateInfo prepare_dispatch_shader_stage{
-            {}, vk::ShaderStageFlagBits::eCompute, prepare_dispatch_shader, "main", nullptr};
+            {},
+            vk::ShaderStageFlagBits::eCompute,
+            prepare_dispatch_shader,
+            "main",
+            &prepare_dispatch_spec_info};
 
         prepare_dispatch_pipeline =
             device
@@ -250,12 +252,6 @@ template <typename GraphT> class DeltaStep
                                                0,
                                                current_dispatch_desc_set,
                                                {});
-                    PrepareDispatchPushConsts prepare_pc{workgroup_size};
-                    cmd_buf.pushConstants(prepare_dispatch_pipeline_layout,
-                                          vk::ShaderStageFlagBits::eCompute,
-                                          0,
-                                          sizeof(prepare_pc),
-                                          &prepare_pc);
                     cmd_buf.dispatch(1, 1, 1);
                     cmd_buf.pipelineBarrier(
                         vk::PipelineStageFlagBits::eComputeShader,

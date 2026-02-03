@@ -4,6 +4,8 @@
 
 #include "nearfar_constants.glsl"
 
+layout(constant_id = 0) const uint WORKGROUP_SIZE = 64;
+
 layout(std430, binding = 0) readonly buffer Counters { uint counters[]; };
 layout(std430, binding = 1) writeonly buffer DispatchIndirect {
     uint num_groups_x;
@@ -11,14 +13,10 @@ layout(std430, binding = 1) writeonly buffer DispatchIndirect {
     uint num_groups_z;
 };
 
-layout(push_constant) uniform PushConsts {
-    uint workgroup_size;
-} pc;
-
 layout(local_size_x = 1) in;
 
 void main() {
-    num_groups_x = (counters[COUNTER_NUM_NEAR] + pc.workgroup_size - 1) / pc.workgroup_size;
+    num_groups_x = (counters[COUNTER_NUM_NEAR] + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
     num_groups_y = 1;
     num_groups_z = 1;
 }
