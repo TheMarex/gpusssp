@@ -7,6 +7,7 @@
 #include "common/shader.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/memory.hpp"
 #include "gpu/statistics.hpp"
 
 #include <iostream>
@@ -47,19 +48,19 @@ template <typename GraphT> class DeltaStep
         device.destroyShaderModule(shader);
         device.destroyPipeline(pipeline);
         device.destroyPipelineLayout(pipeline_layout);
-        device.destroyDescriptorSetLayout(desc_set_layout);
-        device.destroyDescriptorPool(desc_pool);
+        device.destroyDescriptorSetLayout(desc_bundle.layout);
+        device.destroyDescriptorPool(desc_bundle.pool);
 
         device.destroyShaderModule(prepare_dispatch_shader);
         device.destroyPipeline(prepare_dispatch_pipeline);
         device.destroyPipelineLayout(prepare_dispatch_pipeline_layout);
-        device.destroyDescriptorSetLayout(prepare_dispatch_desc_set_layout);
-        device.destroyDescriptorPool(prepare_dispatch_desc_pool);
+        device.destroyDescriptorSetLayout(prepare_dispatch_desc_bundle.layout);
+        device.destroyDescriptorPool(prepare_dispatch_desc_bundle.pool);
     }
 
     void initialize_descriptor_sets()
     {
-        auto graph_bufs = graph_buffers.buffers();
+        auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto [dist_buffer,
               results_buffer,
               changed_buffer_0,
@@ -69,84 +70,27 @@ template <typename GraphT> class DeltaStep
               dispatch_buffer] = deltastep_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
-        // Create bindings for all buffers
-        std::vector<vk::DescriptorSetLayoutBinding> bindings;
-        // Bindings 0-2: Graph buffers (first_edges, targets, weight)
-        for (auto i = 0u; i < graph_bufs.size(); i++)
-        {
-            bindings.push_back(
-                {i, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        }
-        // Binding 3: dist buffer
-        bindings.push_back(
-            {3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 4: results buffer (best_distance, max_distance)
-        bindings.push_back(
-            {4, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 5: current_changed (will swap between buffer_0 and buffer_1)
-        bindings.push_back(
-            {5, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 6: previous_changed (will swap between buffer_1 and buffer_0)
-        bindings.push_back(
-            {6, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 7: current min/max changed id buffer
-        bindings.push_back(
-            {7, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 8: previous min/max changed id buffer
-        bindings.push_back(
-            {8, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        // Binding 9: statistics counters
-        bindings.push_back(
-            {9, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-
-        desc_set_layout =
-            device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
-
-        // Create descriptor pool for 2 descriptor sets
-        vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer,
-                                        (uint32_t)(bindings.size() * 2)};
-        desc_pool = device.createDescriptorPool({{}, 2, 1, &poolSize});
-
-        std::vector<vk::DescriptorSetLayout> layouts = {desc_set_layout, desc_set_layout};
-        desc_sets = device.allocateDescriptorSets({desc_pool, 2, layouts.data()});
-
-        for (uint32_t i = 0; i < 2; ++i)
-        {
-            auto current_changed = i == 0 ? changed_buffer_0 : changed_buffer_1;
-            auto previous_changed = i == 0 ? changed_buffer_1 : changed_buffer_0;
-            auto current_min_max = i == 0 ? min_max_changed_id_0 : min_max_changed_id_1;
-            auto previous_min_max = i == 0 ? min_max_changed_id_1 : min_max_changed_id_0;
-
-            std::vector<vk::DescriptorBufferInfo> dbis;
-            dbis.reserve(10);
-
-            for (auto j = 0u; j < graph_bufs.size(); ++j)
-            {
-                dbis.push_back({graph_bufs[j], 0, VK_WHOLE_SIZE});
-            }
-            dbis.push_back({dist_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({results_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({current_changed, 0, VK_WHOLE_SIZE});
-            dbis.push_back({previous_changed, 0, VK_WHOLE_SIZE});
-            dbis.push_back({current_min_max, 0, VK_WHOLE_SIZE});
-            dbis.push_back({previous_min_max, 0, VK_WHOLE_SIZE});
-            dbis.push_back({statistics_buffer, 0, VK_WHOLE_SIZE});
-
-            std::vector<vk::WriteDescriptorSet> writes;
-            for (auto j = 0u; j < dbis.size(); ++j)
-            {
-                writes.push_back({desc_sets[i],
-                                  j,
-                                  0,
-                                  1,
-                                  vk::DescriptorType::eStorageBuffer,
-                                  nullptr,
-                                  &dbis[j],
-                                  nullptr});
-            }
-
-            device.updateDescriptorSets(writes, {});
-        }
+        desc_bundle = create_descriptor_sets(device,
+                                             {{first_edges_buffer,
+                                               targets_buffer,
+                                               weights_buffer,
+                                               dist_buffer,
+                                               results_buffer,
+                                               changed_buffer_0,
+                                               changed_buffer_1,
+                                               min_max_changed_id_0,
+                                               min_max_changed_id_1,
+                                               statistics_buffer},
+                                              {first_edges_buffer,
+                                               targets_buffer,
+                                               weights_buffer,
+                                               dist_buffer,
+                                               results_buffer,
+                                               changed_buffer_1,
+                                               changed_buffer_0,
+                                               min_max_changed_id_1,
+                                               min_max_changed_id_0,
+                                               statistics_buffer}});
     }
 
     void initialize_prepare_dispatch_descriptor_sets()
@@ -159,46 +103,9 @@ template <typename GraphT> class DeltaStep
               min_max_changed_id_1,
               dispatch_buffer] = deltastep_buffers.buffers();
 
-        std::vector<vk::DescriptorSetLayoutBinding> bindings;
-        bindings.push_back(
-            {0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-        bindings.push_back(
-            {1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
-
-        prepare_dispatch_desc_set_layout =
-            device.createDescriptorSetLayout({{}, (uint32_t)bindings.size(), bindings.data()});
-
-        vk::DescriptorPoolSize poolSize{vk::DescriptorType::eStorageBuffer,
-                                        (uint32_t)(bindings.size() * 2)};
-        prepare_dispatch_desc_pool = device.createDescriptorPool({{}, 2, 1, &poolSize});
-
-        std::vector<vk::DescriptorSetLayout> layouts = {prepare_dispatch_desc_set_layout,
-                                                        prepare_dispatch_desc_set_layout};
-        prepare_dispatch_desc_sets =
-            device.allocateDescriptorSets({prepare_dispatch_desc_pool, 2, layouts.data()});
-
-        for (uint32_t i = 0; i < 2; ++i)
-        {
-            auto min_max_buffer = i == 0 ? min_max_changed_id_1 : min_max_changed_id_0;
-
-            std::vector<vk::DescriptorBufferInfo> dbis;
-            dbis.push_back({min_max_buffer, 0, VK_WHOLE_SIZE});
-            dbis.push_back({dispatch_buffer, 0, VK_WHOLE_SIZE});
-
-            std::vector<vk::WriteDescriptorSet> writes;
-            for (auto j = 0u; j < dbis.size(); ++j)
-            {
-                writes.push_back({prepare_dispatch_desc_sets[i],
-                                  j,
-                                  0,
-                                  1,
-                                  vk::DescriptorType::eStorageBuffer,
-                                  nullptr,
-                                  &dbis[j],
-                                  nullptr});
-            }
-            device.updateDescriptorSets(writes, {});
-        }
+        prepare_dispatch_desc_bundle = create_descriptor_sets(
+            device,
+            {{min_max_changed_id_1, dispatch_buffer}, {min_max_changed_id_0, dispatch_buffer}});
     }
 
     void initialize()
@@ -210,7 +117,7 @@ template <typename GraphT> class DeltaStep
         shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
 
         vk::PushConstantRange pcRange{vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};
-        pipeline_layout = device.createPipelineLayout({{}, 1, &desc_set_layout, 1, &pcRange});
+        pipeline_layout = device.createPipelineLayout({{}, 1, &desc_bundle.layout, 1, &pcRange});
 
         // Setup specialization constant for workgroup size
         vk::SpecializationMapEntry spec_entry{0, 0, sizeof(uint32_t)};
@@ -229,7 +136,7 @@ template <typename GraphT> class DeltaStep
         vk::PushConstantRange prepare_dispatch_pcRange{
             vk::ShaderStageFlagBits::eCompute, 0, sizeof(PrepareDispatchPushConsts)};
         prepare_dispatch_pipeline_layout = device.createPipelineLayout(
-            {{}, 1, &prepare_dispatch_desc_set_layout, 1, &prepare_dispatch_pcRange});
+            {{}, 1, &prepare_dispatch_desc_bundle.layout, 1, &prepare_dispatch_pcRange});
 
         vk::PipelineShaderStageCreateInfo prepare_dispatch_shader_stage{
             {}, vk::ShaderStageFlagBits::eCompute, prepare_dispatch_shader, "main", nullptr};
@@ -308,10 +215,10 @@ template <typename GraphT> class DeltaStep
             auto *gpu_current_min_changed_id = gpu_min_max_changed_id_1;
             auto *gpu_prev_max_changed_id = gpu_min_max_changed_id_0 + 1;
             auto *gpu_current_max_changed_id = gpu_min_max_changed_id_1 + 1;
-            auto prev_dispatch_desc_set = prepare_dispatch_desc_sets[0];
-            auto current_dispatch_desc_set = prepare_dispatch_desc_sets[1];
-            auto prev_desc_set = desc_sets[0];
-            auto current_desc_set = desc_sets[1];
+            auto prev_dispatch_desc_set = prepare_dispatch_desc_bundle.descriptor_sets[0];
+            auto current_dispatch_desc_set = prepare_dispatch_desc_bundle.descriptor_sets[1];
+            auto prev_desc_set = desc_bundle.descriptor_sets[0];
+            auto current_desc_set = desc_bundle.descriptor_sets[1];
 
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
             // For each bucket we need to do the first pass with all nodes.
@@ -474,16 +381,12 @@ template <typename GraphT> class DeltaStep
     DeltaStepBuffers &deltastep_buffers;
     Statistics &statistics;
 
-    std::vector<vk::DescriptorSet> desc_sets;
-    vk::DescriptorSetLayout desc_set_layout;
-    vk::DescriptorPool desc_pool;
+    DescriptorSetBundle desc_bundle;
     vk::ShaderModule shader;
     vk::Pipeline pipeline;
     vk::PipelineLayout pipeline_layout;
 
-    std::vector<vk::DescriptorSet> prepare_dispatch_desc_sets;
-    vk::DescriptorSetLayout prepare_dispatch_desc_set_layout;
-    vk::DescriptorPool prepare_dispatch_desc_pool;
+    DescriptorSetBundle prepare_dispatch_desc_bundle;
     vk::ShaderModule prepare_dispatch_shader;
     vk::Pipeline prepare_dispatch_pipeline;
     vk::PipelineLayout prepare_dispatch_pipeline_layout;
