@@ -141,8 +141,7 @@ create_descriptor_sets(vk::Device &device, const std::vector<std::vector<vk::Buf
 
     vk::DescriptorPoolSize pool_size{vk::DescriptorType::eStorageBuffer,
                                      num_bindings * num_descriptor_sets};
-    vk::DescriptorPool pool =
-        device.createDescriptorPool({{}, num_descriptor_sets, 1, &pool_size});
+    vk::DescriptorPool pool = device.createDescriptorPool({{}, num_descriptor_sets, 1, &pool_size});
 
     std::vector<vk::DescriptorSetLayout> layouts(num_descriptor_sets, layout);
     std::vector<vk::DescriptorSet> descriptor_sets =

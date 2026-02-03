@@ -18,10 +18,11 @@ struct ComputePipeline
 };
 
 template <typename PushConstantsT = void>
-inline ComputePipeline create_compute_pipeline(vk::Device &device,
-                                                const std::string &shader_path,
-                                                vk::DescriptorSetLayout descriptor_set_layout,
-                                                const std::vector<uint32_t> &specialization_constants = {})
+inline ComputePipeline
+create_compute_pipeline(vk::Device &device,
+                        const std::string &shader_path,
+                        vk::DescriptorSetLayout descriptor_set_layout,
+                        const std::vector<uint32_t> &specialization_constants = {})
 {
     std::vector<uint32_t> spv = common::read_spv(shader_path);
     vk::ShaderModule shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});

@@ -81,10 +81,7 @@ class VulkanContext
     {
         return m_physical_device.getMemoryProperties();
     }
-    std::string device_name() const
-    {
-        return m_physical_device.getProperties().deviceName;
-    }
+    std::string device_name() const { return m_physical_device.getProperties().deviceName; }
 
   private:
     vk::Instance m_instance;

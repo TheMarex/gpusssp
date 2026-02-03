@@ -4,10 +4,10 @@
 #include <vulkan/vulkan.hpp>
 
 #include "common/constants.hpp"
-#include "common/shader.hpp"
 #include "gpu/bellmanford_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
 #include "gpu/memory.hpp"
+#include "gpu/shader.hpp"
 #include "gpu/statistics.hpp"
 
 #include <iostream>
@@ -38,9 +38,9 @@ template <typename GraphT> class BellmanFord
 
     ~BellmanFord()
     {
-        device.destroyShaderModule(shader);
-        device.destroyPipeline(pipeline);
-        device.destroyPipelineLayout(pipeline_layout);
+        device.destroyShaderModule(main_pipeline.shader);
+        device.destroyPipeline(main_pipeline.pipeline);
+        device.destroyPipelineLayout(main_pipeline.layout);
         device.destroyDescriptorSetLayout(desc_bundle.layout);
         device.destroyDescriptorPool(desc_bundle.pool);
     }
@@ -65,20 +65,8 @@ template <typename GraphT> class BellmanFord
     {
         initialize_descriptor_sets();
 
-        std::vector<uint32_t> spv = common::read_spv("bellman_ford.spv");
-        shader = device.createShaderModule({{}, spv.size() * 4, spv.data()});
-
-        vk::PushConstantRange pcRange{vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConsts)};
-        pipeline_layout = device.createPipelineLayout({{}, 1, &desc_bundle.layout, 1, &pcRange});
-
-        // Setup specialization constant for workgroup size
-        vk::SpecializationMapEntry spec_entry{0, 0, sizeof(uint32_t)};
-        vk::SpecializationInfo spec_info{1, &spec_entry, sizeof(uint32_t), &workgroup_size};
-
-        vk::PipelineShaderStageCreateInfo shaderStage{
-            {}, vk::ShaderStageFlagBits::eCompute, shader, "main", &spec_info};
-
-        pipeline = device.createComputePipeline({}, {{}, shaderStage, pipeline_layout}).value;
+        main_pipeline = create_compute_pipeline<PushConsts>(
+            device, "bellman_ford.spv", desc_bundle.layout, {workgroup_size});
     }
 
     uint32_t run(vk::CommandPool &cmd_pool, vk::Queue &queue, uint32_t src_node, uint32_t dst_node)
@@ -122,9 +110,12 @@ template <typename GraphT> class BellmanFord
         for (uint32_t iteration = 0; iteration < num_nodes - 1; iteration += BATCH_SIZE)
         {
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
-            cmd_buf.bindDescriptorSets(
-                vk::PipelineBindPoint::eCompute, pipeline_layout, 0, desc_bundle.descriptor_sets[0], {});
+            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, main_pipeline.pipeline);
+            cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                       main_pipeline.layout,
+                                       0,
+                                       desc_bundle.descriptor_sets[0],
+                                       {});
 
             for (unsigned i = 0; i < BATCH_SIZE; ++i)
             {
@@ -140,7 +131,7 @@ template <typename GraphT> class BellmanFord
 
                 PushConsts pc{src_node, dst_node, num_nodes};
                 cmd_buf.pushConstants(
-                    pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+                    main_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
                 cmd_buf.dispatch((num_nodes + workgroup_size - 1) / workgroup_size, 1, 1);
                 cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                         vk::PipelineStageFlagBits::eComputeShader,
@@ -172,9 +163,7 @@ template <typename GraphT> class BellmanFord
     Statistics &statistics;
 
     DescriptorSetBundle desc_bundle;
-    vk::ShaderModule shader;
-    vk::Pipeline pipeline;
-    vk::PipelineLayout pipeline_layout;
+    ComputePipeline main_pipeline;
 
     vk::Device &device;
     uint32_t workgroup_size;

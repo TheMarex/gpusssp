@@ -112,11 +112,10 @@ template <typename GraphT> class DeltaStep
         main_pipeline = create_compute_pipeline<PushConsts>(
             device, "delta_step.spv", desc_bundle.layout, {workgroup_size});
 
-        prepare_dispatch_pipeline =
-            create_compute_pipeline(device,
-                                    "deltastep_prepare_dispatch.spv",
-                                    prepare_dispatch_desc_bundle.layout,
-                                    {workgroup_size});
+        prepare_dispatch_pipeline = create_compute_pipeline(device,
+                                                            "deltastep_prepare_dispatch.spv",
+                                                            prepare_dispatch_desc_bundle.layout,
+                                                            {workgroup_size});
     }
 
     uint32_t run(vk::CommandPool &cmd_pool,
@@ -233,8 +232,11 @@ template <typename GraphT> class DeltaStep
                         {});
 
                     cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, main_pipeline.pipeline);
-                    cmd_buf.bindDescriptorSets(
-                        vk::PipelineBindPoint::eCompute, main_pipeline.layout, 0, current_desc_set, {});
+                    cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                               main_pipeline.layout,
+                                               0,
+                                               current_desc_set,
+                                               {});
 
                     cmd_buf.fillBuffer(current_changed_buffer, 0, VK_WHOLE_SIZE, 0);
                     cmd_buf.updateBuffer(
@@ -248,8 +250,11 @@ template <typename GraphT> class DeltaStep
                                             {},
                                             {});
 
-                    cmd_buf.pushConstants(
-                        main_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+                    cmd_buf.pushConstants(main_pipeline.layout,
+                                          vk::ShaderStageFlagBits::eCompute,
+                                          0,
+                                          sizeof(pc),
+                                          &pc);
                     cmd_buf.dispatchIndirect(dispatch_buffer, 0);
                     cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                             vk::PipelineStageFlagBits::eHost,

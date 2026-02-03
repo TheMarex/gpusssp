@@ -54,23 +54,18 @@ class DeltaStepBuffers
             device, mem_props, buf_changed_0, vk::MemoryPropertyFlagBits::eDeviceLocal);
         mem_changed_1 = gpu::alloc_and_bind(
             device, mem_props, buf_changed_1, vk::MemoryPropertyFlagBits::eDeviceLocal);
-        mem_min_max_changed_id_0 =
-            gpu::alloc_and_bind(device,
-                                mem_props,
-                                buf_min_max_changed_id_0,
-                                vk::MemoryPropertyFlagBits::eHostVisible |
-                                    vk::MemoryPropertyFlagBits::eHostCoherent);
-        mem_min_max_changed_id_1 =
-            gpu::alloc_and_bind(device,
-                                mem_props,
-                                buf_min_max_changed_id_1,
-                                vk::MemoryPropertyFlagBits::eHostVisible |
-                                    vk::MemoryPropertyFlagBits::eHostCoherent);
-        mem_dispatch_deltastep =
-            gpu::alloc_and_bind(device,
-                                mem_props,
-                                buf_dispatch_deltastep,
-                                vk::MemoryPropertyFlagBits::eDeviceLocal);
+        mem_min_max_changed_id_0 = gpu::alloc_and_bind(
+            device,
+            mem_props,
+            buf_min_max_changed_id_0,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        mem_min_max_changed_id_1 = gpu::alloc_and_bind(
+            device,
+            mem_props,
+            buf_min_max_changed_id_1,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        mem_dispatch_deltastep = gpu::alloc_and_bind(
+            device, mem_props, buf_dispatch_deltastep, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
         gpu_results = (uint32_t *)device.mapMemory(mem_results, 0, 2 * sizeof(uint32_t));
         gpu_min_max_changed_id_0 =

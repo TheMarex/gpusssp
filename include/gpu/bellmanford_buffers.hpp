@@ -52,10 +52,7 @@ class BellmanFordBuffers
     uint32_t *best_distance() { return gpu_results; }
     uint32_t *changed() { return gpu_changed; }
 
-    std::array<const vk::Buffer, 3> buffers() const
-    {
-        return {buf_dist, buf_results, buf_changed};
-    }
+    std::array<const vk::Buffer, 3> buffers() const { return {buf_dist, buf_results, buf_changed}; }
 
   private:
     vk::Buffer buf_dist;
