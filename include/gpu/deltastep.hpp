@@ -90,12 +90,11 @@ template <typename GraphT> class DeltaStep
                                                               statistics_buffer}},
                                                             {workgroup_size});
 
-        prepare_dispatch_pipeline =
-            create_compute_pipeline(device,
-                                    "deltastep_prepare_dispatch.spv",
-                                    {{min_max_changed_id_1, dispatch_buffer},
-                                     {min_max_changed_id_0, dispatch_buffer}},
-                                    {workgroup_size});
+        prepare_dispatch_pipeline = create_compute_pipeline(
+            device,
+            "deltastep_prepare_dispatch.spv",
+            {{min_max_changed_id_1, dispatch_buffer}, {min_max_changed_id_0, dispatch_buffer}},
+            {workgroup_size});
     }
 
     uint32_t run(vk::CommandPool &cmd_pool,
