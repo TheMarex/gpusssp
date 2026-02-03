@@ -20,6 +20,7 @@ from typing import List, Optional, Dict, Any
 
 @dataclass
 class ExperimentConfig:
+    name: str
     commit_sha: str
     run_targets: List[str]
     params: Dict[str, Any]
@@ -96,6 +97,7 @@ def parse_commit_message(message: str, xp_name: str) -> Optional[ExperimentConfi
         error_exit(f"No param:data specified in commit message: {message}")
 
     return ExperimentConfig(
+        name=xp_name,
         commit_sha="",
         run_targets=run_targets,
         params=params
@@ -138,13 +140,12 @@ def run_experiment(
 ) -> None:
     cache_path = workspace_root / "cache" / config.params["data"]
     xp_base_path = workspace_root / "experiments" / "results"
-    xp_name = config.commit_sha[:9]
 
     env = os.environ.copy()
     if "gpu" in config.params:
         env["GPUSSSP_GPU"] = str(config.params["gpu"])
 
-    cmds = format_cmd(build_dir, target, cache_path, xp_base_path, xp_name, config.params)
+    cmds = format_cmd(build_dir, target, cache_path, xp_base_path, config.name, config.params)
     
     for cmd in cmds:
         cmd_str = " ".join(cmd)
@@ -179,7 +180,6 @@ def main() -> None:
         if config:
             config.commit_sha = sha
             experiment_configs.append(config)
-            print(f"Found experiment commit: {sha[:9]} - {message[:60]}...")
 
     if not experiment_configs:
         error_exit(f"No commits found matching 'xp:{xp_name}'")
@@ -189,7 +189,7 @@ def main() -> None:
 
     for i, config in enumerate(experiment_configs, 1):
         print(f"\n{'='*80}")
-        print(f"Processing commit {i}/{len(experiment_configs)}: {config.commit_sha[:9]}")
+        print(f"{xp_name} {i}/{len(experiment_configs)}: {config.commit_sha[:9]}")
         print(f"{'='*80}\n")
 
         print(f"Checking out {config.commit_sha[:9]}...")
