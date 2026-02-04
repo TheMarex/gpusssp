@@ -61,6 +61,12 @@ target_link_libraries(osm2graph
         Threads::Threads
 )
 
+# Graph reorder executable
+add_executable(graph_reorder
+    src/graph_reorder.cpp
+    src/common/logger.cpp
+)
+
 # Generate queries executable
 add_executable(generate_queries
     experiments/generate_queries.cpp
@@ -206,6 +212,7 @@ if(BUILD_TESTING)
         tests/test_nearfar.cpp
         tests/test_string_util.cpp
         tests/test_graph_metrics.cpp
+        tests/test_zorder.cpp
         src/common/logger.cpp
     )
     
