@@ -24,6 +24,7 @@ find_package(Vulkan REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
 find_package(BZip2 REQUIRED)
+find_package(glfw3 REQUIRED)
 
 # Find glslangValidator for shader compilation
 find_program(GLSLANG_VALIDATOR glslangValidator
@@ -65,6 +66,18 @@ target_link_libraries(osm2graph
 add_executable(graph_reorder
     src/graph_reorder.cpp
     src/common/logger.cpp
+)
+
+# Graph visualizer executable
+add_executable(visualize_graph
+    src/visualize_graph.cpp
+    src/common/logger.cpp
+)
+
+target_link_libraries(visualize_graph
+    PRIVATE
+        Vulkan::Vulkan
+        glfw
 )
 
 # Generate queries executable
@@ -149,12 +162,32 @@ function(add_compute_shader SHADER_NAME)
     set(${SHADER_NAME}_SHADER_OUTPUT ${SHADER_OUTPUT} PARENT_SCOPE)
 endfunction()
 
+function(add_graphics_shader SHADER_NAME SHADER_STAGE)
+    set(SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${SHADER_NAME}.${SHADER_STAGE})
+    set(SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_NAME}.${SHADER_STAGE}.spv)
+    
+    add_custom_command(
+        OUTPUT ${SHADER_OUTPUT}
+        COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} --target-env vulkan1.1 -o ${SHADER_OUTPUT}
+        DEPENDS ${SHADER_SOURCE}
+        COMMENT "Compiling ${SHADER_NAME}.${SHADER_STAGE} shader to SPIR-V"
+        VERBATIM
+    )
+    
+    list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
+    set(SHADER_OUTPUTS ${SHADER_OUTPUTS} PARENT_SCOPE)
+endfunction()
+
 add_compute_shader(delta_step)
 add_compute_shader(deltastep_prepare_dispatch)
 add_compute_shader(bellman_ford)
 add_compute_shader(nearfar_relax)
 add_compute_shader(nearfar_compact)
 add_compute_shader(nearfar_prepare_dispatch)
+add_compute_shader(project_coordinates)
+
+add_graphics_shader(visualize_node vert)
+add_graphics_shader(visualize_node frag)
 
 add_custom_target(shaders DEPENDS ${SHADER_OUTPUTS})
 
@@ -162,6 +195,7 @@ add_dependencies(gpusssp shaders)
 add_dependencies(experiment_deltastep shaders)
 add_dependencies(experiment_bellmanford shaders)
 add_dependencies(experiment_nearfar shaders)
+add_dependencies(visualize_graph shaders)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)

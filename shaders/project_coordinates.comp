@@ -1,0 +1,46 @@
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(std430, binding = 0) readonly buffer InputCoords
+{
+    ivec2 coords[];
+};
+
+layout(std430, binding = 1) writeonly buffer OutputPositions
+{
+    vec2 positions[];
+};
+
+layout(push_constant) uniform ProjectionParams
+{
+    float center_x;
+    float center_y;
+    float inv_width;
+    float inv_height;
+    uint num_points;
+}
+params;
+
+const float EARTH_RADIUS = 6378137.0;
+const float PI = 3.14159265358979323846;
+const float PRECISION = 1000000.0;
+
+void main()
+{
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= params.num_points)
+        return;
+
+    float lon = float(coords[idx].x) / PRECISION;
+    float lat = float(coords[idx].y) / PRECISION;
+
+    float x = EARTH_RADIUS * lon * PI / 180.0;
+    float lat_rad = lat * PI / 180.0;
+    float y = EARTH_RADIUS * log(tan(PI / 4.0 + lat_rad / 2.0));
+
+    float norm_x = (x - params.center_x) * params.inv_width;
+    float norm_y = (y - params.center_y) * params.inv_height;
+
+    positions[idx] = vec2(norm_x, norm_y);
+}

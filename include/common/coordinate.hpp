@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <tuple>
+#include <vector>
 
 namespace gpusssp
 {
@@ -38,6 +39,12 @@ struct Coordinate
     {
         return std::tie(lon, lat) == std::tie(other.lon, other.lat);
     }
+};
+
+struct BoundingBox
+{
+    Coordinate south_east;
+    Coordinate north_west;
 };
 
 inline std::ostream &operator<<(std::ostream &out, const Coordinate &coord)
@@ -103,6 +110,22 @@ inline double haversine_distance(const Coordinate lhs, const Coordinate rhs)
 
 static const constexpr Coordinate INVALID_COORD = {std::numeric_limits<std::int32_t>::max(),
                                                    std::numeric_limits<std::int32_t>::max()};
+
+inline BoundingBox bounds(const std::vector<Coordinate> &coordinates)
+{
+    BoundingBox bbox{INVALID_COORD, {0, 0}};
+
+    for (const auto &c : coordinates)
+    {
+        bbox.south_east.lon = std::min(bbox.south_east.lon, c.lon);
+        bbox.south_east.lat = std::min(bbox.south_east.lat, c.lat);
+        bbox.north_west.lon = std::max(bbox.north_west.lon, c.lon);
+        bbox.north_west.lat = std::max(bbox.north_west.lat, c.lat);
+    }
+
+    return bbox;
+}
+
 } // namespace common
 } // namespace gpusssp
 

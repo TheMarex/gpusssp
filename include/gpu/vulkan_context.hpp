@@ -3,6 +3,7 @@
 #include "common/logger.hpp"
 
 #include <cstdlib>
+#include <vector>
 #include <vulkan/vulkan.hpp>
 
 namespace gpusssp::gpu
@@ -26,34 +27,16 @@ inline auto selectDevice()
 class VulkanContext
 {
   public:
+    // Creates a compute-only context by default
     explicit VulkanContext(const char *app_name, uint32_t device_index)
     {
-        vk::ApplicationInfo appInfo(app_name, 1, "NoEngine", 1, VK_API_VERSION_1_3);
-        m_instance = vk::createInstance({{}, &appInfo});
-        auto physDevices = m_instance.enumeratePhysicalDevices();
-
-        if (device_index >= physDevices.size())
-        {
-            common::log_error() << "Error: device_index " << device_index
-                                << " is out of range. Found " << physDevices.size() << " device(s)."
-                                << std::endl;
-            m_instance.destroy();
-            throw std::runtime_error("Invalid device_index value");
-        }
-        m_physical_device = physDevices[device_index];
-        common::log() << "Using device " << device_index << ": "
-                      << m_physical_device.getProperties().deviceName << std::endl;
-
-        float queuePriority = 1.0f;
-        vk::DeviceQueueCreateInfo queueInfo({}, 0, 1, &queuePriority);
-        m_device = m_physical_device.createDevice({{}, 1, &queueInfo});
-        m_queue = m_device.getQueue(0, 0);
-
-        m_command_pool =
-            m_device.createCommandPool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0});
+        create_instance(app_name, {});
+        select_physical_device(device_index);
+        create_device_and_queue(0, {});
+        create_command_pool(0);
     }
 
-    ~VulkanContext()
+    virtual ~VulkanContext()
     {
         if (m_device)
         {
@@ -85,7 +68,60 @@ class VulkanContext
     }
     std::string device_name() const { return m_physical_device.getProperties().deviceName; }
 
-  private:
+  protected:
+    VulkanContext() = default;
+
+    void create_instance(const char *app_name, const std::vector<const char *> &extensions)
+    {
+        vk::ApplicationInfo appInfo(app_name, 1, "NoEngine", 1, VK_API_VERSION_1_3);
+        vk::InstanceCreateInfo instanceInfo(
+            {}, &appInfo, 0, nullptr, static_cast<uint32_t>(extensions.size()), extensions.data());
+        m_instance = vk::createInstance(instanceInfo);
+    }
+
+    void select_physical_device(uint32_t device_index)
+    {
+        auto physDevices = m_instance.enumeratePhysicalDevices();
+
+        if (device_index >= physDevices.size())
+        {
+            common::log_error() << "Error: device_index " << device_index
+                                << " is out of range. Found " << physDevices.size() << " device(s)."
+                                << std::endl;
+            m_instance.destroy();
+            throw std::runtime_error("Invalid device_index value");
+        }
+        m_physical_device = physDevices[device_index];
+        common::log() << "Using device " << device_index << ": "
+                      << m_physical_device.getProperties().deviceName << std::endl;
+    }
+
+    void create_device_and_queue(uint32_t queue_family_index,
+                                 const std::vector<const char *> &device_extensions)
+    {
+        float queuePriority = 1.0f;
+        vk::DeviceQueueCreateInfo queueInfo({}, queue_family_index, 1, &queuePriority);
+
+        vk::PhysicalDeviceFeatures deviceFeatures;
+        vk::DeviceCreateInfo deviceInfo({},
+                                        1,
+                                        &queueInfo,
+                                        0,
+                                        nullptr,
+                                        device_extensions.size(),
+                                        device_extensions.data(),
+                                        &deviceFeatures);
+
+        m_device = m_physical_device.createDevice(deviceInfo);
+        m_queue = m_device.getQueue(queue_family_index, 0);
+    }
+
+    void create_command_pool(uint32_t queue_family_index)
+    {
+        m_command_pool = m_device.createCommandPool(
+            {vk::CommandPoolCreateFlagBits::eResetCommandBuffer, queue_family_index});
+    }
+
     vk::Instance m_instance;
     vk::PhysicalDevice m_physical_device;
     vk::Device m_device;

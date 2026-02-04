@@ -1,0 +1,621 @@
+#include "common/coordinate.hpp"
+#include "common/files.hpp"
+#include "common/logger.hpp"
+#include "common/web_mercator.hpp"
+#include "common/weighted_graph.hpp"
+#include "gpu/coordinates_buffer.hpp"
+#include "gpu/memory.hpp"
+#include "gpu/shader.hpp"
+#include "gpu/vulkan_graphics_context.hpp"
+
+#include <GLFW/glfw3.h>
+#include <algorithm>
+#include <array>
+#include <cstdlib>
+#include <iostream>
+#include <vector>
+#include <vulkan/vulkan.hpp>
+
+using namespace gpusssp;
+
+enum class ColorMode
+{
+    Fixed,
+    Ordering
+};
+
+struct PushConstants
+{
+    float offset_x;
+    float offset_y;
+    float scale_x;
+    float scale_y;
+    float point_size;
+};
+
+struct State
+{
+    double pan_x = 0.0;
+    double pan_y = 0.0;
+    double zoom = 1.0;
+    double point_size = 3.0;
+
+    double last_mouse_x = 0.0;
+    double last_mouse_y = 0.0;
+    bool is_dragging = false;
+
+    ColorMode color_mode = ColorMode::Fixed;
+};
+
+State g_state;
+
+void scroll_callback(GLFWwindow *, double, double yoffset)
+{
+    double zoom_factor = 1.1;
+    if (yoffset > 0)
+    {
+        g_state.zoom *= zoom_factor;
+    }
+    else if (yoffset < 0)
+    {
+        g_state.zoom /= zoom_factor;
+    }
+}
+
+void mouse_button_callback(GLFWwindow *window, int button, int action, int)
+{
+    if (button == GLFW_MOUSE_BUTTON_LEFT)
+    {
+        if (action == GLFW_PRESS)
+        {
+            g_state.is_dragging = true;
+            glfwGetCursorPos(window, &g_state.last_mouse_x, &g_state.last_mouse_y);
+        }
+        else if (action == GLFW_RELEASE)
+        {
+            g_state.is_dragging = false;
+        }
+    }
+}
+
+void cursor_pos_callback(GLFWwindow *, double xpos, double ypos)
+{
+    if (g_state.is_dragging)
+    {
+        double dx = xpos - g_state.last_mouse_x;
+        double dy = ypos - g_state.last_mouse_y;
+
+        g_state.pan_x += dx / g_state.zoom;
+        g_state.pan_y -= dy / g_state.zoom;
+
+        g_state.last_mouse_x = xpos;
+        g_state.last_mouse_y = ypos;
+    }
+}
+
+void key_callback(GLFWwindow *, int key, int, int action, int)
+{
+    if (action == GLFW_PRESS || action == GLFW_REPEAT)
+    {
+        if (key == GLFW_KEY_EQUAL || key == GLFW_KEY_KP_ADD)
+        {
+            g_state.point_size = std::min(g_state.point_size * 1.2, 100.0);
+        }
+        else if (key == GLFW_KEY_MINUS || key == GLFW_KEY_KP_SUBTRACT)
+        {
+            g_state.point_size = std::max(g_state.point_size / 1.2, 0.1);
+        }
+    }
+    if (action == GLFW_PRESS)
+    {
+        if (key == GLFW_KEY_M)
+        {
+            if (g_state.color_mode == ColorMode::Fixed)
+            {
+                g_state.color_mode = ColorMode::Ordering;
+            }
+            else
+            {
+                g_state.color_mode = ColorMode::Fixed;
+            }
+        }
+    }
+}
+
+void framebuffer_resize_callback(GLFWwindow *window, int, int)
+{
+    auto *context =
+        reinterpret_cast<gpu::VulkanGraphicsContext *>(glfwGetWindowUserPointer(window));
+    if (context)
+    {
+        context->set_framebuffer_resized();
+    }
+}
+
+void setup_glfw_callbacks(GLFWwindow *window, gpu::VulkanGraphicsContext *context)
+{
+    glfwSetWindowUserPointer(window, context);
+    glfwSetScrollCallback(window, scroll_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetCursorPosCallback(window, cursor_pos_callback);
+    glfwSetKeyCallback(window, key_callback);
+    glfwSetFramebufferSizeCallback(window, framebuffer_resize_callback);
+}
+
+std::array<float, 3> oklch_to_rgb(float L, float C, float h)
+{
+    float h_rad = h * 3.14159265359f / 180.0f;
+    float a = C * std::cos(h_rad);
+    float b = C * std::sin(h_rad);
+
+    float l_ = L + 0.3963377774f * a + 0.2158037573f * b;
+    float m_ = L - 0.1055613458f * a - 0.0638541728f * b;
+    float s_ = L - 0.0894841775f * a - 1.2914855480f * b;
+
+    float l = l_ * l_ * l_;
+    float m = m_ * m_ * m_;
+    float s = s_ * s_ * s_;
+
+    float r = +4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s;
+    float g = -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s;
+    float b_rgb = -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s;
+
+    r = std::max(0.0f, std::min(1.0f, r));
+    g = std::max(0.0f, std::min(1.0f, g));
+    b_rgb = std::max(0.0f, std::min(1.0f, b_rgb));
+
+    return {r, g, b_rgb};
+}
+
+void update_color_buffer(vk::Device device,
+                         vk::DeviceMemory color_buffer_memory,
+                         size_t num_nodes,
+                         ColorMode mode)
+{
+    void *data = device.mapMemory(color_buffer_memory, 0, sizeof(float) * num_nodes * 3);
+    float *colors = static_cast<float *>(data);
+
+    if (mode == ColorMode::Fixed)
+    {
+        for (size_t i = 0; i < num_nodes; ++i)
+        {
+            colors[i * 3 + 0] = 0.2f;
+            colors[i * 3 + 1] = 0.6f;
+            colors[i * 3 + 2] = 1.0f;
+        }
+    }
+    else if (mode == ColorMode::Ordering)
+    {
+        for (size_t i = 0; i < num_nodes; ++i)
+        {
+            float t = static_cast<float>(i) / static_cast<float>(num_nodes);
+            float hue = t * 360.0f;
+            auto rgb = oklch_to_rgb(0.7f, 0.15f, hue);
+            colors[i * 3 + 0] = rgb[0];
+            colors[i * 3 + 1] = rgb[1];
+            colors[i * 3 + 2] = rgb[2];
+        }
+    }
+
+    device.unmapMemory(color_buffer_memory);
+}
+
+std::pair<vk::Buffer, vk::DeviceMemory>
+create_color_buffer(vk::Device device,
+                    vk::PhysicalDeviceMemoryProperties mem_props,
+                    size_t num_nodes)
+{
+    vk::Buffer color_buffer = gpu::create_exclusive_buffer<float>(
+        device, num_nodes * 3, vk::BufferUsageFlagBits::eVertexBuffer);
+
+    vk::DeviceMemory color_buffer_memory =
+        gpu::alloc_and_bind(device,
+                            mem_props,
+                            color_buffer,
+                            vk::MemoryPropertyFlagBits::eHostVisible |
+                                vk::MemoryPropertyFlagBits::eHostCoherent);
+
+    update_color_buffer(device, color_buffer_memory, num_nodes, ColorMode::Fixed);
+
+    return {color_buffer, color_buffer_memory};
+}
+
+void project_coordinates(gpu::CoordinatesBuffer &coord_buffer,
+                         vk::Device device,
+                         vk::CommandPool cmd_pool,
+                         vk::Queue queue,
+                         const common::WebMercatorPoint &min_point,
+                         const common::WebMercatorPoint &max_point,
+                         size_t num_coords)
+{
+    struct ProjectionPushConstants
+    {
+        float center_x;
+        float center_y;
+        float inv_width;
+        float inv_height;
+        uint32_t num_points;
+    };
+
+    float center_x = (min_point.x + max_point.x) / 2.0;
+    float center_y = (min_point.y + max_point.y) / 2.0;
+    float inv_width = 1.0 / (max_point.x - min_point.x);
+    float inv_height = 1.0 / (max_point.y - min_point.y);
+
+    auto coord_buffers = coord_buffer.buffers();
+
+    auto compute_pipeline = gpu::create_compute_pipeline<ProjectionPushConstants>(
+        device, "project_coordinates.spv", {{coord_buffers[0], coord_buffers[1]}});
+
+    vk::CommandBuffer compute_cmd =
+        device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
+
+    compute_cmd.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+    compute_cmd.bindPipeline(vk::PipelineBindPoint::eCompute, compute_pipeline.pipeline);
+    compute_cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                   compute_pipeline.layout,
+                                   0,
+                                   1,
+                                   &compute_pipeline.descriptor_sets[0],
+                                   0,
+                                   nullptr);
+
+    ProjectionPushConstants push_constants{
+        center_x, center_y, inv_width, inv_height, static_cast<uint32_t>(num_coords)};
+
+    compute_cmd.pushConstants(compute_pipeline.layout,
+                              vk::ShaderStageFlagBits::eCompute,
+                              0,
+                              sizeof(ProjectionPushConstants),
+                              &push_constants);
+
+    uint32_t num_workgroups = (static_cast<uint32_t>(num_coords) + 255) / 256;
+    compute_cmd.dispatch(num_workgroups, 1, 1);
+
+    vk::BufferMemoryBarrier barrier(vk::AccessFlagBits::eShaderWrite,
+                                    vk::AccessFlagBits::eVertexAttributeRead,
+                                    VK_QUEUE_FAMILY_IGNORED,
+                                    VK_QUEUE_FAMILY_IGNORED,
+                                    coord_buffers[1],
+                                    0,
+                                    VK_WHOLE_SIZE);
+
+    compute_cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                vk::PipelineStageFlagBits::eVertexInput,
+                                {},
+                                {},
+                                barrier,
+                                {});
+
+    compute_cmd.end();
+
+    vk::Fence compute_fence = device.createFence({});
+    queue.submit({{0, nullptr, nullptr, 1, &compute_cmd}}, compute_fence);
+    (void)device.waitForFences(1, &compute_fence, VK_TRUE, UINT64_MAX);
+
+    device.destroyFence(compute_fence);
+    device.freeCommandBuffers(cmd_pool, 1, &compute_cmd);
+    device.destroyPipeline(compute_pipeline.pipeline);
+    device.destroyPipelineLayout(compute_pipeline.layout);
+    device.destroyDescriptorSetLayout(compute_pipeline.descriptor_set_layout);
+    device.destroyDescriptorPool(compute_pipeline.descriptor_pool);
+    device.destroyShaderModule(compute_pipeline.shader);
+}
+
+std::pair<vk::Pipeline, vk::PipelineLayout> create_graphics_pipeline(vk::Device device,
+                                                                     vk::RenderPass render_pass,
+                                                                     vk::Extent2D swapchain_extent)
+{
+    vk::ShaderModule vert_shader = gpu::create_shader_module(device, "visualize_node.vert.spv");
+    vk::ShaderModule frag_shader = gpu::create_shader_module(device, "visualize_node.frag.spv");
+
+    vk::PipelineShaderStageCreateInfo vert_stage_info(
+        {}, vk::ShaderStageFlagBits::eVertex, vert_shader, "main");
+    vk::PipelineShaderStageCreateInfo frag_stage_info(
+        {}, vk::ShaderStageFlagBits::eFragment, frag_shader, "main");
+
+    vk::PipelineShaderStageCreateInfo shader_stages[] = {vert_stage_info, frag_stage_info};
+
+    std::array<vk::VertexInputBindingDescription, 2> bindings = {
+        vk::VertexInputBindingDescription(0, sizeof(float) * 2, vk::VertexInputRate::eVertex),
+        vk::VertexInputBindingDescription(1, sizeof(float) * 3, vk::VertexInputRate::eVertex)};
+
+    std::array<vk::VertexInputAttributeDescription, 2> attributes = {
+        vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat, 0),
+        vk::VertexInputAttributeDescription(1, 1, vk::Format::eR32G32B32Sfloat, 0)};
+
+    vk::PipelineVertexInputStateCreateInfo vertex_input_info(
+        {},
+        static_cast<uint32_t>(bindings.size()),
+        bindings.data(),
+        static_cast<uint32_t>(attributes.size()),
+        attributes.data());
+
+    vk::PipelineInputAssemblyStateCreateInfo input_assembly(
+        {}, vk::PrimitiveTopology::ePointList, VK_FALSE);
+
+    vk::Viewport viewport(0.0f,
+                          0.0f,
+                          static_cast<float>(swapchain_extent.width),
+                          static_cast<float>(swapchain_extent.height),
+                          0.0f,
+                          1.0f);
+    vk::Rect2D scissor({0, 0}, swapchain_extent);
+
+    vk::PipelineViewportStateCreateInfo viewport_state({}, 1, &viewport, 1, &scissor);
+
+    vk::PipelineRasterizationStateCreateInfo rasterizer({},
+                                                        VK_FALSE,
+                                                        VK_FALSE,
+                                                        vk::PolygonMode::eFill,
+                                                        vk::CullModeFlagBits::eNone,
+                                                        vk::FrontFace::eClockwise,
+                                                        VK_FALSE,
+                                                        0.0f,
+                                                        0.0f,
+                                                        0.0f,
+                                                        1.0f);
+
+    vk::PipelineMultisampleStateCreateInfo multisampling(
+        {}, vk::SampleCountFlagBits::e1, VK_FALSE, 1.0f, nullptr, VK_FALSE, VK_FALSE);
+
+    vk::PipelineColorBlendAttachmentState color_blend_attachment(
+        VK_TRUE,
+        vk::BlendFactor::eSrcAlpha,
+        vk::BlendFactor::eOneMinusSrcAlpha,
+        vk::BlendOp::eAdd,
+        vk::BlendFactor::eOne,
+        vk::BlendFactor::eZero,
+        vk::BlendOp::eAdd,
+        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+            vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+
+    vk::PipelineColorBlendStateCreateInfo color_blending(
+        {}, VK_FALSE, vk::LogicOp::eCopy, 1, &color_blend_attachment);
+
+    vk::PushConstantRange push_constant_range(
+        vk::ShaderStageFlagBits::eVertex, 0, sizeof(PushConstants));
+
+    vk::PipelineLayoutCreateInfo pipeline_layout_info({}, 0, nullptr, 1, &push_constant_range);
+
+    vk::PipelineLayout pipeline_layout = device.createPipelineLayout(pipeline_layout_info);
+
+    std::vector<vk::DynamicState> dynamic_states = {vk::DynamicState::eViewport,
+                                                    vk::DynamicState::eScissor};
+    vk::PipelineDynamicStateCreateInfo dynamic_state(
+        {}, static_cast<uint32_t>(dynamic_states.size()), dynamic_states.data());
+
+    vk::GraphicsPipelineCreateInfo pipeline_info({},
+                                                 2,
+                                                 shader_stages,
+                                                 &vertex_input_info,
+                                                 &input_assembly,
+                                                 nullptr,
+                                                 &viewport_state,
+                                                 &rasterizer,
+                                                 &multisampling,
+                                                 nullptr,
+                                                 &color_blending,
+                                                 &dynamic_state,
+                                                 pipeline_layout,
+                                                 render_pass,
+                                                 0);
+
+    auto pipeline_result = device.createGraphicsPipeline(nullptr, pipeline_info);
+    if (pipeline_result.result != vk::Result::eSuccess)
+    {
+        throw std::runtime_error("Failed to create graphics pipeline");
+    }
+    vk::Pipeline graphics_pipeline = pipeline_result.value;
+
+    device.destroyShaderModule(vert_shader);
+    device.destroyShaderModule(frag_shader);
+
+    return {graphics_pipeline, pipeline_layout};
+}
+
+PushConstants calculate_view_transform(const State &camera,
+                                       vk::Extent2D swapchain_extent,
+                                       double graph_width,
+                                       double graph_height)
+{
+    double aspect_ratio = static_cast<double>(swapchain_extent.width) / swapchain_extent.height;
+    double graph_aspect = graph_width / graph_height;
+
+    double scale_x, scale_y;
+    if (graph_aspect > aspect_ratio)
+    {
+        scale_x = camera.zoom;
+        scale_y = camera.zoom * aspect_ratio / graph_aspect;
+    }
+    else
+    {
+        scale_x = camera.zoom * graph_aspect / aspect_ratio;
+        scale_y = camera.zoom;
+    }
+
+    double normalized_pan_x = camera.pan_x / swapchain_extent.width * 2.0;
+    double normalized_pan_y = camera.pan_y / swapchain_extent.height * 2.0;
+
+    return PushConstants{static_cast<float>(normalized_pan_x),
+                         static_cast<float>(normalized_pan_y),
+                         static_cast<float>(scale_x),
+                         static_cast<float>(scale_y),
+                         std::max(0.5f, static_cast<float>(camera.point_size * camera.zoom))};
+}
+
+void record_render_commands(vk::CommandBuffer command_buffer,
+                            vk::RenderPass render_pass,
+                            vk::Framebuffer framebuffer,
+                            vk::Extent2D swapchain_extent,
+                            vk::Pipeline graphics_pipeline,
+                            vk::PipelineLayout pipeline_layout,
+                            const PushConstants &push_constants,
+                            vk::Buffer projected_coords_buffer,
+                            vk::Buffer color_buffer,
+                            uint32_t vertex_count)
+{
+    command_buffer.reset();
+
+    vk::CommandBufferBeginInfo begin_info;
+    command_buffer.begin(begin_info);
+
+    vk::ClearValue clear_color(vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+
+    vk::RenderPassBeginInfo render_pass_info(
+        render_pass, framebuffer, {{0, 0}, swapchain_extent}, 1, &clear_color);
+
+    command_buffer.beginRenderPass(render_pass_info, vk::SubpassContents::eInline);
+
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline);
+
+    vk::Viewport viewport(0.0f,
+                          0.0f,
+                          static_cast<float>(swapchain_extent.width),
+                          static_cast<float>(swapchain_extent.height),
+                          0.0f,
+                          1.0f);
+    command_buffer.setViewport(0, 1, &viewport);
+
+    vk::Rect2D scissor({0, 0}, swapchain_extent);
+    command_buffer.setScissor(0, 1, &scissor);
+
+    command_buffer.pushConstants(pipeline_layout,
+                                 vk::ShaderStageFlagBits::eVertex,
+                                 0,
+                                 sizeof(PushConstants),
+                                 &push_constants);
+
+    vk::Buffer vertex_buffers[] = {projected_coords_buffer, color_buffer};
+    vk::DeviceSize offsets[] = {0, 0};
+    command_buffer.bindVertexBuffers(0, 2, vertex_buffers, offsets);
+
+    command_buffer.draw(vertex_count, 1, 0, 0);
+
+    command_buffer.endRenderPass();
+    command_buffer.end();
+}
+
+int main(int argc, char **argv)
+{
+    if (argc != 2)
+    {
+        common::log_error() << "Usage: " << argv[0] << " <graph_base_path>" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    std::string base_path = argv[1];
+
+    common::log() << "Loading graph from: " << base_path << std::endl;
+
+    auto graph = common::files::read_weighted_graph<uint32_t>(base_path);
+    auto coordinates = common::files::read_coordinates(base_path);
+
+    if (graph.num_nodes() != coordinates.size())
+    {
+        common::log_error() << "Graph node count (" << graph.num_nodes()
+                            << ") does not match coordinate count (" << coordinates.size() << ")"
+                            << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    common::log() << "Loaded graph with " << graph.num_nodes() << " nodes and " << graph.num_edges()
+                  << " edges" << std::endl;
+
+    auto bounding_box = common::bounds(coordinates);
+    auto min_point = common::to_web_mercator(bounding_box.south_east);
+    auto max_point = common::to_web_mercator(bounding_box.north_west);
+
+    common::log() << "Creating Vulkan graphics context..." << std::endl;
+
+    gpu::VulkanGraphicsContext context("Graph Visualizer", 1280, 720);
+
+    setup_glfw_callbacks(context.window(), &context);
+
+    vk::Device device = context.device();
+    vk::PhysicalDeviceMemoryProperties mem_props = context.physical_device().getMemoryProperties();
+    vk::CommandPool cmd_pool = context.command_pool();
+    vk::Queue queue = context.queue();
+
+    gpu::CoordinatesBuffer coord_buffer(coordinates, device, mem_props, cmd_pool, queue);
+
+    auto [color_buffer, color_buffer_memory] =
+        create_color_buffer(device, mem_props, coordinates.size());
+
+    project_coordinates(
+        coord_buffer, device, cmd_pool, queue, min_point, max_point, coordinates.size());
+
+    auto [graphics_pipeline, pipeline_layout] =
+        create_graphics_pipeline(device, context.render_pass(), context.swapchain_extent());
+
+    vk::CommandBufferAllocateInfo alloc_info(cmd_pool, vk::CommandBufferLevel::ePrimary, 1);
+
+    vk::CommandBuffer command_buffer = device.allocateCommandBuffers(alloc_info)[0];
+
+    common::log() << "Starting render loop..." << std::endl;
+
+    g_state.zoom = 1.0;
+    g_state.pan_x = 0.0;
+    g_state.pan_y = 0.0;
+
+    auto coord_buffers = coord_buffer.buffers();
+
+    ColorMode previous_mode = g_state.color_mode;
+
+    while (!context.should_close())
+    {
+        context.poll_events();
+
+        if (g_state.color_mode != previous_mode)
+        {
+            if (g_state.color_mode == ColorMode::Fixed)
+            {
+                common::log() << "Switched to Fixed color mode" << std::endl;
+            }
+            else if (g_state.color_mode == ColorMode::Ordering)
+            {
+                common::log() << "Switched to Ordering color mode" << std::endl;
+            }
+            update_color_buffer(device, color_buffer_memory, coordinates.size(), g_state.color_mode);
+            previous_mode = g_state.color_mode;
+        }
+
+        auto frame = context.begin_frame();
+
+        PushConstants push_constants = calculate_view_transform(g_state,
+                                                                context.swapchain_extent(),
+                                                                max_point.x - min_point.x,
+                                                                max_point.y - min_point.y);
+
+        record_render_commands(command_buffer,
+                               context.render_pass(),
+                               frame.framebuffer,
+                               context.swapchain_extent(),
+                               graphics_pipeline,
+                               pipeline_layout,
+                               push_constants,
+                               coord_buffers[1],
+                               color_buffer,
+                               static_cast<uint32_t>(coordinates.size()));
+
+        vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
+        vk::SubmitInfo submit_info(
+            1, &frame.image_available, wait_stages, 1, &command_buffer, 1, &frame.render_finished);
+
+        context.queue().submit(1, &submit_info, frame.in_flight);
+
+        context.end_frame(frame);
+    }
+
+    device.waitIdle();
+
+    device.destroyPipeline(graphics_pipeline);
+    device.destroyPipelineLayout(pipeline_layout);
+    device.destroyBuffer(color_buffer);
+    device.freeMemory(color_buffer_memory);
+
+    common::log() << "Visualization complete." << std::endl;
+
+    return EXIT_SUCCESS;
+}

@@ -85,6 +85,12 @@ create_descriptor_sets(vk::Device &device, const std::vector<std::vector<vk::Buf
 }
 } // namespace detail
 
+inline vk::ShaderModule create_shader_module(vk::Device device, const std::string &shader_path)
+{
+    std::vector<uint32_t> spv = common::read_spv(shader_path);
+    return device.createShaderModule({{}, spv.size() * 4, spv.data()});
+}
+
 struct ComputePipeline
 {
     vk::ShaderModule shader;
