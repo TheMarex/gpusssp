@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/logger.hpp"
+#include "gpu/shared_queue.hpp"
 
 #include <cstdlib>
 #include <vector>
@@ -28,7 +29,7 @@ class VulkanContext
 {
   public:
     // Creates a compute-only context by default
-    explicit VulkanContext(const char *app_name, uint32_t device_index)
+    explicit VulkanContext(const char *app_name, uint32_t device_index) : m_shared_queue(nullptr)
     {
         create_instance(app_name, {});
         select_physical_device(device_index);
@@ -60,7 +61,8 @@ class VulkanContext
     vk::Instance instance() const { return m_instance; }
     vk::PhysicalDevice physical_device() const { return m_physical_device; }
     vk::Device device() const { return m_device; }
-    vk::Queue queue() const { return m_queue; }
+    vk::Queue queue() const { return m_shared_queue.unwrap(); }
+    SharedQueue &shared_queue() const { return m_shared_queue; }
     vk::CommandPool command_pool() const { return m_command_pool; }
     vk::PhysicalDeviceMemoryProperties memory_properties() const
     {
@@ -69,7 +71,7 @@ class VulkanContext
     std::string device_name() const { return m_physical_device.getProperties().deviceName; }
 
   protected:
-    VulkanContext() = default;
+    VulkanContext() : m_shared_queue(nullptr) {}
 
     void create_instance(const char *app_name, const std::vector<const char *> &extensions)
     {
@@ -113,7 +115,8 @@ class VulkanContext
                                         &deviceFeatures);
 
         m_device = m_physical_device.createDevice(deviceInfo);
-        m_queue = m_device.getQueue(queue_family_index, 0);
+        vk::Queue raw_queue = m_device.getQueue(queue_family_index, 0);
+        new (&m_shared_queue) SharedQueue(raw_queue);
     }
 
     void create_command_pool(uint32_t queue_family_index)
@@ -125,7 +128,7 @@ class VulkanContext
     vk::Instance m_instance;
     vk::PhysicalDevice m_physical_device;
     vk::Device m_device;
-    vk::Queue m_queue;
+    mutable SharedQueue m_shared_queue;
     vk::CommandPool m_command_pool;
 };
 

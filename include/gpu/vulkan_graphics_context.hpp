@@ -153,7 +153,7 @@ class VulkanGraphicsContext : public VulkanContext
         vk::Result result = vk::Result::eSuccess;
         try
         {
-            result = m_queue.presentKHR(presentInfo);
+            result = shared_queue().presentKHR(presentInfo);
         }
         catch (const vk::OutOfDateKHRError &)
         {
@@ -162,24 +162,6 @@ class VulkanGraphicsContext : public VulkanContext
         catch (const vk::SurfaceLostKHRError &)
         {
             result = vk::Result::eErrorSurfaceLostKHR;
-        }
-        catch (const vk::DeviceLostError &)
-        {
-            common::log() << "Device lost during present, recreating swapchain..." << std::endl;
-            m_device.waitIdle();
-            m_framebuffer_resized = false;
-            recreate_swapchain();
-            m_current_frame = (m_current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
-            return;
-        }
-        catch (const vk::SystemError &e)
-        {
-            common::log_error() << "Vulkan system error during present: " << e.what() << std::endl;
-            m_device.waitIdle();
-            m_framebuffer_resized = false;
-            recreate_swapchain();
-            m_current_frame = (m_current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
-            return;
         }
 
         if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR ||

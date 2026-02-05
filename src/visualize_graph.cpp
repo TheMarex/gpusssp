@@ -11,17 +11,30 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <condition_variable>
 #include <cstdlib>
 #include <iostream>
+#include <mutex>
+#include <optional>
+#include <random>
+#include <thread>
 #include <vector>
 #include <vulkan/vulkan.hpp>
+
+#include "gpu/deltastep.hpp"
+#include "gpu/deltastep_buffers.hpp"
+#include "gpu/graph_buffers.hpp"
+#include "gpu/statistics.hpp"
+#include "gpu/tracer.hpp"
 
 using namespace gpusssp;
 
 enum class ColorMode
 {
     Fixed,
-    Ordering
+    Ordering,
+    Trace
 };
 
 struct PushConstants
@@ -31,6 +44,23 @@ struct PushConstants
     float scale_x;
     float scale_y;
     float point_size;
+};
+
+struct SharedContext
+{
+    std::mutex sssp_mutex;
+    std::condition_variable sssp_cv;
+    bool sssp_run_requested = false;
+    std::optional<uint32_t> sssp_result;
+    bool sssp_shutdown = false;
+
+    std::mutex color_mutex;
+    std::condition_variable color_cv;
+    bool color_update_requested = false;
+    bool color_shutdown = false;
+    ColorMode current_color_mode = ColorMode::Fixed;
+
+    gpu::Tracer tracer;
 };
 
 struct State
@@ -48,6 +78,7 @@ struct State
 };
 
 State g_state;
+SharedContext *g_shared_ctx = nullptr;
 
 void scroll_callback(GLFWwindow *, double, double yoffset)
 {
@@ -114,9 +145,46 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
             {
                 g_state.color_mode = ColorMode::Ordering;
             }
+            else if (g_state.color_mode == ColorMode::Ordering)
+            {
+                g_state.color_mode = ColorMode::Trace;
+            }
             else
             {
                 g_state.color_mode = ColorMode::Fixed;
+            }
+        }
+
+        else if (key == GLFW_KEY_T)
+        {
+            if (g_state.color_mode != ColorMode::Trace)
+            {
+                g_state.color_mode = ColorMode::Trace;
+            }
+        }
+        else if (key == GLFW_KEY_S)
+        {
+            if (g_state.color_mode == ColorMode::Trace && g_shared_ctx)
+            {
+                g_shared_ctx->tracer.step();
+            }
+        }
+        else if (key == GLFW_KEY_C)
+        {
+            if (g_state.color_mode == ColorMode::Trace && g_shared_ctx)
+            {
+                g_shared_ctx->tracer.continue_to_end();
+            }
+        }
+        else if (key == GLFW_KEY_R)
+        {
+            if (g_state.color_mode == ColorMode::Trace && g_shared_ctx)
+            {
+                g_shared_ctx->tracer.continue_to_end();
+
+                std::lock_guard<std::mutex> lock(g_shared_ctx->sssp_mutex);
+                g_shared_ctx->sssp_run_requested = true;
+                g_shared_ctx->sssp_cv.notify_one();
             }
         }
     }
@@ -142,80 +210,229 @@ void setup_glfw_callbacks(GLFWwindow *window, gpu::VulkanGraphicsContext *contex
     glfwSetFramebufferSizeCallback(window, framebuffer_resize_callback);
 }
 
-std::array<float, 3> oklch_to_rgb(float L, float C, float h)
+std::thread start_sssp_thread(SharedContext &ctx,
+                              const common::WeightedGraph<uint32_t> &graph,
+                              gpu::DeltaStepBuffers &deltastep_buffers,
+                              vk::Device device,
+                              vk::PhysicalDeviceMemoryProperties mem_props,
+                              gpu::SharedQueue &queue)
 {
-    float h_rad = h * 3.14159265359f / 180.0f;
-    float a = C * std::cos(h_rad);
-    float b = C * std::sin(h_rad);
+    return std::thread(
+        [&ctx, &graph, &deltastep_buffers, device, mem_props, &queue]() mutable
+        {
+            vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+                                                0);
+            vk::CommandPool cmd_pool = device.createCommandPool(pool_info);
 
-    float l_ = L + 0.3963377774f * a + 0.2158037573f * b;
-    float m_ = L - 0.1055613458f * a - 0.0638541728f * b;
-    float s_ = L - 0.0894841775f * a - 1.2914855480f * b;
+            gpu::GraphBuffers<common::WeightedGraph<uint32_t>> graph_buffers(
+                graph, device, mem_props, cmd_pool, queue);
+            gpu::Statistics statistics(device, mem_props);
+            gpu::DeltaStep<common::WeightedGraph<uint32_t>> deltastep(
+                graph_buffers, deltastep_buffers, device, statistics);
+            deltastep.initialize();
 
-    float l = l_ * l_ * l_;
-    float m = m_ * m_ * m_;
-    float s = s_ * s_ * s_;
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_int_distribution<uint32_t> dist(0, graph.num_nodes() - 1);
 
-    float r = +4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s;
-    float g = -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s;
-    float b_rgb = -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s;
+            while (true)
+            {
+                {
+                    std::unique_lock<std::mutex> lock(ctx.sssp_mutex);
+                    ctx.sssp_cv.wait(
+                        lock, [&ctx] { return ctx.sssp_run_requested || ctx.sssp_shutdown; });
 
-    r = std::max(0.0f, std::min(1.0f, r));
-    g = std::max(0.0f, std::min(1.0f, g));
-    b_rgb = std::max(0.0f, std::min(1.0f, b_rgb));
+                    if (ctx.sssp_shutdown)
+                    {
+                        break;
+                    }
 
-    return {r, g, b_rgb};
+                    ctx.sssp_run_requested = false;
+                }
+
+                uint32_t src_node = dist(gen);
+                uint32_t dst_node = UINT32_MAX;
+                constexpr uint32_t delta = 3600;
+
+                common::log() << "SSSP thread: Running delta-stepping from node " << src_node
+                              << std::endl;
+
+                uint32_t result =
+                    deltastep.run(cmd_pool, queue, src_node, dst_node, delta, 64, &ctx.tracer);
+
+                {
+                    std::lock_guard<std::mutex> lock(ctx.sssp_mutex);
+                    ctx.sssp_result = result;
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(ctx.color_mutex);
+                    ctx.color_update_requested = true;
+                    ctx.color_cv.notify_one();
+                }
+
+                common::log() << "SSSP thread: Completed with result " << result << std::endl;
+            }
+
+            device.destroyCommandPool(cmd_pool);
+            common::log() << "SSSP thread: Shutting down" << std::endl;
+        });
 }
 
-void update_color_buffer(vk::Device device,
-                         vk::DeviceMemory color_buffer_memory,
-                         size_t num_nodes,
-                         ColorMode mode)
+std::thread start_color_updater_thread(SharedContext &ctx,
+                                       gpu::DeltaStepBuffers &deltastep_buffers,
+                                       vk::Device device,
+                                       vk::Buffer color_buffer,
+                                       size_t num_nodes,
+                                       gpu::SharedQueue &queue)
 {
-    void *data = device.mapMemory(color_buffer_memory, 0, sizeof(float) * num_nodes * 3);
-    float *colors = static_cast<float *>(data);
-
-    if (mode == ColorMode::Fixed)
-    {
-        for (size_t i = 0; i < num_nodes; ++i)
+    return std::thread(
+        [&ctx, &deltastep_buffers, device, color_buffer, num_nodes, &queue]() mutable
         {
-            colors[i * 3 + 0] = 0.2f;
-            colors[i * 3 + 1] = 0.6f;
-            colors[i * 3 + 2] = 1.0f;
-        }
-    }
-    else if (mode == ColorMode::Ordering)
-    {
-        for (size_t i = 0; i < num_nodes; ++i)
-        {
-            float t = static_cast<float>(i) / static_cast<float>(num_nodes);
-            float hue = t * 360.0f;
-            auto rgb = oklch_to_rgb(0.7f, 0.15f, hue);
-            colors[i * 3 + 0] = rgb[0];
-            colors[i * 3 + 1] = rgb[1];
-            colors[i * 3 + 2] = rgb[2];
-        }
-    }
+            vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+                                                0);
+            vk::CommandPool cmd_pool = device.createCommandPool(pool_info);
 
-    device.unmapMemory(color_buffer_memory);
+            struct NodeColorPushConsts
+            {
+                uint32_t num_nodes;
+                uint32_t max_distance;
+                uint32_t color_mode;
+            };
+
+            auto deltastep_bufs = deltastep_buffers.buffers();
+            auto node_color_pipeline = gpu::create_compute_pipeline<NodeColorPushConsts>(
+                device, "node_color.spv", {{deltastep_bufs[0], color_buffer}});
+
+            auto dispatch_shader = [&](uint32_t color_mode_value, uint32_t max_distance)
+            {
+                NodeColorPushConsts pc{
+                    static_cast<uint32_t>(num_nodes), max_distance, color_mode_value};
+
+                vk::CommandBuffer cmd = device.allocateCommandBuffers(
+                    {cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
+
+                cmd.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+                cmd.bindPipeline(vk::PipelineBindPoint::eCompute, node_color_pipeline.pipeline);
+                cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                       node_color_pipeline.layout,
+                                       0,
+                                       1,
+                                       &node_color_pipeline.descriptor_sets[0],
+                                       0,
+                                       nullptr);
+                cmd.pushConstants(node_color_pipeline.layout,
+                                  vk::ShaderStageFlagBits::eCompute,
+                                  0,
+                                  sizeof(pc),
+                                  &pc);
+
+                uint32_t num_workgroups = (static_cast<uint32_t>(num_nodes) + 255) / 256;
+                cmd.dispatch(num_workgroups, 1, 1);
+
+                vk::BufferMemoryBarrier barrier(vk::AccessFlagBits::eShaderWrite,
+                                                vk::AccessFlagBits::eVertexAttributeRead,
+                                                VK_QUEUE_FAMILY_IGNORED,
+                                                VK_QUEUE_FAMILY_IGNORED,
+                                                color_buffer,
+                                                0,
+                                                VK_WHOLE_SIZE);
+
+                cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::PipelineStageFlagBits::eVertexInput,
+                                    {},
+                                    {},
+                                    barrier,
+                                    {});
+
+                cmd.end();
+
+                vk::Fence fence = device.createFence({});
+                queue.submit({{0, nullptr, nullptr, 1, &cmd}}, fence);
+                (void)device.waitForFences(1, &fence, VK_TRUE, UINT64_MAX);
+
+                device.destroyFence(fence);
+                device.freeCommandBuffers(cmd_pool, 1, &cmd);
+            };
+
+            while (true)
+            {
+                ColorMode mode;
+                {
+                    std::unique_lock<std::mutex> lock(ctx.color_mutex);
+                    ctx.color_cv.wait(
+                        lock, [&ctx] { return ctx.color_update_requested || ctx.color_shutdown; });
+
+                    if (ctx.color_shutdown)
+                    {
+                        break;
+                    }
+
+                    ctx.color_update_requested = false;
+                    mode = ctx.current_color_mode;
+                }
+
+                if (mode == ColorMode::Trace)
+                {
+                    common::log() << "Color updater: Entering Trace mode loop" << std::endl;
+
+                    while (true)
+                    {
+                        ColorMode current_mode;
+                        {
+                            std::lock_guard<std::mutex> lock(ctx.color_mutex);
+                            current_mode = ctx.current_color_mode;
+                        }
+
+                        if (current_mode != ColorMode::Trace)
+                        {
+                            break;
+                        }
+
+                        if (ctx.tracer.wait_for_signal(100))
+                        {
+                            uint32_t max_distance = *deltastep_buffers.max_distance();
+                            if (max_distance == 0)
+                            {
+                                max_distance = 1;
+                            }
+
+                            dispatch_shader(2, max_distance);
+                        }
+                    }
+                }
+                else if (mode == ColorMode::Fixed)
+                {
+                    common::log() << "Color updater: Updating to Fixed mode" << std::endl;
+                    dispatch_shader(0, 0);
+                }
+                else if (mode == ColorMode::Ordering)
+                {
+                    common::log() << "Color updater: Updating to Ordering mode" << std::endl;
+                    dispatch_shader(1, 0);
+                }
+            }
+
+            device.destroyPipeline(node_color_pipeline.pipeline);
+            device.destroyPipelineLayout(node_color_pipeline.layout);
+            device.destroyDescriptorSetLayout(node_color_pipeline.descriptor_set_layout);
+            device.destroyDescriptorPool(node_color_pipeline.descriptor_pool);
+            device.destroyShaderModule(node_color_pipeline.shader);
+            device.destroyCommandPool(cmd_pool);
+            common::log() << "Color updater thread: Shutting down" << std::endl;
+        });
 }
 
-std::pair<vk::Buffer, vk::DeviceMemory>
-create_color_buffer(vk::Device device,
-                    vk::PhysicalDeviceMemoryProperties mem_props,
-                    size_t num_nodes)
+std::pair<vk::Buffer, vk::DeviceMemory> create_color_buffer(
+    vk::Device device, vk::PhysicalDeviceMemoryProperties mem_props, size_t num_nodes)
 {
     vk::Buffer color_buffer = gpu::create_exclusive_buffer<float>(
-        device, num_nodes * 3, vk::BufferUsageFlagBits::eVertexBuffer);
+        device,
+        num_nodes * 3,
+        vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer);
 
-    vk::DeviceMemory color_buffer_memory =
-        gpu::alloc_and_bind(device,
-                            mem_props,
-                            color_buffer,
-                            vk::MemoryPropertyFlagBits::eHostVisible |
-                                vk::MemoryPropertyFlagBits::eHostCoherent);
-
-    update_color_buffer(device, color_buffer_memory, num_nodes, ColorMode::Fixed);
+    vk::DeviceMemory color_buffer_memory = gpu::alloc_and_bind(
+        device, mem_props, color_buffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     return {color_buffer, color_buffer_memory};
 }
@@ -223,7 +440,7 @@ create_color_buffer(vk::Device device,
 void project_coordinates(gpu::CoordinatesBuffer &coord_buffer,
                          vk::Device device,
                          vk::CommandPool cmd_pool,
-                         vk::Queue queue,
+                         gpu::SharedQueue &queue,
                          const common::WebMercatorPoint &min_point,
                          const common::WebMercatorPoint &max_point,
                          size_t num_coords)
@@ -536,7 +753,7 @@ int main(int argc, char **argv)
     vk::Device device = context.device();
     vk::PhysicalDeviceMemoryProperties mem_props = context.physical_device().getMemoryProperties();
     vk::CommandPool cmd_pool = context.command_pool();
-    vk::Queue queue = context.queue();
+    gpu::SharedQueue &queue = context.shared_queue();
 
     gpu::CoordinatesBuffer coord_buffer(coordinates, device, mem_props, cmd_pool, queue);
 
@@ -549,9 +766,30 @@ int main(int argc, char **argv)
     auto [graphics_pipeline, pipeline_layout] =
         create_graphics_pipeline(device, context.render_pass(), context.swapchain_extent());
 
-    vk::CommandBufferAllocateInfo alloc_info(cmd_pool, vk::CommandBufferLevel::ePrimary, 1);
+    constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+    vk::CommandBufferAllocateInfo alloc_info(
+        cmd_pool, vk::CommandBufferLevel::ePrimary, MAX_FRAMES_IN_FLIGHT);
 
-    vk::CommandBuffer command_buffer = device.allocateCommandBuffers(alloc_info)[0];
+    std::vector<vk::CommandBuffer> command_buffers = device.allocateCommandBuffers(alloc_info);
+
+    common::log() << "Creating shared DeltaStepBuffers..." << std::endl;
+    gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device, mem_props);
+
+    common::log() << "Creating shared context..." << std::endl;
+    SharedContext shared_ctx;
+    g_shared_ctx = &shared_ctx;
+
+    common::log() << "Starting worker threads..." << std::endl;
+    auto sssp_thread =
+        start_sssp_thread(shared_ctx, graph, deltastep_buffers, device, mem_props, queue);
+    auto color_thread = start_color_updater_thread(
+        shared_ctx, deltastep_buffers, device, color_buffer, coordinates.size(), queue);
+
+    {
+        std::lock_guard<std::mutex> lock(shared_ctx.color_mutex);
+        shared_ctx.color_update_requested = true;
+        shared_ctx.color_cv.notify_one();
+    }
 
     common::log() << "Starting render loop..." << std::endl;
 
@@ -562,6 +800,7 @@ int main(int argc, char **argv)
     auto coord_buffers = coord_buffer.buffers();
 
     ColorMode previous_mode = g_state.color_mode;
+    uint32_t current_frame = 0;
 
     while (!context.should_close())
     {
@@ -569,15 +808,22 @@ int main(int argc, char **argv)
 
         if (g_state.color_mode != previous_mode)
         {
-            if (g_state.color_mode == ColorMode::Fixed)
             {
-                common::log() << "Switched to Fixed color mode" << std::endl;
+                std::lock_guard<std::mutex> lock(shared_ctx.color_mutex);
+                shared_ctx.current_color_mode = g_state.color_mode;
+                shared_ctx.color_update_requested = true;
+                shared_ctx.color_cv.notify_one();
             }
-            else if (g_state.color_mode == ColorMode::Ordering)
+
+            if (g_state.color_mode == ColorMode::Trace)
             {
-                common::log() << "Switched to Ordering color mode" << std::endl;
+                common::log() << "Entering Trace mode" << std::endl;
+
+                std::lock_guard<std::mutex> lock(shared_ctx.sssp_mutex);
+                shared_ctx.sssp_run_requested = true;
+                shared_ctx.sssp_cv.notify_one();
             }
-            update_color_buffer(device, color_buffer_memory, coordinates.size(), g_state.color_mode);
+
             previous_mode = g_state.color_mode;
         }
 
@@ -587,6 +833,8 @@ int main(int argc, char **argv)
                                                                 context.swapchain_extent(),
                                                                 max_point.x - min_point.x,
                                                                 max_point.y - min_point.y);
+
+        vk::CommandBuffer command_buffer = command_buffers[current_frame];
 
         record_render_commands(command_buffer,
                                context.render_pass(),
@@ -603,12 +851,40 @@ int main(int argc, char **argv)
         vk::SubmitInfo submit_info(
             1, &frame.image_available, wait_stages, 1, &command_buffer, 1, &frame.render_finished);
 
-        context.queue().submit(1, &submit_info, frame.in_flight);
+        context.shared_queue().submit(1, &submit_info, frame.in_flight);
 
         context.end_frame(frame);
+
+        current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
     device.waitIdle();
+
+    common::log() << "Shutting down worker threads..." << std::endl;
+
+    {
+        std::lock_guard<std::mutex> lock(shared_ctx.sssp_mutex);
+        shared_ctx.sssp_shutdown = true;
+        shared_ctx.sssp_cv.notify_one();
+    }
+    {
+        std::lock_guard<std::mutex> lock(shared_ctx.color_mutex);
+        shared_ctx.color_shutdown = true;
+        shared_ctx.color_cv.notify_one();
+    }
+
+    shared_ctx.tracer.continue_to_end();
+
+    if (sssp_thread.joinable())
+    {
+        sssp_thread.join();
+    }
+    if (color_thread.joinable())
+    {
+        color_thread.join();
+    }
+
+    g_shared_ctx = nullptr;
 
     device.destroyPipeline(graphics_pipeline);
     device.destroyPipelineLayout(pipeline_layout);

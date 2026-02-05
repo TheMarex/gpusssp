@@ -10,6 +10,7 @@
 #include "gpu/memory.hpp"
 #include "gpu/shader.hpp"
 #include "gpu/statistics.hpp"
+#include "gpu/tracer.hpp"
 
 namespace gpusssp::gpu
 {
@@ -96,12 +97,14 @@ template <typename GraphT> class DeltaStep
             {workgroup_size});
     }
 
+    template <typename QueueT>
     uint32_t run(vk::CommandPool &cmd_pool,
-                 vk::Queue &queue,
+                 QueueT &queue,
                  uint32_t src_node,
                  uint32_t dst_node,
                  uint32_t delta,
-                 uint32_t batch_size = 64)
+                 uint32_t batch_size = 64,
+                 Tracer *tracer = nullptr)
     {
         vk::CommandBuffer cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
@@ -255,6 +258,11 @@ template <typename GraphT> class DeltaStep
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
 
+                if (tracer)
+                {
+                    tracer->signal_and_wait();
+                }
+
                 common::log_debug() << bucket << " changed " << *gpu_prev_min_changed_id << "-"
                                     << *gpu_prev_max_changed_id << " max " << *gpu_max_distance
                                     << " best " << *gpu_best_distance << std::endl;
@@ -299,6 +307,11 @@ template <typename GraphT> class DeltaStep
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
             queue.waitIdle();
 
+            if (tracer)
+            {
+                tracer->signal_and_wait();
+            }
+
             common::log_debug() << bucket << " heavy changed " << *gpu_current_min_changed_id << "-"
                                 << *gpu_current_max_changed_id << " max " << *gpu_max_distance
                                 << " best " << *gpu_best_distance << std::endl;
@@ -319,6 +332,11 @@ template <typename GraphT> class DeltaStep
             {
                 break;
             }
+        }
+
+        if (tracer)
+        {
+            tracer->reset();
         }
 
         return *gpu_best_distance;

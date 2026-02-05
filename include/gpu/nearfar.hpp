@@ -7,7 +7,6 @@
 #include "common/logger.hpp"
 #include "common/statistics.hpp"
 #include "gpu/graph_buffers.hpp"
-#include "gpu/memory.hpp"
 #include "gpu/nearfar_buffers.hpp"
 #include "gpu/shader.hpp"
 #include "gpu/statistics.hpp"
@@ -144,8 +143,9 @@ template <typename GraphT> class NearFar
                                     {workgroup_size});
     }
 
+    template <typename QueueT>
     uint32_t run(vk::CommandPool &cmd_pool,
-                 vk::Queue &queue,
+                 QueueT &queue,
                  uint32_t src_node,
                  uint32_t dst_node,
                  uint32_t delta,

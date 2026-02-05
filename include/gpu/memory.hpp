@@ -47,10 +47,11 @@ struct BufferCopyInfo
     vk::DeviceSize size;
 };
 
+template <typename QueueT = vk::Queue>
 inline void copy_buffers_batched(vk::Device &device,
                                  const vk::PhysicalDeviceMemoryProperties &mem_props,
                                  vk::CommandPool command_pool,
-                                 vk::Queue queue,
+                                 QueueT &queue,
                                  const std::vector<BufferCopyInfo> &copies)
 {
     if (copies.empty())

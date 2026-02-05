@@ -1,0 +1,98 @@
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(std430, binding = 0) readonly buffer Dist
+{
+    uint dist[];
+};
+
+layout(std430, binding = 1) writeonly buffer Color
+{
+    float colors[];
+};
+
+layout(push_constant) uniform PushConsts
+{
+    uint num_nodes;
+    uint max_distance;
+    uint color_mode;
+}
+pc;
+
+const uint INF_WEIGHT = 0x7FFFFFFF;
+
+const uint COLOR_MODE_FIXED = 0;
+const uint COLOR_MODE_ORDERING = 1;
+const uint COLOR_MODE_TRACE = 2;
+
+vec3 oklch_to_rgb(float L, float C, float h)
+{
+    float h_rad = h * 3.14159265359 / 180.0;
+    float a = C * cos(h_rad);
+    float b = C * sin(h_rad);
+
+    float l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+    float m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+    float s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+
+    float l = l_ * l_ * l_;
+    float m = m_ * m_ * m_;
+    float s = s_ * s_ * s_;
+
+    float r = +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+    float g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+    float b_rgb = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+
+    r = clamp(r, 0.0, 1.0);
+    g = clamp(g, 0.0, 1.0);
+    b_rgb = clamp(b_rgb, 0.0, 1.0);
+
+    return vec3(r, g, b_rgb);
+}
+
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= pc.num_nodes)
+    {
+        return;
+    }
+
+    vec3 rgb;
+
+    if (pc.color_mode == COLOR_MODE_FIXED)
+    {
+        rgb = vec3(0.2, 0.6, 1.0);
+    }
+    else if (pc.color_mode == COLOR_MODE_ORDERING)
+    {
+        float t = float(i) / float(pc.num_nodes);
+        float hue = t * 360.0;
+        rgb = oklch_to_rgb(0.7, 0.15, hue);
+    }
+    else if (pc.color_mode == COLOR_MODE_TRACE)
+    {
+        uint distance = dist[i];
+
+        if (distance == INF_WEIGHT)
+        {
+            rgb = oklch_to_rgb(0.5, 0.0, 0.0);
+        }
+        else
+        {
+            float t = float(distance) / float(pc.max_distance);
+            t = clamp(t, 0.0, 1.0);
+            float hue = 240.0 - t * 240.0;
+            rgb = oklch_to_rgb(0.7, 0.15, hue);
+        }
+    }
+    else
+    {
+        rgb = vec3(1.0, 0.0, 1.0);
+    }
+
+    colors[i * 3 + 0] = rgb.r;
+    colors[i * 3 + 1] = rgb.g;
+    colors[i * 3 + 2] = rgb.b;
+}

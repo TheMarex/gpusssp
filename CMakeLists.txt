@@ -85,6 +85,8 @@ target_link_libraries(visualize_graph
         glfw
 )
 
+target_compile_definitions(visualize_graph PRIVATE ENABLE_TRACING)
+
 # Generate queries executable
 add_executable(generate_queries
     experiments/generate_queries.cpp
@@ -190,6 +192,7 @@ add_compute_shader(nearfar_relax)
 add_compute_shader(nearfar_compact)
 add_compute_shader(nearfar_prepare_dispatch)
 add_compute_shader(project_coordinates)
+add_compute_shader(node_color)
 
 add_graphics_shader(visualize_node vert)
 add_graphics_shader(visualize_node frag)

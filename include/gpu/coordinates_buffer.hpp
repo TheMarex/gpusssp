@@ -14,11 +14,12 @@ namespace gpusssp::gpu
 class CoordinatesBuffer
 {
   public:
+    template <typename QueueT = vk::Queue>
     CoordinatesBuffer(const std::vector<common::Coordinate> &coordinates,
                       vk::Device &device,
                       const vk::PhysicalDeviceMemoryProperties &mem_props,
                       vk::CommandPool command_pool,
-                      vk::Queue queue)
+                      QueueT &queue)
         : device(device), count(coordinates.size())
     {
         buf_input = gpu::create_exclusive_buffer<int32_t>(

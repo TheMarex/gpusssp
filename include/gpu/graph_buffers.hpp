@@ -13,11 +13,12 @@ namespace gpusssp::gpu
 template <typename GraphT> class GraphBuffers
 {
   public:
+    template <typename QueueT = vk::Queue>
     GraphBuffers(const GraphT &graph,
                  vk::Device &device,
                  const vk::PhysicalDeviceMemoryProperties &mem_props,
                  vk::CommandPool command_pool,
-                 vk::Queue queue)
+                 QueueT &queue)
         : graph(graph), device(device)
     {
         // Create device-local buffers with transfer destination flag

@@ -6,11 +6,8 @@
 #include "common/constants.hpp"
 #include "gpu/bellmanford_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
-#include "gpu/memory.hpp"
 #include "gpu/shader.hpp"
 #include "gpu/statistics.hpp"
-
-#include <iostream>
 
 namespace gpusssp::gpu
 {
@@ -63,7 +60,8 @@ template <typename GraphT> class BellmanFord
                                                             {workgroup_size});
     }
 
-    uint32_t run(vk::CommandPool &cmd_pool, vk::Queue &queue, uint32_t src_node, uint32_t dst_node)
+    template <typename QueueT>
+    uint32_t run(vk::CommandPool &cmd_pool, QueueT &queue, uint32_t src_node, uint32_t dst_node)
     {
         vk::CommandBuffer cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
