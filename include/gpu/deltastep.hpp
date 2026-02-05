@@ -167,12 +167,6 @@ template <typename GraphT> class DeltaStep
         queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
         queue.waitIdle();
 
-        if (tracer)
-        {
-            // we start with bucket 0 and prev = 0, current = 1
-            tracer->signal_and_wait({0, 1});
-        }
-
         for (uint32_t bucket = 0; bucket < MAX_BUCKETS; bucket++)
         {
             PushConsts pc{src_node, dst_node, num_nodes, bucket, delta, delta};
@@ -279,8 +273,10 @@ template <typename GraphT> class DeltaStep
 
                 if (tracer)
                 {
+                    // the prev buffer is the one we want to visualize since that is where the
+                    // changed nodes are after the swap
                     tracer->signal_and_wait(
-                        {bucket, gpu_current_max_changed_id == gpu_min_max_changed_id_0 ? 0 : 1});
+                        {bucket, gpu_prev_max_changed_id == gpu_min_max_changed_id_0 ? 0u : 1u});
                 }
 
                 common::log_debug() << bucket << " changed " << *gpu_prev_min_changed_id << "-"
@@ -329,8 +325,9 @@ template <typename GraphT> class DeltaStep
 
             if (tracer)
             {
+                // we didn't do a swap before this, we want to display the current buffer
                 tracer->signal_and_wait(
-                    {bucket, gpu_current_max_changed_id == gpu_min_max_changed_id_0 ? 0 : 1});
+                    {bucket, gpu_current_max_changed_id == gpu_min_max_changed_id_0 ? 0u : 1u});
             }
 
             common::log_debug() << bucket << " heavy changed " << *gpu_current_min_changed_id << "-"

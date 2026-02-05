@@ -35,7 +35,8 @@ enum class ColorMode
     Ordering = 1,
     Trace = 8,
     TraceDistance = 9,
-    TraceBucket = 10
+    TraceBucket = 10,
+    TraceChanged = 11
 };
 
 inline bool is_trace_mode(ColorMode mode)
@@ -165,6 +166,10 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
             {
                 g_state.color_mode = ColorMode::TraceBucket;
             }
+            else if (g_state.color_mode == ColorMode::TraceBucket)
+            {
+                g_state.color_mode = ColorMode::TraceChanged;
+            }
             else
             {
                 g_state.color_mode = ColorMode::TraceDistance;
@@ -264,7 +269,7 @@ std::thread start_sssp_thread(SharedContext &ctx,
                               << std::endl;
 
                 uint32_t result =
-                    deltastep.run(cmd_pool, queue, src_node, dst_node, delta, 64, &ctx.tracer);
+                    deltastep.run(cmd_pool, queue, src_node, dst_node, delta, 1, &ctx.tracer);
 
                 {
                     std::lock_guard<std::mutex> lock(ctx.sssp_mutex);
@@ -311,7 +316,9 @@ std::thread start_color_updater_thread(SharedContext &ctx,
 
             auto deltastep_bufs = deltastep_buffers.buffers();
             auto node_color_pipeline = gpu::create_compute_pipeline<NodeColorPushConsts>(
-                device, "node_color.spv", {{deltastep_bufs[0], color_buffer}});
+                device,
+                "node_color.spv",
+                {{deltastep_bufs[0], color_buffer, deltastep_bufs[2], deltastep_bufs[3]}});
 
             auto dispatch_shader = [&](const uint32_t color_mode_value,
                                        const uint32_t max_distance,
