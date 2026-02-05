@@ -8,7 +8,7 @@ TEST_CASE("z-order bit interleaving", "[zorder]")
     // Test basic bit interleaving
     SECTION("interleave zero values")
     {
-        auto result = gpusssp::common::interleave_bits(0, 0);
+        auto result = gpusssp::common::morton_encode(0, 0);
         REQUIRE(result == 0);
     }
 
@@ -17,7 +17,7 @@ TEST_CASE("z-order bit interleaving", "[zorder]")
         // x = 1 = 0b01, y = 2 = 0b10
         // x[0]=1, y[0]=0, x[1]=0, y[1]=1
         // Expected interleaving: x[0]y[0]x[1]y[1] = 1001 binary = 9
-        auto result = gpusssp::common::interleave_bits(1, 2);
+        auto result = gpusssp::common::morton_encode(1, 2);
         REQUIRE(result == 9);
     }
 
@@ -26,7 +26,7 @@ TEST_CASE("z-order bit interleaving", "[zorder]")
         // x = 5 = 0b0101, y = 10 = 0b1010
         // x[0]=1, y[0]=0, x[1]=0, y[1]=1, x[2]=1, y[2]=0, x[3]=0, y[3]=1
         // Expected: x[0]y[0]x[1]y[1]x[2]y[2]x[3]y[3] = 10011001 binary = 153
-        auto result = gpusssp::common::interleave_bits(5, 10);
+        auto result = gpusssp::common::morton_encode(5, 10);
         REQUIRE(result == 153);
     }
 }
