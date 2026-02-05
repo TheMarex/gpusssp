@@ -11,7 +11,7 @@
 namespace gpusssp::gpu
 {
 
-class Tracer
+template <typename PayloadT> class Tracer
 {
   public:
     Tracer() : should_continue(false), ready_to_step(false), finished(false) {}
@@ -23,6 +23,7 @@ class Tracer
             std::unique_lock<std::mutex> lock(step_mtx);
             should_continue = false;
             ready_to_step = false;
+            maybe_payload.emplace();
         }
         {
             std::unique_lock<std::mutex> lock(run_mtx);
@@ -30,7 +31,7 @@ class Tracer
         }
     }
 
-    void signal_and_wait()
+    void signal_and_wait(PayloadT payload)
     {
         if (should_continue)
         {
@@ -40,6 +41,7 @@ class Tracer
         {
             common::log() << "Signaling ready to step..." << std::endl;
             std::unique_lock<std::mutex> lock(render_mtx);
+            maybe_payload.emplace(std::move(payload));
             ready_to_step = false;
             cv_render.notify_one();
         }
@@ -78,11 +80,18 @@ class Tracer
             }
         }
 
-        std::unique_lock<std::mutex> lock(step_mtx);
-        should_continue = true;
-        cv_step.notify_one();
+        {
+            std::unique_lock<std::mutex> lock(step_mtx);
+            should_continue = true;
+            cv_step.notify_one();
+        }
 
-        common::log() << "Continuing." << std::endl;
+        common::log() << "Continuing..." << std::endl;
+
+        {
+            std::unique_lock<std::mutex> lock(run_mtx);
+            cv_run.wait(lock, [this] { return this->finished; });
+        }
     }
 
     bool wait_for_signal(int timeout_ms = 100)
@@ -90,6 +99,12 @@ class Tracer
         std::unique_lock<std::mutex> lock(render_mtx);
         return cv_render.wait_for(lock, std::chrono::milliseconds(timeout_ms)) ==
                std::cv_status::no_timeout;
+    }
+
+    std::optional<PayloadT> payload()
+    {
+        std::unique_lock<std::mutex> lock(render_mtx);
+        return maybe_payload;
     }
 
     bool is_finished() const { return finished; }
@@ -106,7 +121,6 @@ class Tracer
 
     void wait_for_finished()
     {
-        common::log() << "Waiting to finish..." << std::endl;
         std::unique_lock<std::mutex> lock(run_mtx);
         cv_run.wait(lock, [this] { return this->finished; });
     }
@@ -121,6 +135,7 @@ class Tracer
     bool should_continue;
     bool finished;
     bool ready_to_step;
+    std::optional<PayloadT> maybe_payload;
 };
 
 } // namespace gpusssp::gpu
@@ -130,9 +145,9 @@ class Tracer
 namespace gpusssp::gpu
 {
 
-struct Tracer
+template <typename PayloadT> struct Tracer
 {
-    void signal_and_wait() {}
+    void signal_and_wait(PayloadT) {}
     void step() {}
     void continue_to_end() {}
     bool wait_for_signal(int = 100) { return false; }
@@ -140,6 +155,7 @@ struct Tracer
     bool is_finished() const { return false; }
     void finish() {}
     void start() {}
+    std::optional<PayloadT> payload() { return {}; }
 };
 
 } // namespace gpusssp::gpu

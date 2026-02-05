@@ -67,7 +67,7 @@ struct SharedContext
     ColorMode current_color_mode = ColorMode::Fixed;
     uint32_t delta = 3600;
 
-    gpu::Tracer tracer;
+    gpu::DeltaStepTracer tracer;
 };
 
 struct State
@@ -182,7 +182,6 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
             if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
             {
                 g_shared_ctx->tracer.continue_to_end();
-                g_shared_ctx->tracer.wait_for_finished();
             }
         }
         else if (key == GLFW_KEY_R)
@@ -190,7 +189,6 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
             if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
             {
                 g_shared_ctx->tracer.continue_to_end();
-                g_shared_ctx->tracer.wait_for_finished();
 
                 g_state.restart_requested = true;
             }
@@ -307,17 +305,32 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                 uint32_t max_distance;
                 uint32_t color_mode;
                 uint32_t delta;
+                uint32_t bucket_index;
+                uint32_t buffer_index;
             };
 
             auto deltastep_bufs = deltastep_buffers.buffers();
             auto node_color_pipeline = gpu::create_compute_pipeline<NodeColorPushConsts>(
                 device, "node_color.spv", {{deltastep_bufs[0], color_buffer}});
 
-            auto dispatch_shader =
-                [&](uint32_t color_mode_value, uint32_t max_distance, uint32_t delta)
+            auto dispatch_shader = [&](const uint32_t color_mode_value,
+                                       const uint32_t max_distance,
+                                       const uint32_t delta,
+                                       const std::optional<gpu::DeltaStepPayload> &maybe_payload)
             {
-                NodeColorPushConsts pc{
-                    static_cast<uint32_t>(num_nodes), max_distance, color_mode_value, delta};
+                auto bucket_index = UINT32_MAX;
+                auto buffer_index = UINT32_MAX;
+                if (maybe_payload)
+                {
+                    bucket_index = maybe_payload->bucket_index;
+                    buffer_index = maybe_payload->buffer_index;
+                }
+                NodeColorPushConsts pc{static_cast<uint32_t>(num_nodes),
+                                       max_distance,
+                                       color_mode_value,
+                                       delta,
+                                       bucket_index,
+                                       buffer_index};
 
                 vk::CommandBuffer cmd = device.allocateCommandBuffers(
                     {cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
@@ -384,16 +397,9 @@ std::thread start_color_updater_thread(SharedContext &ctx,
 
                 if (is_trace_mode(mode))
                 {
-                    common::log() << "Color updater: Entering Trace mode loop" << std::endl;
-
                     while (true)
                     {
-                        uint32_t delta;
-                        {
-                            std::lock_guard<std::mutex> lock(ctx.color_mutex);
-                            mode = ctx.current_color_mode;
-                            delta = ctx.delta;
-                        }
+                        mode = ctx.current_color_mode;
 
                         if (!is_trace_mode(mode))
                         {
@@ -402,37 +408,29 @@ std::thread start_color_updater_thread(SharedContext &ctx,
 
                         if (ctx.tracer.is_finished())
                         {
-                            uint32_t max_distance = *deltastep_buffers.max_distance();
-                            if (max_distance == 0)
-                            {
-                                max_distance = 1;
-                            }
-
-                            dispatch_shader(static_cast<uint32_t>(mode), max_distance, delta);
+                            dispatch_shader(static_cast<uint32_t>(mode),
+                                            *deltastep_buffers.max_distance(),
+                                            ctx.delta,
+                                            ctx.tracer.payload());
                             break;
                         }
 
                         if (ctx.tracer.wait_for_signal(100))
                         {
-                            uint32_t max_distance = *deltastep_buffers.max_distance();
-                            if (max_distance == 0)
-                            {
-                                max_distance = 1;
-                            }
-
-                            dispatch_shader(static_cast<uint32_t>(mode), max_distance, delta);
+                            dispatch_shader(static_cast<uint32_t>(mode),
+                                            *deltastep_buffers.max_distance(),
+                                            ctx.delta,
+                                            ctx.tracer.payload());
                         }
                     }
                 }
                 else if (mode == ColorMode::Fixed)
                 {
-                    common::log() << "Color updater: Updating to Fixed mode" << std::endl;
-                    dispatch_shader(0, 0, 0);
+                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, {});
                 }
                 else if (mode == ColorMode::Ordering)
                 {
-                    common::log() << "Color updater: Updating to Ordering mode" << std::endl;
-                    dispatch_shader(1, 0, 0);
+                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, {});
                 }
             }
 
@@ -906,7 +904,6 @@ int main(int argc, char **argv)
     }
 
     shared_ctx.tracer.continue_to_end();
-    shared_ctx.tracer.wait_for_finished();
 
     if (sssp_thread.joinable())
     {

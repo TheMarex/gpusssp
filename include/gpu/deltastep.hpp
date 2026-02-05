@@ -7,13 +7,21 @@
 #include "common/logger.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
-#include "gpu/memory.hpp"
 #include "gpu/shader.hpp"
 #include "gpu/statistics.hpp"
 #include "gpu/tracer.hpp"
 
 namespace gpusssp::gpu
 {
+
+struct DeltaStepPayload
+{
+    uint32_t bucket_index;
+    // Since we use double-buffering we need to know which buffer is current
+    uint32_t buffer_index;
+};
+
+using DeltaStepTracer = Tracer<DeltaStepPayload>;
 
 template <typename GraphT> class DeltaStep
 {
@@ -104,7 +112,7 @@ template <typename GraphT> class DeltaStep
                  uint32_t dst_node,
                  uint32_t delta,
                  uint32_t batch_size = 64,
-                 Tracer *tracer = nullptr)
+                 DeltaStepTracer *tracer = nullptr)
     {
         if (tracer)
         {
@@ -161,7 +169,8 @@ template <typename GraphT> class DeltaStep
 
         if (tracer)
         {
-            tracer->signal_and_wait();
+            // we start with bucket 0 and prev = 0, current = 1
+            tracer->signal_and_wait({0, 1});
         }
 
         for (uint32_t bucket = 0; bucket < MAX_BUCKETS; bucket++)
@@ -270,7 +279,8 @@ template <typename GraphT> class DeltaStep
 
                 if (tracer)
                 {
-                    tracer->signal_and_wait();
+                    tracer->signal_and_wait(
+                        {bucket, gpu_current_max_changed_id == gpu_min_max_changed_id_0 ? 0 : 1});
                 }
 
                 common::log_debug() << bucket << " changed " << *gpu_prev_min_changed_id << "-"
@@ -319,7 +329,8 @@ template <typename GraphT> class DeltaStep
 
             if (tracer)
             {
-                tracer->signal_and_wait();
+                tracer->signal_and_wait(
+                    {bucket, gpu_current_max_changed_id == gpu_min_max_changed_id_0 ? 0 : 1});
             }
 
             common::log_debug() << bucket << " heavy changed " << *gpu_current_min_changed_id << "-"

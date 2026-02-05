@@ -18,6 +18,8 @@ layout(push_constant) uniform PushConsts
     uint max_distance;
     uint color_mode;
     uint delta;
+    uint bucket_index;
+    uint buffer_index;
 }
 pc;
 
@@ -75,11 +77,12 @@ void main()
     }
     else if (pc.color_mode == COLOR_MODE_TRACE_DISTANCE)
     {
-        uint distance = dist[i];
+        uint dist = dist[i];
+        uint max_dist = max(1, pc.max_distance);
 
-        if (distance < INF_WEIGHT)
+        if (dist < INF_WEIGHT)
         {
-            float t = float(distance) / float(pc.max_distance);
+            float t = float(dist) / float(max_dist);
             t = clamp(t, 0.0, 1.0);
             float hue = 240.0 - t * 240.0;
             rgb = oklch_to_rgb(0.8, 0.3, hue);
@@ -91,11 +94,11 @@ void main()
     }
     else if (pc.color_mode == COLOR_MODE_TRACE_BUCKET)
     {
-        uint distance = dist[i];
+        uint dist = dist[i];
 
-        if (distance < INF_WEIGHT)
+        if (dist < INF_WEIGHT)
         {
-            uint bucket_idx = distance / pc.delta;
+            uint bucket_idx = dist / pc.delta;
 
             float hue = 360 / 3 * (bucket_idx % 3);
 
