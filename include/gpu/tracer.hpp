@@ -4,6 +4,7 @@
 #ifdef ENABLE_TRACING
 
 #include "common/logger.hpp"
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -14,7 +15,11 @@ namespace gpusssp::gpu
 template <typename PayloadT> class Tracer
 {
   public:
-    Tracer() : should_continue(false), ready_to_step(false), finished(false) {}
+    Tracer()
+        : should_continue(false), ready_to_step(false), finished(false), auto_play_enabled(false),
+          auto_play_interval_ms(500)
+    {
+    }
 
     void start()
     {
@@ -49,7 +54,16 @@ template <typename PayloadT> class Tracer
         {
             common::log() << "Waiting to step..." << std::endl;
             std::unique_lock<std::mutex> lock(step_mtx);
-            cv_step.wait(lock, [this] { return ready_to_step || should_continue; });
+            if (auto_play_enabled)
+            {
+                cv_step.wait_for(lock,
+                                 std::chrono::milliseconds(auto_play_interval_ms),
+                                 [this] { return ready_to_step || should_continue; });
+            }
+            else
+            {
+                cv_step.wait(lock, [this] { return ready_to_step || should_continue; });
+            }
         }
     }
 
@@ -125,6 +139,30 @@ template <typename PayloadT> class Tracer
         cv_run.wait(lock, [this] { return this->finished; });
     }
 
+    void start_auto_play(uint32_t interval_ms = 500)
+    {
+        auto_play_interval_ms = interval_ms;
+        auto_play_enabled = true;
+        common::log() << "Auto-play started (interval: " << interval_ms << "ms)" << std::endl;
+    }
+
+    void stop_auto_play()
+    {
+        auto_play_enabled = false;
+        common::log() << "Auto-play stopped" << std::endl;
+    }
+
+    void set_auto_play_speed(uint32_t interval_ms)
+    {
+        auto_play_interval_ms = interval_ms;
+        common::log() << "Auto-play speed changed to " << interval_ms << "ms" << std::endl;
+    }
+
+    bool is_auto_playing() const
+    {
+        return auto_play_enabled;
+    }
+
   private:
     std::mutex step_mtx;
     std::mutex render_mtx;
@@ -135,6 +173,8 @@ template <typename PayloadT> class Tracer
     bool should_continue;
     bool finished;
     bool ready_to_step;
+    std::atomic<bool> auto_play_enabled;
+    std::atomic<uint32_t> auto_play_interval_ms;
     std::optional<PayloadT> maybe_payload;
 };
 
@@ -156,6 +196,10 @@ template <typename PayloadT> struct Tracer
     void finish() {}
     void start() {}
     std::optional<PayloadT> payload() { return {}; }
+    void start_auto_play(uint32_t = 500) {}
+    void stop_auto_play() {}
+    void set_auto_play_speed(uint32_t) {}
+    bool is_auto_playing() const { return false; }
 };
 
 } // namespace gpusssp::gpu

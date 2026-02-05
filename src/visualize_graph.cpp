@@ -182,6 +182,36 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
                 g_shared_ctx->tracer.step();
             }
         }
+        else if (key == GLFW_KEY_A)
+        {
+            if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
+            {
+                if (g_shared_ctx->tracer.is_auto_playing())
+                {
+                    g_shared_ctx->tracer.stop_auto_play();
+                }
+                else
+                {
+                    g_shared_ctx->tracer.start_auto_play(500);
+                }
+            }
+        }
+        else if (key == GLFW_KEY_LEFT_BRACKET)
+        {
+            if (is_trace_mode(g_state.color_mode) && g_shared_ctx &&
+                g_shared_ctx->tracer.is_auto_playing())
+            {
+                g_shared_ctx->tracer.set_auto_play_speed(1000);
+            }
+        }
+        else if (key == GLFW_KEY_RIGHT_BRACKET)
+        {
+            if (is_trace_mode(g_state.color_mode) && g_shared_ctx &&
+                g_shared_ctx->tracer.is_auto_playing())
+            {
+                g_shared_ctx->tracer.set_auto_play_speed(200);
+            }
+        }
         else if (key == GLFW_KEY_C)
         {
             if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
