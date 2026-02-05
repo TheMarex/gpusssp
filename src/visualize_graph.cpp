@@ -74,6 +74,7 @@ struct State
     bool is_dragging = false;
 
     ColorMode color_mode = ColorMode::Fixed;
+    bool restart_requested = false;
 };
 
 State g_state;
@@ -183,9 +184,7 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
                 g_shared_ctx->tracer.continue_to_end();
                 g_shared_ctx->tracer.wait_for_finished();
 
-                std::lock_guard<std::mutex> lock(g_shared_ctx->sssp_mutex);
-                g_shared_ctx->sssp_run_requested = true;
-                g_shared_ctx->sssp_cv.notify_one();
+                g_state.restart_requested = true;
             }
         }
     }
@@ -819,22 +818,31 @@ int main(int argc, char **argv)
     {
         context.poll_events();
 
+        if (g_state.restart_requested)
+        {
+            g_state.restart_requested = false;
+            previous_mode = ColorMode::Fixed;
+            g_state.color_mode = ColorMode::Trace;
+        }
+
         if (g_state.color_mode != previous_mode)
         {
+            if (g_state.color_mode == ColorMode::Trace)
+            {
+                common::log() << "Entering Trace mode" << std::endl;
+
+                {
+                    std::lock_guard<std::mutex> lock(shared_ctx.sssp_mutex);
+                    shared_ctx.sssp_run_requested = true;
+                    shared_ctx.sssp_cv.notify_one();
+                }
+            }
+
             {
                 std::lock_guard<std::mutex> lock(shared_ctx.color_mutex);
                 shared_ctx.current_color_mode = g_state.color_mode;
                 shared_ctx.color_update_requested = true;
                 shared_ctx.color_cv.notify_one();
-            }
-
-            if (g_state.color_mode == ColorMode::Trace)
-            {
-                common::log() << "Entering Trace mode" << std::endl;
-
-                std::lock_guard<std::mutex> lock(shared_ctx.sssp_mutex);
-                shared_ctx.sssp_run_requested = true;
-                shared_ctx.sssp_cv.notify_one();
             }
 
             previous_mode = g_state.color_mode;

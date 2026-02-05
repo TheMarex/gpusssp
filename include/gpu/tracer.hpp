@@ -19,8 +19,15 @@ class Tracer
     void start()
     {
         common::log() << "Starting run" << std::endl;
-        std::unique_lock<std::mutex> lock(run_mtx);
-        finished = false;
+        {
+            std::unique_lock<std::mutex> lock(step_mtx);
+            should_continue = false;
+            ready_to_step = false;
+        }
+        {
+            std::unique_lock<std::mutex> lock(run_mtx);
+            finished = false;
+        }
     }
 
     void signal_and_wait()
@@ -73,10 +80,6 @@ class Tracer
 
     void finish()
     {
-        {
-            std::unique_lock<std::mutex> lock(step_mtx);
-            should_continue = false;
-        }
         {
             std::unique_lock<std::mutex> lock(run_mtx);
             finished = true;
