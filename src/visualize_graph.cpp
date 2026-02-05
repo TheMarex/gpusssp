@@ -11,7 +11,6 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <condition_variable>
 #include <cstdlib>
 #include <iostream>
@@ -174,6 +173,7 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
             if (g_state.color_mode == ColorMode::Trace && g_shared_ctx)
             {
                 g_shared_ctx->tracer.continue_to_end();
+                g_shared_ctx->tracer.wait_for_finished();
             }
         }
         else if (key == GLFW_KEY_R)
@@ -181,6 +181,7 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
             if (g_state.color_mode == ColorMode::Trace && g_shared_ctx)
             {
                 g_shared_ctx->tracer.continue_to_end();
+                g_shared_ctx->tracer.wait_for_finished();
 
                 std::lock_guard<std::mutex> lock(g_shared_ctx->sssp_mutex);
                 g_shared_ctx->sssp_run_requested = true;
@@ -386,6 +387,18 @@ std::thread start_color_updater_thread(SharedContext &ctx,
 
                         if (current_mode != ColorMode::Trace)
                         {
+                            break;
+                        }
+
+                        if (ctx.tracer.is_finished())
+                        {
+                            uint32_t max_distance = *deltastep_buffers.max_distance();
+                            if (max_distance == 0)
+                            {
+                                max_distance = 1;
+                            }
+
+                            dispatch_shader(2, max_distance);
                             break;
                         }
 
@@ -874,6 +887,7 @@ int main(int argc, char **argv)
     }
 
     shared_ctx.tracer.continue_to_end();
+    shared_ctx.tracer.wait_for_finished();
 
     if (sssp_thread.joinable())
     {

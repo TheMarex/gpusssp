@@ -14,7 +14,14 @@ namespace gpusssp::gpu
 class Tracer
 {
   public:
-    Tracer() : should_continue(false), ready_to_step(false) {}
+    Tracer() : should_continue(false), ready_to_step(false), finished(false) {}
+
+    void start()
+    {
+        common::log() << "Starting run" << std::endl;
+        std::unique_lock<std::mutex> lock(run_mtx);
+        finished = false;
+    }
 
     void signal_and_wait()
     {
@@ -24,14 +31,14 @@ class Tracer
         }
 
         {
-            common::log() << "Signaling ready to step" << std::endl;
+            common::log() << "Signaling ready to step..." << std::endl;
             std::unique_lock<std::mutex> lock(render_mtx);
             ready_to_step = false;
             cv_render.notify_one();
         }
 
         {
-            common::log() << "Waiting to step" << std::endl;
+            common::log() << "Waiting to step..." << std::endl;
             std::unique_lock<std::mutex> lock(step_mtx);
             cv_step.wait(lock, [this] { return ready_to_step || should_continue; });
         }
@@ -64,16 +71,32 @@ class Tracer
 
     bool is_finished() const { return finished; }
 
-    void reset()
+    void finish()
     {
-        std::unique_lock<std::mutex> lock(step_mtx);
-        should_continue = false;
-        finished = true;
+        {
+            std::unique_lock<std::mutex> lock(step_mtx);
+            should_continue = false;
+        }
+        {
+            std::unique_lock<std::mutex> lock(run_mtx);
+            finished = true;
+            cv_run.notify_all();
+        }
+        common::log() << "Finished." << std::endl;
+    }
+
+    void wait_for_finished()
+    {
+        common::log() << "Waiting to finish..." << std::endl;
+        std::unique_lock<std::mutex> lock(run_mtx);
+        cv_run.wait(lock, [this] { return this->finished; });
     }
 
   private:
     std::mutex step_mtx;
     std::mutex render_mtx;
+    std::mutex run_mtx;
+    std::condition_variable cv_run;
     std::condition_variable cv_step;
     std::condition_variable cv_render;
     bool should_continue;
@@ -94,8 +117,10 @@ struct Tracer
     void step() {}
     void continue_to_end() {}
     bool wait_for_signal(int = 100) { return false; }
+    void wait_for_finished() {}
     bool is_finished() const { return false; }
-    void reset() {}
+    void finish() {}
+    void start() {}
 };
 
 } // namespace gpusssp::gpu

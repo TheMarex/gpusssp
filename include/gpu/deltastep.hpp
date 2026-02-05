@@ -106,6 +106,11 @@ template <typename GraphT> class DeltaStep
                  uint32_t batch_size = 64,
                  Tracer *tracer = nullptr)
     {
+        if (tracer)
+        {
+            tracer->start();
+        }
+
         vk::CommandBuffer cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
 
@@ -336,7 +341,7 @@ template <typename GraphT> class DeltaStep
 
         if (tracer)
         {
-            tracer->reset();
+            tracer->finish();
         }
 
         return *gpu_best_distance;
