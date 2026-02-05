@@ -159,6 +159,11 @@ template <typename GraphT> class DeltaStep
         queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
         queue.waitIdle();
 
+        if (tracer)
+        {
+            tracer->signal_and_wait();
+        }
+
         for (uint32_t bucket = 0; bucket < MAX_BUCKETS; bucket++)
         {
             PushConsts pc{src_node, dst_node, num_nodes, bucket, delta, delta};

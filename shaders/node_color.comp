@@ -20,7 +20,7 @@ layout(push_constant) uniform PushConsts
 }
 pc;
 
-const uint INF_WEIGHT = 0x7FFFFFFF;
+const uint INF_WEIGHT = 0x3FFFFFFF;
 
 const uint COLOR_MODE_FIXED = 0;
 const uint COLOR_MODE_ORDERING = 1;
@@ -75,16 +75,16 @@ void main()
     {
         uint distance = dist[i];
 
-        if (distance == INF_WEIGHT)
-        {
-            rgb = oklch_to_rgb(0.5, 0.0, 0.0);
-        }
-        else
+        if (distance < INF_WEIGHT)
         {
             float t = float(distance) / float(pc.max_distance);
             t = clamp(t, 0.0, 1.0);
             float hue = 240.0 - t * 240.0;
-            rgb = oklch_to_rgb(0.7, 0.15, hue);
+            rgb = oklch_to_rgb(0.8, 0.3, hue);
+        }
+        else
+        {
+            rgb = vec3(0.1, 0.1, 0.1);
         }
     }
     else
