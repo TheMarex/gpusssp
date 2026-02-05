@@ -99,6 +99,7 @@ class VulkanGraphicsContext : public VulkanContext
 
     vk::RenderPass render_pass() const { return m_render_pass; }
     vk::Extent2D swapchain_extent() const { return m_swapchain_extent; }
+    vk::Format swapchain_format() const { return m_swapchain_image_format; }
     GLFWwindow *window() const { return m_window; }
     uint32_t graphics_queue_family() const { return m_graphics_queue_family; }
 
@@ -109,6 +110,7 @@ class VulkanGraphicsContext : public VulkanContext
     struct FrameResources
     {
         uint32_t image_index;
+        vk::Image image;
         vk::Framebuffer framebuffer;
         vk::Semaphore image_available;
         vk::Semaphore render_finished;
@@ -139,6 +141,7 @@ class VulkanGraphicsContext : public VulkanContext
         m_device.resetFences(1, &m_in_flight_fences[m_current_frame]);
 
         return {imageIndex,
+                m_swapchain_images[imageIndex],
                 m_framebuffers[imageIndex],
                 m_image_available_semaphores[m_current_frame],
                 m_render_finished_semaphores[m_current_frame],
