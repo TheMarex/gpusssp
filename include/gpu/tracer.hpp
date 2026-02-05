@@ -53,6 +53,14 @@ class Tracer
 
     void step()
     {
+        {
+            std::unique_lock<std::mutex> lock(run_mtx);
+            if (finished)
+            {
+                return;
+            }
+        }
+
         std::unique_lock<std::mutex> lock(step_mtx);
         ready_to_step = true;
         cv_step.notify_one();
@@ -62,6 +70,14 @@ class Tracer
 
     void continue_to_end()
     {
+        {
+            std::unique_lock<std::mutex> lock(run_mtx);
+            if (finished)
+            {
+                return;
+            }
+        }
+
         std::unique_lock<std::mutex> lock(step_mtx);
         should_continue = true;
         cv_step.notify_one();

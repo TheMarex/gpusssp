@@ -17,6 +17,7 @@ layout(push_constant) uniform PushConsts
     uint num_nodes;
     uint max_distance;
     uint color_mode;
+    uint delta;
 }
 pc;
 
@@ -24,7 +25,8 @@ const uint INF_WEIGHT = 0x3FFFFFFF;
 
 const uint COLOR_MODE_FIXED = 0;
 const uint COLOR_MODE_ORDERING = 1;
-const uint COLOR_MODE_TRACE = 2;
+const uint COLOR_MODE_TRACE_DISTANCE = 9;
+const uint COLOR_MODE_TRACE_BUCKET = 10;
 
 vec3 oklch_to_rgb(float L, float C, float h)
 {
@@ -71,7 +73,7 @@ void main()
         float hue = t * 360.0;
         rgb = oklch_to_rgb(0.7, 0.15, hue);
     }
-    else if (pc.color_mode == COLOR_MODE_TRACE)
+    else if (pc.color_mode == COLOR_MODE_TRACE_DISTANCE)
     {
         uint distance = dist[i];
 
@@ -80,6 +82,23 @@ void main()
             float t = float(distance) / float(pc.max_distance);
             t = clamp(t, 0.0, 1.0);
             float hue = 240.0 - t * 240.0;
+            rgb = oklch_to_rgb(0.8, 0.3, hue);
+        }
+        else
+        {
+            rgb = vec3(0.1, 0.1, 0.1);
+        }
+    }
+    else if (pc.color_mode == COLOR_MODE_TRACE_BUCKET)
+    {
+        uint distance = dist[i];
+
+        if (distance < INF_WEIGHT)
+        {
+            uint bucket_idx = distance / pc.delta;
+
+            float hue = 360 / 3 * (bucket_idx % 3);
+
             rgb = oklch_to_rgb(0.8, 0.3, hue);
         }
         else

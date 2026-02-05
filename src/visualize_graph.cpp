@@ -31,10 +31,17 @@ using namespace gpusssp;
 
 enum class ColorMode
 {
-    Fixed,
-    Ordering,
-    Trace
+    Fixed = 0,
+    Ordering = 1,
+    Trace = 8,
+    TraceDistance = 9,
+    TraceBucket = 10
 };
+
+inline bool is_trace_mode(ColorMode mode)
+{
+    return (static_cast<uint32_t>(mode) & static_cast<uint32_t>(ColorMode::Trace)) != 0;
+}
 
 struct PushConstants
 {
@@ -58,6 +65,7 @@ struct SharedContext
     bool color_update_requested = false;
     bool color_shutdown = false;
     ColorMode current_color_mode = ColorMode::Fixed;
+    uint32_t delta = 3600;
 
     gpu::Tracer tracer;
 };
@@ -145,10 +153,6 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
             {
                 g_state.color_mode = ColorMode::Ordering;
             }
-            else if (g_state.color_mode == ColorMode::Ordering)
-            {
-                g_state.color_mode = ColorMode::Trace;
-            }
             else
             {
                 g_state.color_mode = ColorMode::Fixed;
@@ -157,21 +161,25 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
 
         else if (key == GLFW_KEY_T)
         {
-            if (g_state.color_mode != ColorMode::Trace)
+            if (g_state.color_mode == ColorMode::TraceDistance)
             {
-                g_state.color_mode = ColorMode::Trace;
+                g_state.color_mode = ColorMode::TraceBucket;
+            }
+            else
+            {
+                g_state.color_mode = ColorMode::TraceDistance;
             }
         }
         else if (key == GLFW_KEY_S)
         {
-            if (g_state.color_mode == ColorMode::Trace && g_shared_ctx)
+            if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
             {
                 g_shared_ctx->tracer.step();
             }
         }
         else if (key == GLFW_KEY_C)
         {
-            if (g_state.color_mode == ColorMode::Trace && g_shared_ctx)
+            if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
             {
                 g_shared_ctx->tracer.continue_to_end();
                 g_shared_ctx->tracer.wait_for_finished();
@@ -179,7 +187,7 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
         }
         else if (key == GLFW_KEY_R)
         {
-            if (g_state.color_mode == ColorMode::Trace && g_shared_ctx)
+            if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
             {
                 g_shared_ctx->tracer.continue_to_end();
                 g_shared_ctx->tracer.wait_for_finished();
@@ -252,7 +260,7 @@ std::thread start_sssp_thread(SharedContext &ctx,
 
                 uint32_t src_node = dist(gen);
                 uint32_t dst_node = UINT32_MAX;
-                constexpr uint32_t delta = 3600;
+                uint32_t delta = ctx.delta;
 
                 common::log() << "SSSP thread: Running delta-stepping from node " << src_node
                               << std::endl;
@@ -298,16 +306,18 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                 uint32_t num_nodes;
                 uint32_t max_distance;
                 uint32_t color_mode;
+                uint32_t delta;
             };
 
             auto deltastep_bufs = deltastep_buffers.buffers();
             auto node_color_pipeline = gpu::create_compute_pipeline<NodeColorPushConsts>(
                 device, "node_color.spv", {{deltastep_bufs[0], color_buffer}});
 
-            auto dispatch_shader = [&](uint32_t color_mode_value, uint32_t max_distance)
+            auto dispatch_shader =
+                [&](uint32_t color_mode_value, uint32_t max_distance, uint32_t delta)
             {
                 NodeColorPushConsts pc{
-                    static_cast<uint32_t>(num_nodes), max_distance, color_mode_value};
+                    static_cast<uint32_t>(num_nodes), max_distance, color_mode_value, delta};
 
                 vk::CommandBuffer cmd = device.allocateCommandBuffers(
                     {cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
@@ -355,7 +365,7 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                 device.freeCommandBuffers(cmd_pool, 1, &cmd);
             };
 
-            while (true)
+            while (!ctx.color_shutdown)
             {
                 ColorMode mode;
                 {
@@ -372,19 +382,20 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                     mode = ctx.current_color_mode;
                 }
 
-                if (mode == ColorMode::Trace)
+                if (is_trace_mode(mode))
                 {
                     common::log() << "Color updater: Entering Trace mode loop" << std::endl;
 
                     while (true)
                     {
-                        ColorMode current_mode;
+                        uint32_t delta;
                         {
                             std::lock_guard<std::mutex> lock(ctx.color_mutex);
-                            current_mode = ctx.current_color_mode;
+                            mode = ctx.current_color_mode;
+                            delta = ctx.delta;
                         }
 
-                        if (current_mode != ColorMode::Trace)
+                        if (!is_trace_mode(mode))
                         {
                             break;
                         }
@@ -397,7 +408,7 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                                 max_distance = 1;
                             }
 
-                            dispatch_shader(2, max_distance);
+                            dispatch_shader(static_cast<uint32_t>(mode), max_distance, delta);
                             break;
                         }
 
@@ -409,19 +420,19 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                                 max_distance = 1;
                             }
 
-                            dispatch_shader(2, max_distance);
+                            dispatch_shader(static_cast<uint32_t>(mode), max_distance, delta);
                         }
                     }
                 }
                 else if (mode == ColorMode::Fixed)
                 {
                     common::log() << "Color updater: Updating to Fixed mode" << std::endl;
-                    dispatch_shader(0, 0);
+                    dispatch_shader(0, 0, 0);
                 }
                 else if (mode == ColorMode::Ordering)
                 {
                     common::log() << "Color updater: Updating to Ordering mode" << std::endl;
-                    dispatch_shader(1, 0);
+                    dispatch_shader(1, 0, 0);
                 }
             }
 
@@ -822,12 +833,12 @@ int main(int argc, char **argv)
         {
             g_state.restart_requested = false;
             previous_mode = ColorMode::Fixed;
-            g_state.color_mode = ColorMode::Trace;
+            g_state.color_mode = ColorMode::TraceDistance;
         }
 
         if (g_state.color_mode != previous_mode)
         {
-            if (g_state.color_mode == ColorMode::Trace)
+            if (is_trace_mode(g_state.color_mode))
             {
                 common::log() << "Entering Trace mode" << std::endl;
 
