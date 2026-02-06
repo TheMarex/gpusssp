@@ -70,8 +70,8 @@ class FrameRecorder
         }
 
         auto now = std::chrono::system_clock::now();
-        auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch())
-                             .count();
+        auto timestamp =
+            std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 
         m_current_recording_dir = m_output_base_dir + "/" + std::to_string(timestamp);
         std::filesystem::create_directories(m_current_recording_dir);
@@ -95,7 +95,7 @@ class FrameRecorder
                       << std::endl;
         common::log() << "To convert to GIF, run:" << std::endl;
         common::log() << "  ffmpeg -framerate 60 -i " << m_current_recording_dir
-                      << "/frame_%06d.ppm -vf \"fps=30\" " << m_current_recording_dir
+                      << "/frame_%06d.bmp -vf \"fps=30\" " << m_current_recording_dir
                       << "/output.gif" << std::endl;
     }
 
@@ -107,7 +107,7 @@ class FrameRecorder
         }
 
         copy_image_to_buffer(swapchain_image);
-        save_buffer_as_ppm();
+        save_buffer_as_bmp();
         m_frame_number++;
     }
 
@@ -165,15 +165,14 @@ class FrameRecorder
 
         cmd.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
-        vk::ImageMemoryBarrier barrier_to_transfer(
-            vk::AccessFlagBits::eMemoryRead,
-            vk::AccessFlagBits::eTransferRead,
-            vk::ImageLayout::ePresentSrcKHR,
-            vk::ImageLayout::eTransferSrcOptimal,
-            VK_QUEUE_FAMILY_IGNORED,
-            VK_QUEUE_FAMILY_IGNORED,
-            image,
-            {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
+        vk::ImageMemoryBarrier barrier_to_transfer(vk::AccessFlagBits::eMemoryRead,
+                                                   vk::AccessFlagBits::eTransferRead,
+                                                   vk::ImageLayout::ePresentSrcKHR,
+                                                   vk::ImageLayout::eTransferSrcOptimal,
+                                                   VK_QUEUE_FAMILY_IGNORED,
+                                                   VK_QUEUE_FAMILY_IGNORED,
+                                                   image,
+                                                   {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
 
         cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                             vk::PipelineStageFlagBits::eTransfer,
@@ -182,25 +181,24 @@ class FrameRecorder
                             {},
                             barrier_to_transfer);
 
-        vk::BufferImageCopy region(
-            0,
-            0,
-            0,
-            {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
-            {0, 0, 0},
-            {m_extent.width, m_extent.height, 1});
+        vk::BufferImageCopy region(0,
+                                   0,
+                                   0,
+                                   {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+                                   {0, 0, 0},
+                                   {m_extent.width, m_extent.height, 1});
 
-        cmd.copyImageToBuffer(image, vk::ImageLayout::eTransferSrcOptimal, m_staging_buffer, 1, &region);
+        cmd.copyImageToBuffer(
+            image, vk::ImageLayout::eTransferSrcOptimal, m_staging_buffer, 1, &region);
 
-        vk::ImageMemoryBarrier barrier_to_present(
-            vk::AccessFlagBits::eTransferRead,
-            vk::AccessFlagBits::eMemoryRead,
-            vk::ImageLayout::eTransferSrcOptimal,
-            vk::ImageLayout::ePresentSrcKHR,
-            VK_QUEUE_FAMILY_IGNORED,
-            VK_QUEUE_FAMILY_IGNORED,
-            image,
-            {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
+        vk::ImageMemoryBarrier barrier_to_present(vk::AccessFlagBits::eTransferRead,
+                                                  vk::AccessFlagBits::eMemoryRead,
+                                                  vk::ImageLayout::eTransferSrcOptimal,
+                                                  vk::ImageLayout::ePresentSrcKHR,
+                                                  VK_QUEUE_FAMILY_IGNORED,
+                                                  VK_QUEUE_FAMILY_IGNORED,
+                                                  image,
+                                                  {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
 
         cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                             vk::PipelineStageFlagBits::eBottomOfPipe,
@@ -219,11 +217,11 @@ class FrameRecorder
         m_device.freeCommandBuffers(m_cmd_pool, 1, &cmd);
     }
 
-    void save_buffer_as_ppm()
+    void save_buffer_as_bmp()
     {
         std::ostringstream filename;
         filename << m_current_recording_dir << "/frame_" << std::setw(6) << std::setfill('0')
-                 << m_frame_number << ".ppm";
+                 << m_frame_number << ".bmp";
 
         std::ofstream file(filename.str(), std::ios::binary);
         if (!file)
@@ -232,19 +230,154 @@ class FrameRecorder
             return;
         }
 
-        file << "P6\n" << m_extent.width << " " << m_extent.height << "\n255\n";
+        uint32_t width = m_extent.width;
+        uint32_t height = m_extent.height;
+        uint32_t row_size = width * 4;
+        uint32_t pixel_data_size = row_size * height;
+        uint32_t file_size = 122 + pixel_data_size;
 
-        uint8_t *data = static_cast<uint8_t *>(m_device.mapMemory(m_staging_memory, 0, m_buffer_size));
+        uint8_t bmp_header[122] = {0x42,
+                                   0x4D,
+                                   static_cast<uint8_t>(file_size),
+                                   static_cast<uint8_t>(file_size >> 8),
+                                   static_cast<uint8_t>(file_size >> 16),
+                                   static_cast<uint8_t>(file_size >> 24),
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   122,
+                                   0,
+                                   0,
+                                   0,
+                                   108,
+                                   0,
+                                   0,
+                                   0,
+                                   static_cast<uint8_t>(width),
+                                   static_cast<uint8_t>(width >> 8),
+                                   static_cast<uint8_t>(width >> 16),
+                                   static_cast<uint8_t>(width >> 24),
+                                   static_cast<uint8_t>(height),
+                                   static_cast<uint8_t>(height >> 8),
+                                   static_cast<uint8_t>(height >> 16),
+                                   static_cast<uint8_t>(height >> 24),
+                                   1,
+                                   0,
+                                   32,
+                                   0,
+                                   3,
+                                   0,
+                                   0,
+                                   0,
+                                   static_cast<uint8_t>(pixel_data_size),
+                                   static_cast<uint8_t>(pixel_data_size >> 8),
+                                   static_cast<uint8_t>(pixel_data_size >> 16),
+                                   static_cast<uint8_t>(pixel_data_size >> 24),
+                                   0x13,
+                                   0x0B,
+                                   0,
+                                   0,
+                                   0x13,
+                                   0x0B,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0x00,
+                                   0x00,
+                                   0xFF,
+                                   0x00,
+                                   0x00,
+                                   0xFF,
+                                   0x00,
+                                   0x00,
+                                   0xFF,
+                                   0x00,
+                                   0x00,
+                                   0x00,
+                                   0x00,
+                                   0x00,
+                                   0x00,
+                                   0xFF,
+                                   0x20,
+                                   0x6E,
+                                   0x69,
+                                   0x57,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0};
 
-        for (uint32_t i = 0; i < m_extent.width * m_extent.height; ++i)
+        file.write(reinterpret_cast<const char *>(bmp_header), 122);
+
+        auto *data = static_cast<uint8_t *>(m_device.mapMemory(m_staging_memory, 0, m_buffer_size));
+
+        for (int32_t y = static_cast<int32_t>(height) - 1; y >= 0; --y)
         {
-            uint8_t b = data[i * 4 + 0];
-            uint8_t g = data[i * 4 + 1];
-            uint8_t r = data[i * 4 + 2];
+            for (uint32_t x = 0; x < width; ++x)
+            {
+                uint32_t i = y * width + x;
+                uint8_t b = data[i * 4 + 0];
+                uint8_t g = data[i * 4 + 1];
+                uint8_t r = data[i * 4 + 2];
+                uint8_t a = data[i * 4 + 3];
 
-            file.write(reinterpret_cast<const char *>(&r), 1);
-            file.write(reinterpret_cast<const char *>(&g), 1);
-            file.write(reinterpret_cast<const char *>(&b), 1);
+                file.write(reinterpret_cast<const char *>(&b), 1);
+                file.write(reinterpret_cast<const char *>(&g), 1);
+                file.write(reinterpret_cast<const char *>(&r), 1);
+                file.write(reinterpret_cast<const char *>(&a), 1);
+            }
         }
 
         m_device.unmapMemory(m_staging_memory);
@@ -307,6 +440,7 @@ struct State
 
     ColorMode color_mode = ColorMode::Fixed;
     bool restart_requested = false;
+    bool white_background = false;
 
     std::unique_ptr<FrameRecorder> recorder;
 };
@@ -384,7 +518,10 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
                 g_state.color_mode = ColorMode::Fixed;
             }
         }
-
+        else if (key == GLFW_KEY_B)
+        {
+            g_state.white_background = !g_state.white_background;
+        }
         else if (key == GLFW_KEY_T)
         {
             if (g_state.color_mode == ColorMode::TraceDistance)
@@ -968,14 +1105,17 @@ void record_render_commands(vk::CommandBuffer command_buffer,
                             const PushConstants &push_constants,
                             vk::Buffer projected_coords_buffer,
                             vk::Buffer color_buffer,
-                            uint32_t vertex_count)
+                            uint32_t vertex_count,
+                            bool white_background)
 {
     command_buffer.reset();
 
     vk::CommandBufferBeginInfo begin_info;
     command_buffer.begin(begin_info);
 
-    vk::ClearValue clear_color(vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+    float bg_color = white_background ? 1.0f : 0.0f;
+    vk::ClearValue clear_color(
+        vk::ClearColorValue(std::array<float, 4>{bg_color, bg_color, bg_color, 0.0f}));
 
     vk::RenderPassBeginInfo render_pass_info(
         render_pass, framebuffer, {{0, 0}, swapchain_extent}, 1, &clear_color);
@@ -1015,7 +1155,8 @@ int main(int argc, char **argv)
 {
     if (argc < 2 || argc > 3)
     {
-        common::log_error() << "Usage: " << argv[0] << " <graph_base_path> [output_dir]" << std::endl;
+        common::log_error() << "Usage: " << argv[0] << " <graph_base_path> [output_dir]"
+                            << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -1097,12 +1238,12 @@ int main(int argc, char **argv)
     {
         common::log() << "Frame recording enabled. Press 'F' to start/stop recording." << std::endl;
         g_state.recorder = std::make_unique<FrameRecorder>(device,
-                                                            mem_props,
-                                                            cmd_pool,
-                                                            queue,
-                                                            context.swapchain_extent(),
-                                                            context.swapchain_format(),
-                                                            *output_dir);
+                                                           mem_props,
+                                                           cmd_pool,
+                                                           queue,
+                                                           context.swapchain_extent(),
+                                                           context.swapchain_format(),
+                                                           *output_dir);
     }
 
     common::log() << "Starting render loop..." << std::endl;
@@ -1168,7 +1309,8 @@ int main(int argc, char **argv)
                                push_constants,
                                coord_buffers[1],
                                color_buffer,
-                               static_cast<uint32_t>(coordinates.size()));
+                               static_cast<uint32_t>(coordinates.size()),
+                               g_state.white_background);
 
         vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
         vk::SubmitInfo submit_info(
@@ -1181,6 +1323,7 @@ int main(int argc, char **argv)
         if (g_state.recorder && g_state.recorder->is_recording())
         {
             device.waitIdle();
+            uint8_t bg = g_state.white_background ? 255 : 0;
             g_state.recorder->capture_frame(frame.image);
         }
 
