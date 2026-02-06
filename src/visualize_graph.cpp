@@ -8,6 +8,9 @@
 #include "gpu/shader.hpp"
 #include "gpu/vulkan_graphics_context.hpp"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <array>
@@ -95,7 +98,7 @@ class FrameRecorder
                       << std::endl;
         common::log() << "To convert to GIF, run:" << std::endl;
         common::log() << "  ffmpeg -framerate 60 -i " << m_current_recording_dir
-                      << "/frame_%06d.bmp -vf \"fps=30\" " << m_current_recording_dir
+                      << "/frame_%06d.png -vf \"fps=30\" " << m_current_recording_dir
                       << "/output.gif" << std::endl;
     }
 
@@ -107,7 +110,7 @@ class FrameRecorder
         }
 
         copy_image_to_buffer(swapchain_image);
-        save_buffer_as_bmp();
+        save_buffer_as_png();
         m_frame_number++;
     }
 
@@ -217,171 +220,41 @@ class FrameRecorder
         m_device.freeCommandBuffers(m_cmd_pool, 1, &cmd);
     }
 
-    void save_buffer_as_bmp()
+    void save_buffer_as_png()
     {
         std::ostringstream filename;
         filename << m_current_recording_dir << "/frame_" << std::setw(6) << std::setfill('0')
-                 << m_frame_number << ".bmp";
-
-        std::ofstream file(filename.str(), std::ios::binary);
-        if (!file)
-        {
-            common::log_error() << "Failed to open file: " << filename.str() << std::endl;
-            return;
-        }
+                 << m_frame_number << ".png";
 
         uint32_t width = m_extent.width;
         uint32_t height = m_extent.height;
-        uint32_t row_size = width * 4;
-        uint32_t pixel_data_size = row_size * height;
-        uint32_t file_size = 122 + pixel_data_size;
-
-        uint8_t bmp_header[122] = {0x42,
-                                   0x4D,
-                                   static_cast<uint8_t>(file_size),
-                                   static_cast<uint8_t>(file_size >> 8),
-                                   static_cast<uint8_t>(file_size >> 16),
-                                   static_cast<uint8_t>(file_size >> 24),
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   122,
-                                   0,
-                                   0,
-                                   0,
-                                   108,
-                                   0,
-                                   0,
-                                   0,
-                                   static_cast<uint8_t>(width),
-                                   static_cast<uint8_t>(width >> 8),
-                                   static_cast<uint8_t>(width >> 16),
-                                   static_cast<uint8_t>(width >> 24),
-                                   static_cast<uint8_t>(height),
-                                   static_cast<uint8_t>(height >> 8),
-                                   static_cast<uint8_t>(height >> 16),
-                                   static_cast<uint8_t>(height >> 24),
-                                   1,
-                                   0,
-                                   32,
-                                   0,
-                                   3,
-                                   0,
-                                   0,
-                                   0,
-                                   static_cast<uint8_t>(pixel_data_size),
-                                   static_cast<uint8_t>(pixel_data_size >> 8),
-                                   static_cast<uint8_t>(pixel_data_size >> 16),
-                                   static_cast<uint8_t>(pixel_data_size >> 24),
-                                   0x13,
-                                   0x0B,
-                                   0,
-                                   0,
-                                   0x13,
-                                   0x0B,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0x00,
-                                   0x00,
-                                   0xFF,
-                                   0x00,
-                                   0x00,
-                                   0xFF,
-                                   0x00,
-                                   0x00,
-                                   0xFF,
-                                   0x00,
-                                   0x00,
-                                   0x00,
-                                   0x00,
-                                   0x00,
-                                   0x00,
-                                   0xFF,
-                                   0x20,
-                                   0x6E,
-                                   0x69,
-                                   0x57,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0,
-                                   0};
-
-        file.write(reinterpret_cast<const char *>(bmp_header), 122);
 
         auto *data = static_cast<uint8_t *>(m_device.mapMemory(m_staging_memory, 0, m_buffer_size));
 
-        for (int32_t y = static_cast<int32_t>(height) - 1; y >= 0; --y)
+        // Convert from BGRA (Vulkan) to RGBA (PNG) and write
+        std::vector<uint8_t> rgba_data(width * height * 4);
+        for (uint32_t i = 0; i < width * height; ++i)
         {
-            for (uint32_t x = 0; x < width; ++x)
-            {
-                uint32_t i = y * width + x;
-                uint8_t b = data[i * 4 + 0];
-                uint8_t g = data[i * 4 + 1];
-                uint8_t r = data[i * 4 + 2];
-                uint8_t a = data[i * 4 + 3];
-
-                file.write(reinterpret_cast<const char *>(&b), 1);
-                file.write(reinterpret_cast<const char *>(&g), 1);
-                file.write(reinterpret_cast<const char *>(&r), 1);
-                file.write(reinterpret_cast<const char *>(&a), 1);
-            }
+            rgba_data[i * 4 + 0] = data[i * 4 + 2];
+            rgba_data[i * 4 + 1] = data[i * 4 + 1];
+            rgba_data[i * 4 + 2] = data[i * 4 + 0];
+            rgba_data[i * 4 + 3] = data[i * 4 + 3];
         }
 
         m_device.unmapMemory(m_staging_memory);
-        file.close();
+
+        int stride = static_cast<int>(width * 4);
+        int result = stbi_write_png(filename.str().c_str(),
+                                    static_cast<int>(width),
+                                    static_cast<int>(height),
+                                    4,
+                                    rgba_data.data(),
+                                    stride);
+
+        if (result == 0)
+        {
+            common::log_error() << "Failed to write PNG file: " << filename.str() << std::endl;
+        }
     }
 };
 
