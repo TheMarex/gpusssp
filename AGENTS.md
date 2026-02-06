@@ -84,6 +84,19 @@ All GPU algorithms use Vulkan compute shaders and process road network graphs fr
 
 ### Code Style
 
+#### Naming Conventions
+The project follows strict naming conventions enforced by clang-tidy:
+- **Classes/Structs/Enums**: `PascalCase` (e.g., `WeightedGraph`, `VulkanContext`)
+- **Member Variables**: `snake_case` (e.g., `first_edges`, `heap_size`)
+- **Functions/Methods**: `snake_case` (e.g., `num_nodes()`, `create_instance()`)
+- **Type Aliases**: `snake_case_t` (e.g., `node_id_t`, `weight_t`)
+- **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `INVALID_ID`, `INF_WEIGHT`)
+- **Namespaces**: `snake_case` (e.g., `gpusssp`, `common`, `gpu`)
+- **Template Parameters**: `PascalCaseT` (e.g., `ElementT`, `GraphT`)
+- **Enum Values**: `SCREAMING_SNAKE_CASE` (e.g., `DEBUG`, `QUEUE_POP`)
+
+See `docs/NAMING_CONVENTIONS.md` for detailed examples and `docs/CLANG_TIDY.md` for enforcement.
+
 #### Namespaces
 - Always reference `std` functions with `std::` and don't use `using namespace std;`
 - Same rule applies for Vulkan's `vk::` and other third-party libraries
@@ -101,10 +114,16 @@ All GPU algorithms use Vulkan compute shaders and process road network graphs fr
 - Code is formatted using clang-format with the configuration in `.clang-format`
 - Run `cmake --build build --target format` to format all code
 - Key style points from .clang-format:
-  - Allman brace style (braces on new lines)
-  - 4-space indentation
-  - 100 character line limit
-  - No bin-packing of arguments/parameters (one per line for readability)
+ - Allman brace style (braces on new lines)
+ - 4-space indentation
+ - 100 character line limit
+ - No bin-packing of arguments/parameters (one per line for readability)
+
+#### Static Analysis
+- Code quality is checked using clang-tidy with the configuration in `.clang-tidy`
+- Run `cmake --build build --target tidy` to check code
+- Run `cmake --build build --target tidy-fix` to apply automatic fixes
+- Enable during build: `cmake -DENABLE_CLANG_TIDY=ON -B build`
 
 #### Documentation
 - In general avoid comments. Only add them when absolutely necessary
