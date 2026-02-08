@@ -399,14 +399,17 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
         {
             if (g_state.color_mode == ColorMode::TraceDistance)
             {
+                common::log() << "Tracing buckets" << std::endl;
                 g_state.color_mode = ColorMode::TraceBucket;
             }
             else if (g_state.color_mode == ColorMode::TraceBucket)
             {
+                common::log() << "Tracing changed nodes" << std::endl;
                 g_state.color_mode = ColorMode::TraceChanged;
             }
             else
             {
+                common::log() << "Tracing distance" << std::endl;
                 g_state.color_mode = ColorMode::TraceDistance;
             }
         }
