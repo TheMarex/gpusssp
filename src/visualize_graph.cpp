@@ -262,6 +262,7 @@ enum class ColorMode
 {
     Fixed = 0,
     Ordering = 1,
+    Workgroup = 2,
     Trace = 8,
     TraceDistance = 9,
     TraceBucket = 10,
@@ -384,7 +385,13 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
         {
             if (g_state.color_mode == ColorMode::Fixed)
             {
+                common::log() << "Coloring by node order" << std::endl;
                 g_state.color_mode = ColorMode::Ordering;
+            }
+            else if (g_state.color_mode == ColorMode::Ordering)
+            {
+                common::log() << "Coloring by workgroup (64 nodes)" << std::endl;
+                g_state.color_mode = ColorMode::Workgroup;
             }
             else
             {
@@ -718,6 +725,10 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                     dispatch_shader(static_cast<uint32_t>(mode), 0, 0, {});
                 }
                 else if (mode == ColorMode::Ordering)
+                {
+                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, {});
+                }
+                else if (mode == ColorMode::Workgroup)
                 {
                     dispatch_shader(static_cast<uint32_t>(mode), 0, 0, {});
                 }

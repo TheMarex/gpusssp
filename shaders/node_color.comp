@@ -41,6 +41,7 @@ const uint INF_WEIGHT = 0x3FFFFFFF;
 
 const uint COLOR_MODE_FIXED = 0;
 const uint COLOR_MODE_ORDERING = 1;
+const uint COLOR_MODE_WORKGROUP = 2;
 const uint COLOR_MODE_TRACE_DISTANCE = 9;
 const uint COLOR_MODE_TRACE_BUCKET = 10;
 const uint COLOR_MODE_TRACE_CHANGED = 11;
@@ -88,6 +89,13 @@ void main()
     {
         float t = float(i) / float(pc.num_nodes);
         float hue = t * 360.0;
+        rgb = oklch_to_rgb(0.7, 0.15, hue);
+    }
+    else if (pc.color_mode == COLOR_MODE_WORKGROUP)
+    {
+        uint block_idx = i / 64;
+        float hue = float(block_idx * 137.508) ; // Use golden angle for good distribution
+        hue = mod(hue, 360.0);
         rgb = oklch_to_rgb(0.7, 0.15, hue);
     }
     else if (pc.color_mode == COLOR_MODE_TRACE_DISTANCE)
