@@ -24,7 +24,7 @@ class DeltaStepBuffers
             device, 2, vk::BufferUsageFlagBits::eStorageBuffer);
         // Boolean flag arrays
         // These two buffers will be swapped between iterations
-        auto num_blocks = (num_nodes + 15) / 16;
+        auto num_blocks = (num_nodes + 31) / 32;
         buf_changed_0 = gpu::create_exclusive_buffer<uint32_t>(
             device, num_blocks, vk::BufferUsageFlagBits::eStorageBuffer);
         buf_changed_1 = gpu::create_exclusive_buffer<uint32_t>(

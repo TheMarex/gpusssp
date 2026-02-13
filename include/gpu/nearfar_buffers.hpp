@@ -36,7 +36,7 @@ class NearFarBuffers
             vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eIndirectBuffer);
         buf_processed = gpu::create_exclusive_buffer<uint32_t>(
             device,
-            (num_nodes + 15) / 16,
+            (num_nodes + 31) / 32,
             vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
         mem_dist = gpu::alloc_and_bind(
