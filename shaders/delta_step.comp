@@ -53,11 +53,6 @@ void main() {
     uint u = previous_min_max_changed_id[0] + gl_GlobalInvocationID.x;
 
     if (u <= previous_min_max_changed_id[1]) {
-        // Update best_distance if this thread is processing the destination node
-        if (u == pc.dst_node) {
-            atomicMin(results[0], dist[u]);
-        }
-
         uint du = dist[u];
         if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta && was_node_changed(u)) {
             uint local_max = 0;

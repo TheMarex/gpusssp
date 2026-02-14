@@ -279,9 +279,9 @@ template <typename GraphT> class DeltaStep
                         {bucket, gpu_prev_max_changed_id == gpu_min_max_changed_id_0 ? 0u : 1u});
                 }
 
-                common::log_debug() << bucket << " changed " << *gpu_prev_min_changed_id << "-"
-                                    << *gpu_prev_max_changed_id << " max " << *gpu_max_distance
-                                    << " best " << *gpu_best_distance << std::endl;
+                common::log_debug()
+                    << bucket << " changed " << *gpu_prev_min_changed_id << "-"
+                    << *gpu_prev_max_changed_id << " max " << *gpu_max_distance << std::endl;
 
                 // start a new command buffer either for next iteration here or the heavy pass
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
@@ -312,13 +312,24 @@ template <typename GraphT> class DeltaStep
             cmd_buf.pushConstants(
                 main_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
             cmd_buf.dispatch((num_nodes + workgroup_size - 1) / workgroup_size, 1, 1);
-            cmd_buf.pipelineBarrier(
-                vk::PipelineStageFlagBits::eComputeShader,
-                vk::PipelineStageFlagBits::eHost,
-                vk::DependencyFlags{},
-                vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eHostRead},
-                {},
-                {});
+            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::PipelineStageFlagBits::eTransfer,
+                                    vk::DependencyFlags{},
+                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                      vk::AccessFlagBits::eTransferRead},
+                                    {},
+                                    {});
+            vk::BufferCopy copy_region{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)};
+            cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &copy_region);
+            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer |
+                                        vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::PipelineStageFlagBits::eHost,
+                                    vk::DependencyFlags{},
+                                    vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite |
+                                                          vk::AccessFlagBits::eShaderWrite,
+                                                      vk::AccessFlagBits::eHostRead},
+                                    {},
+                                    {});
             cmd_buf.end();
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
             queue.waitIdle();
