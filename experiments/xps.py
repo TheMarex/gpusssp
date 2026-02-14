@@ -36,6 +36,10 @@ class ExperimentConfig:
     params: Dict[str, Any]
 
 
+def get_workspace_root() -> Path:
+    return Path(__file__).parent.parent.resolve()
+
+
 def error_exit(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
     sys.exit(1)
@@ -308,7 +312,7 @@ def ensure_release_build(build_dir: Path, workspace_root: Path) -> None:
 
 def cmd_run(args: argparse.Namespace) -> None:
     """Run all experiments in the current branch."""
-    workspace_root = Path(__file__).parent.parent.resolve()
+    workspace_root = get_workspace_root()
     build_dir = workspace_root / "build"
 
     if not (workspace_root / ".git").exists():
@@ -392,6 +396,78 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 
 # ============================================================================
+# Command: update
+# ============================================================================
+
+def cmd_rebase_helper(args: argparse.Namespace) -> None:
+    """Hidden helper for interactive rebase to drop result commits."""
+    todo_file = Path(args.todo_file)
+    xp_name = args.xp_name
+    
+    if not todo_file.exists():
+        error_exit(f"Rebase todo file not found: {todo_file}")
+        
+    with open(todo_file, "r") as f:
+        lines = f.readlines()
+    
+    new_lines = []
+    # Match "pick <sha> # result:xp:<xp_name>"
+    pattern = re.compile(rf"^pick\s+([a-f0-9]+)\s+#\s+result:xp:{xp_name}")
+    
+    for line in lines:
+        if pattern.match(line):
+            new_lines.append(line.replace("pick", "drop", 1))
+        else:
+            new_lines.append(line)
+            
+    with open(todo_file, "w") as f:
+        f.writelines(new_lines)
+
+
+def cmd_update(args: argparse.Namespace) -> None:
+    """Update experiment branch by rebasing on main and removing result commits."""
+    current_branch = get_current_branch()
+
+    if args.xp_name:
+        xp_name = args.xp_name
+        branch_name = f"experiment/{xp_name}"
+    else:
+        if not current_branch.startswith("experiment/"):
+            error_exit("Not on an experiment branch and no experiment name provided.")
+        branch_name = current_branch
+        xp_name = extract_xp_name(branch_name)
+
+    # Checkout branch if not already on it
+    if current_branch != branch_name:
+        print(f"Switching to branch: {branch_name}")
+        run_command(["git", "checkout", branch_name])
+
+    print(f"Rebasing {branch_name} on origin/main and dropping result commits...")
+    
+    env = os.environ.copy()
+    script_path = Path(__file__).resolve()
+    
+    # Set sequence editor to call back into this script
+    env["GIT_SEQUENCE_EDITOR"] = f'"{script_path}" _rebase {xp_name}'
+    
+    # Use interactive rebase to allow the sequence editor to modify the todo list
+    exit_code, _, stderr = run_command(
+        ["git", "rebase", "-i", "origin/main"], 
+        check=False, 
+        env=env
+    )
+
+    if exit_code != 0:
+        print(f"Rebase failed. Please resolve conflicts manually.\n{stderr}")
+        sys.exit(exit_code)
+
+    print("\n" + "=" * 80)
+    print(f"✓ Experiment branch '{branch_name}' updated and cleaned!")
+    print("=" * 80)
+    print()
+
+
+# ============================================================================
 # Main
 # ============================================================================
 
@@ -439,6 +515,28 @@ def main() -> None:
         description="Run all experiments defined by instrumentation commits in the current branch",
     )
     run_parser.set_defaults(func=cmd_run)
+    
+    # update command
+    update_parser = subparsers.add_parser(
+        "update",
+        help="Update experiment branch and clean results",
+        description="Rebase experiment branch on recent main and remove result commits",
+    )
+    update_parser.add_argument(
+        "xp_name",
+        nargs="?",
+        help="Experiment name (optional if on experiment branch)"
+    )
+    update_parser.set_defaults(func=cmd_update)
+    
+    # hidden _rebase command
+    rebase_parser = subparsers.add_parser(
+        "_rebase",
+        help=argparse.SUPPRESS
+    )
+    rebase_parser.add_argument("xp_name")
+    rebase_parser.add_argument("todo_file")
+    rebase_parser.set_defaults(func=cmd_rebase_helper)
     
     args = parser.parse_args()
     args.func(args)
