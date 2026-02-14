@@ -25,7 +25,6 @@ third_party/
   libosmium/        # OSM file parsing library
 data/               # Input OSM data files (.osm.pbf format)
 cache/              # Preprocessed graph data (binary format)
-.cache/             # Git-ignored cache directory
 ```
 
 ### File Extensions
