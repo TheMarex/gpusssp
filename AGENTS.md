@@ -17,7 +17,8 @@ include/
   common/           # Core utilities (graphs, coordinates, I/O)
   gpu/              # Vulkan/GPU implementations
   preprocessing/    # OSM data to internal format conversion
-src/                # Source files for key executables and shaders
+src/                # Source files for key executables
+shaders/            # GLSL compute shaders
 experiments/        # Source files for experiment runners
 tests/              # Catch2 unit tests
 third_party/
@@ -36,16 +37,20 @@ cache/              # Preprocessed graph data (binary format)
 ## Key Files
 
 ### Executables
-- `src/gpusssp.cpp` - Main entry point for running shortest path queries (compares Dijkstra, DeltaStep, BellmanFord)
+- `src/gpusssp.cpp` - Main entry point for running shortest path queries (compares Dijkstra, DeltaStep, BellmanFord, NearFar)
 - `src/osm2graph.cpp` - Converter from OSM PBF format to internal graph format
 - `experiments/generate_queries.cpp` - Generate query pairs for experiments
 - `experiments/experiment_dijkstra.cpp` - CPU Dijkstra benchmarks
 - `experiments/experiment_deltastep.cpp` - GPU DeltaStep benchmarks
 - `experiments/experiment_bellmanford.cpp` - GPU BellmanFord benchmarks
+- `experiments/experiment_nearfar.cpp` - GPU NearFar benchmarks
 
 ### Shaders
-- `src/delta_step.comp` - GLSL compute shader implementing delta-stepping algorithm
-- `src/bellman_ford.comp` - GLSL compute shader implementing Bellman-Ford algorithm
+- `shaders/delta_step.comp` - GLSL compute shader implementing delta-stepping algorithm
+- `shaders/bellman_ford.comp` - GLSL compute shader implementing Bellman-Ford algorithm
+- `shaders/nearfar_relax.comp` - GLSL compute shader for Near-Far relaxation
+- `shaders/nearfar_compact.comp` - GLSL compute shader for Near-Far bucket compaction
+- `shaders/nearfar_prepare_dispatch.comp` - GLSL compute shader for indirect dispatch setup
 
 ### Core Libraries
 - `include/common/` - Core data structures (graphs, coordinates, I/O utilities)
@@ -56,27 +61,33 @@ cache/              # Preprocessed graph data (binary format)
   - `vulkan_context.hpp` - Vulkan instance and device setup
   - `deltastep.hpp` - DeltaStep GPU algorithm wrapper
   - `bellmanford.hpp` - BellmanFord GPU algorithm wrapper
+  - `nearfar.hpp` - NearFar GPU algorithm wrapper
   - `*_buffers.hpp` - GPU memory management for algorithms
 - `include/preprocessing/` - OSM data preprocessing utilities
 
 ## Algorithms
 
-The project implements three shortest path algorithms:
+The project implements four shortest path algorithms:
 
 1. **Dijkstra (CPU)** - Classic CPU implementation used as baseline for correctness
    - Located in `include/common/dijkstra.hpp`
    - Used for validation of GPU algorithms
    
 2. **Delta-Stepping (GPU)** - Parallel shortest path algorithm optimized for GPUs
-   - Shader: `src/delta_step.comp`
+   - Shader: `shaders/delta_step.comp`
    - Host code: `include/gpu/deltastep.hpp`
    - Splits edges into "light" and "heavy" buckets based on delta parameter
    - Main target algorithm for this project
    
 3. **Bellman-Ford (GPU)** - Naive GPU implementation for comparison
-   - Shader: `src/bellman_ford.comp`
+   - Shader: `shaders/bellman_ford.comp`
    - Host code: `include/gpu/bellmanford.hpp`
    - Simpler but typically slower than delta-stepping
+
+4. **Near-Far (GPU)** - Advanced GPU algorithm using near/far bucket compaction
+   - Shaders: `shaders/nearfar_*.comp`
+   - Host code: `include/gpu/nearfar.hpp`
+   - Uses indirect dispatch and efficient bucket management for better performance on large graphs
 
 All GPU algorithms use Vulkan compute shaders and process road network graphs from OpenStreetMap data.
 
@@ -205,7 +216,7 @@ Parameters:
 - `delta` - Delta parameter for delta-stepping algorithm (typically 300-3600)
 - `num_queries` - Number of queries to run
 
-The executable runs all three algorithms (Dijkstra, DeltaStep, BellmanFord) and compares results.
+The executable runs all four algorithms (Dijkstra, DeltaStep, BellmanFord, NearFar) and compares results.
 
 ### Running Experiments
 
