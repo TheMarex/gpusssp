@@ -78,7 +78,6 @@ template <typename GraphT> class NearFar
                                                                targets_buffer,
                                                                weights_buffer,
                                                                dist_buffer,
-                                                               results_buffer,
                                                                near_0_buffer,
                                                                near_1_buffer,
                                                                far_0_buffer,
@@ -88,7 +87,6 @@ template <typename GraphT> class NearFar
                                                                targets_buffer,
                                                                weights_buffer,
                                                                dist_buffer,
-                                                               results_buffer,
                                                                near_0_buffer,
                                                                near_1_buffer,
                                                                far_1_buffer,
@@ -98,7 +96,6 @@ template <typename GraphT> class NearFar
                                                                targets_buffer,
                                                                weights_buffer,
                                                                dist_buffer,
-                                                               results_buffer,
                                                                near_1_buffer,
                                                                near_0_buffer,
                                                                far_0_buffer,
@@ -108,7 +105,6 @@ template <typename GraphT> class NearFar
                                                                targets_buffer,
                                                                weights_buffer,
                                                                dist_buffer,
-                                                               results_buffer,
                                                                near_1_buffer,
                                                                near_0_buffer,
                                                                far_1_buffer,
@@ -119,7 +115,6 @@ template <typename GraphT> class NearFar
         compact_pipeline = create_compute_pipeline<PushConsts>(device,
                                                                "nearfar_compact.spv",
                                                                {{dist_buffer,
-                                                                 results_buffer,
                                                                  far_0_buffer,
                                                                  near_0_buffer,
                                                                  far_1_buffer,
@@ -127,7 +122,6 @@ template <typename GraphT> class NearFar
                                                                  processed_buffer,
                                                                  statistics_buffer},
                                                                 {dist_buffer,
-                                                                 results_buffer,
                                                                  far_1_buffer,
                                                                  near_0_buffer,
                                                                  far_0_buffer,
@@ -172,6 +166,8 @@ template <typename GraphT> class NearFar
               dispatch_relax_buffer,
               processed_buffer] = nearfar_buffers.buffers();
 
+        vk::BufferCopy results_copy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)};
+
         auto record_0_start = common::Statistics::get().start(
             common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
@@ -201,13 +197,29 @@ template <typename GraphT> class NearFar
             {},
             {});
 
+        cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                vk::PipelineStageFlagBits::eTransfer,
+                                vk::DependencyFlags{},
+                                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                  vk::AccessFlagBits::eTransferRead},
+                                {},
+                                {});
+
+        cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
+
+        cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                vk::PipelineStageFlagBits::eHost,
+                                vk::DependencyFlags{},
+                                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                  vk::AccessFlagBits::eHostRead},
+                                {},
+                                {});
+
         cmd_buf.end();
         common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION,
                                        record_0_start);
         queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
         queue.waitIdle();
-
-        *gpu_best_distance = common::INF_WEIGHT;
 
         uint32_t current_near_buffer = 0;
         uint32_t current_far_buffer = 0;
@@ -313,6 +325,24 @@ template <typename GraphT> class NearFar
                 common::Statistics::get().stop(
                     common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION, record_1_start);
 
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                        vk::PipelineStageFlagBits::eTransfer,
+                                        vk::DependencyFlags{},
+                                        vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                          vk::AccessFlagBits::eTransferRead},
+                                        {},
+                                        {});
+
+                cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
+
+                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                        vk::PipelineStageFlagBits::eHost,
+                                        vk::DependencyFlags{},
+                                        vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                          vk::AccessFlagBits::eHostRead},
+                                        {},
+                                        {});
+
                 cmd_buf.end();
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
@@ -391,6 +421,24 @@ template <typename GraphT> class NearFar
                                     vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
                                                       vk::AccessFlagBits::eShaderRead |
                                                           vk::AccessFlagBits::eShaderWrite},
+                                    {},
+                                    {});
+
+            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::PipelineStageFlagBits::eTransfer,
+                                    vk::DependencyFlags{},
+                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                      vk::AccessFlagBits::eTransferRead},
+                                    {},
+                                    {});
+
+            cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
+
+            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                    vk::PipelineStageFlagBits::eHost,
+                                    vk::DependencyFlags{},
+                                    vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                      vk::AccessFlagBits::eHostRead},
                                     {},
                                     {});
 

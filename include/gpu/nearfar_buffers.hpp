@@ -17,9 +17,9 @@ class NearFarBuffers
         : device(device)
     {
         buf_dist = gpu::create_exclusive_buffer<uint32_t>(
-            device, num_nodes, vk::BufferUsageFlagBits::eStorageBuffer);
+            device, num_nodes, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferSrc);
         buf_results = gpu::create_exclusive_buffer<uint32_t>(
-            device, 1, vk::BufferUsageFlagBits::eStorageBuffer);
+            device, 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
         buf_near_0 = gpu::create_exclusive_buffer<uint32_t>(
             device, num_nodes, vk::BufferUsageFlagBits::eStorageBuffer);
         buf_near_1 = gpu::create_exclusive_buffer<uint32_t>(
