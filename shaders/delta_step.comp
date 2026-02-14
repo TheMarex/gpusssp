@@ -15,18 +15,16 @@ layout(std430, binding = 0) readonly buffer FirstEdges { uint first_edges[]; };
 layout(std430, binding = 1) readonly buffer Targets { uint targets[]; };
 layout(std430, binding = 2) readonly buffer Weight { uint weight[]; };
 layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
-// Results buffer: [0] = best_distance (dist[dst_node]), [1] = max_distance
-layout(std430, binding = 4) coherent buffer Results { uint results[]; };
 // Nodes modified by the current iteration (written to)
-layout(std430, binding = 5) coherent buffer CurrentChanged { uint current_changed[]; };
+layout(std430, binding = 4) coherent buffer CurrentChanged { uint current_changed[]; };
 // Nodes modified in the previous iteration (read from)
-layout(std430, binding = 6) readonly buffer PreviousChanged { uint previous_changed[]; };
+layout(std430, binding = 5) readonly buffer PreviousChanged { uint previous_changed[]; };
 // Min/max of changed node IDs from the current iteration (written to)
-layout(std430, binding = 7) coherent buffer CurrentMinMaxChanged { uint current_min_max_changed_id[]; }; // [0] = min, [1] = max
+layout(std430, binding = 6) coherent buffer CurrentMinMaxChanged { uint current_min_max_changed_id[]; }; // [0] = min, [1] = max
 // Min/max of changed node IDs from the previous iteration (read from)
-layout(std430, binding = 8) readonly buffer PreviousMinMaxChanged { uint previous_min_max_changed_id[]; }; // [0] = min, [1] = max
+layout(std430, binding = 7) readonly buffer PreviousMinMaxChanged { uint previous_min_max_changed_id[]; }; // [0] = min, [1] = max
 // Statistics counters
-layout(std430, binding = 9) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
+layout(std430, binding = 8) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
@@ -70,7 +68,7 @@ void main() {
                   if (alt < prev) {
                     statisticsCount(STAT_DELTASTEP_EDGES_IMPROVED);
                     
-                    // Update max_distance in results buffer
+                    // Update max_distance locally
                     local_max = max(local_max, alt);
                     bool was_set = set_node_changed(v);
                     if (!was_set) {
@@ -86,7 +84,7 @@ void main() {
             uint subgroup_max_id = subgroupMax(local_max_changed_id);
 
             if (subgroupElect() && subgroup_min_id < pc.n) {
-                atomicMax(results[1], subgroup_max_dist);
+                atomicMax(dist[pc.n], subgroup_max_dist);
                 atomicMin(current_min_max_changed_id[0], subgroup_min_id);
                 atomicMax(current_min_max_changed_id[1], subgroup_max_id);
             }

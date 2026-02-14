@@ -1,6 +1,7 @@
 #ifndef GPUSSSP_GPU_DELTASETP_HPP
 #define GPUSSSP_GPU_DELTASETP_HPP
 
+#include <array>
 #include <vulkan/vulkan.hpp>
 
 #include "common/constants.hpp"
@@ -81,7 +82,6 @@ template <typename GraphT> class DeltaStep
                                                               targets_buffer,
                                                               weights_buffer,
                                                               dist_buffer,
-                                                              results_buffer,
                                                               changed_buffer_0,
                                                               changed_buffer_1,
                                                               min_max_changed_id_0,
@@ -91,7 +91,6 @@ template <typename GraphT> class DeltaStep
                                                               targets_buffer,
                                                               weights_buffer,
                                                               dist_buffer,
-                                                              results_buffer,
                                                               changed_buffer_1,
                                                               changed_buffer_0,
                                                               min_max_changed_id_1,
@@ -143,26 +142,25 @@ template <typename GraphT> class DeltaStep
               min_max_changed_id_buffer_1,
               dispatch_buffer] = deltastep_buffers.buffers();
 
+        const std::array<vk::BufferCopy, 2> results_copy = {
+            vk::BufferCopy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)},
+            vk::BufferCopy{num_nodes * sizeof(uint32_t), sizeof(uint32_t), sizeof(uint32_t)}};
+
         auto record_start = common::Statistics::get().start(
             common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
-        // Initialize dist buffer on GPU
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-        if (src_node > 0)
-        {
-            cmd_buf.fillBuffer(dist_buffer, 0, src_node * sizeof(uint32_t), common::INF_WEIGHT);
-        }
+        cmd_buf.fillBuffer(dist_buffer, 0, num_nodes * sizeof(uint32_t), common::INF_WEIGHT);
+        // initialize source wiht 0
         cmd_buf.fillBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), 0);
-        if (src_node < num_nodes - 1)
-        {
-            cmd_buf.fillBuffer(
-                dist_buffer, (src_node + 1) * sizeof(uint32_t), VK_WHOLE_SIZE, common::INF_WEIGHT);
-        }
+        // initialize max_distance with 0
+        cmd_buf.fillBuffer(dist_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
-            vk::PipelineStageFlagBits::eComputeShader,
+            vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer,
             vk::DependencyFlags{},
             vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                              vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
+                              vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite |
+                                  vk::AccessFlagBits::eTransferRead},
             {},
             {});
 
@@ -289,9 +287,8 @@ template <typename GraphT> class DeltaStep
                         {bucket, gpu_prev_max_changed_id == gpu_min_max_changed_id_0 ? 0u : 1u});
                 }
 
-                common::log_debug()
-                    << bucket << " changed " << *gpu_prev_min_changed_id << "-"
-                    << *gpu_prev_max_changed_id << " max " << *gpu_max_distance << std::endl;
+                common::log_debug() << bucket << " changed " << *gpu_prev_min_changed_id << "-"
+                                    << *gpu_prev_max_changed_id << std::endl;
 
                 // start a new command buffer either for next iteration here or the heavy pass
                 record_start = common::Statistics::get().start(
@@ -332,8 +329,7 @@ template <typename GraphT> class DeltaStep
                                                       vk::AccessFlagBits::eTransferRead},
                                     {},
                                     {});
-            vk::BufferCopy copy_region{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)};
-            cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &copy_region);
+            cmd_buf.copyBuffer(dist_buffer, results_buffer, results_copy);
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer |
                                         vk::PipelineStageFlagBits::eComputeShader,
                                     vk::PipelineStageFlagBits::eHost,

@@ -17,11 +17,12 @@ class DeltaStepBuffers
         : device(device)
     {
         // Device-local distance buffer (no longer needs host visibility)
+        // One extra element for max_distance
         buf_dist = gpu::create_exclusive_buffer<uint32_t>(
-            device, num_nodes, vk::BufferUsageFlagBits::eStorageBuffer);
+            device, num_nodes + 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc);
         // Host-visible results buffer: [0] = best_distance, [1] = max_distance
         buf_results = gpu::create_exclusive_buffer<uint32_t>(
-            device, 2, vk::BufferUsageFlagBits::eStorageBuffer);
+            device, 2, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
         // Boolean flag arrays
         // These two buffers will be swapped between iterations
         auto num_blocks = (num_nodes + 31) / 32;
