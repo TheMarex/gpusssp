@@ -27,30 +27,35 @@ enum class StatisticsEvent : uint8_t
     DIJKSTRA_RELAX,
     DELTASTEP_BUCKET,
     DELTASTEP_HEAVY,
+    DELTASTEP_CMDBUF_RECORD_DURATION,
     NEARFAR_PHASE,
     NEARFAR_RELAX,
     NEARFAR_INIT_DURATION,
     NEARFAR_RELAX_DURATION,
     NEARFAR_COMPACT_DURATION,
+    NEARFAR_CMDBUF_RECORD_DURATION,
     NUM_EVENTS
 };
 
 inline const char *event_to_name(StatisticsEvent name)
 {
-    static std::array<const char *, static_cast<std::size_t>(StatisticsEvent::NUM_EVENTS)> names{
-        {"QUEUE_POP",
-         "QUEUE_PUSH",
-         "QUEUE_DECREASE_KEY",
-         "QUEUE_INCREASE_KEY",
-         "DIJKSTRA_STALL",
-         "DIJKSTRA_RELAX",
-         "DELTASTEP_BUCKET",
-         "DELTASTEP_HEAVY",
-         "NEARFAR_PHASE",
-         "NEARFAR_RELAX",
-         "NEARFAR_INIT_DURATION",
-         "NEARFAR_RELAX_DURATION",
-         "NEARFAR_COMPACT_DURATION"}};
+    static std::array<const char *, static_cast<std::size_t>(StatisticsEvent::NUM_EVENTS)> names{{
+        "QUEUE_POP",
+        "QUEUE_PUSH",
+        "QUEUE_DECREASE_KEY",
+        "QUEUE_INCREASE_KEY",
+        "DIJKSTRA_STALL",
+        "DIJKSTRA_RELAX",
+        "DELTASTEP_BUCKET",
+        "DELTASTEP_HEAVY",
+        "DELTASTEP_CMDBUF_RECORD_DURATION",
+        "NEARFAR_PHASE",
+        "NEARFAR_RELAX",
+        "NEARFAR_INIT_DURATION",
+        "NEARFAR_RELAX_DURATION",
+        "NEARFAR_COMPACT_DURATION",
+        "NEARFAR_CMDBUF_RECORD_DURATION",
+    }};
     return names[static_cast<std::size_t>(name)];
 }
 

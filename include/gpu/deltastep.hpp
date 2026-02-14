@@ -5,6 +5,7 @@
 
 #include "common/constants.hpp"
 #include "common/logger.hpp"
+#include "common/statistics.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
 #include "gpu/shader.hpp"
@@ -142,6 +143,8 @@ template <typename GraphT> class DeltaStep
               min_max_changed_id_buffer_1,
               dispatch_buffer] = deltastep_buffers.buffers();
 
+        auto record_start = common::Statistics::get().start(
+            common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
         // Initialize dist buffer on GPU
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
         if (src_node > 0)
@@ -164,11 +167,14 @@ template <typename GraphT> class DeltaStep
             {});
 
         cmd_buf.end();
+        common::Statistics::get().stop(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION,
+                                       record_start);
         queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
         queue.waitIdle();
 
         for (uint32_t bucket = 0; bucket < MAX_BUCKETS; bucket++)
         {
+            common::Statistics::get().count(common::StatisticsEvent::DELTASTEP_BUCKET);
             PushConsts pc{src_node, dst_node, num_nodes, bucket, delta, delta};
 
             auto previous_changed_buffer = changed_buffer_0;
@@ -184,6 +190,8 @@ template <typename GraphT> class DeltaStep
             auto prev_desc_set = main_pipeline.descriptor_sets[0];
             auto current_desc_set = main_pipeline.descriptor_sets[1];
 
+            auto record_start = common::Statistics::get().start(
+                common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
             // For each bucket we need to do the first pass with all nodes.
             // Essentially the first run identifies the nodes in the bucket,
@@ -268,6 +276,8 @@ template <typename GraphT> class DeltaStep
                 }
 
                 cmd_buf.end();
+                common::Statistics::get().stop(
+                    common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION, record_start);
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
 
@@ -284,11 +294,14 @@ template <typename GraphT> class DeltaStep
                     << *gpu_prev_max_changed_id << " max " << *gpu_max_distance << std::endl;
 
                 // start a new command buffer either for next iteration here or the heavy pass
+                record_start = common::Statistics::get().start(
+                    common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
                 // since we do this after the swap we need to look at prev not current
             } while (*gpu_prev_min_changed_id < num_nodes);
 
+            common::Statistics::get().count(common::StatisticsEvent::DELTASTEP_HEAVY);
             cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, main_pipeline.pipeline);
             cmd_buf.bindDescriptorSets(
                 vk::PipelineBindPoint::eCompute, main_pipeline.layout, 0, current_desc_set, {});
@@ -331,6 +344,8 @@ template <typename GraphT> class DeltaStep
                                     {},
                                     {});
             cmd_buf.end();
+            common::Statistics::get().stop(
+                common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION, record_start);
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
             queue.waitIdle();
 

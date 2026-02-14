@@ -172,6 +172,8 @@ template <typename GraphT> class NearFar
               dispatch_relax_buffer,
               processed_buffer] = nearfar_buffers.buffers();
 
+        auto record_0_start = common::Statistics::get().start(
+            common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
         if (src_node > 0)
@@ -200,6 +202,8 @@ template <typename GraphT> class NearFar
             {});
 
         cmd_buf.end();
+        common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION,
+                                       record_0_start);
         queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
         queue.waitIdle();
 
@@ -225,6 +229,8 @@ template <typename GraphT> class NearFar
                 common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
                 common::log_debug() << phase << " " << num_near << " best distance "
                                     << *gpu_best_distance << std::endl;
+                auto record_1_start = common::Statistics::get().start(
+                    common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
                 for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
@@ -304,6 +310,9 @@ template <typename GraphT> class NearFar
                     current_near_buffer = 1 - current_near_buffer;
                 }
 
+                common::Statistics::get().stop(
+                    common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION, record_1_start);
+
                 cmd_buf.end();
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
@@ -336,6 +345,8 @@ template <typename GraphT> class NearFar
             common::log_debug() << phase << " far " << num_far << " best distance "
                                 << *gpu_best_distance << std::endl;
 
+            auto record_2_start = common::Statistics::get().start(
+                common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
             auto compact_desc_set = compact_pipeline.descriptor_sets[current_far_buffer];
@@ -384,6 +395,9 @@ template <typename GraphT> class NearFar
                                     {});
 
             cmd_buf.end();
+            common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION,
+                                           record_2_start);
+
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
             queue.waitIdle();
 
