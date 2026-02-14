@@ -349,6 +349,15 @@ def cmd_run(args: argparse.Namespace) -> None:
         for target in config.run_targets:
             run_experiment(target, config, workspace_root, build_dir)
 
+        # Print intermediate results
+        compare_script = workspace_root / "experiments" / "compare.py"
+        _, stdout, _ = run_command(
+            [str(compare_script), xp_name], cwd=workspace_root, check=False
+        )
+        if stdout:
+            print(f"\nIntermediate results for {xp_name}:")
+            print(stdout)
+
     print(f"\n{'='*80}")
     print("All experiments completed successfully!")
     print(f"{'='*80}\n")
@@ -357,9 +366,25 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     results_dir = workspace_root / "experiments" / "results" / xp_name
     if results_dir.exists():
+        print(f"\nComparing results...")
+        compare_script = workspace_root / "experiments" / "compare.py"
+        _, stdout, stderr = run_command(
+            [str(compare_script), xp_name], cwd=workspace_root, check=False
+        )
+
+        if stdout:
+            print(stdout)
+        if stderr:
+            print(stderr, file=sys.stderr)
+
         print(f"\nCommitting results from {results_dir}...")
         run_command(["git", "add", str(results_dir)])
-        run_command(["git", "commit", "-m", f"result:xp:{xp_name}"])
+
+        commit_msg = f"result:xp:{xp_name}"
+        if stdout:
+            commit_msg += f"\n\n{stdout}"
+
+        run_command(["git", "commit", "-m", commit_msg])
     else:
         error_exit(f"Results directory not found: {results_dir}")
 
