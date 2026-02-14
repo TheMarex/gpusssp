@@ -19,12 +19,8 @@ layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
 layout(std430, binding = 4) coherent buffer CurrentChanged { uint current_changed[]; };
 // Nodes modified in the previous iteration (read from)
 layout(std430, binding = 5) readonly buffer PreviousChanged { uint previous_changed[]; };
-// Min/max of changed node IDs from the current iteration (written to)
-layout(std430, binding = 6) coherent buffer CurrentMinMaxChanged { uint current_min_max_changed_id[]; }; // [0] = min, [1] = max
-// Min/max of changed node IDs from the previous iteration (read from)
-layout(std430, binding = 7) readonly buffer PreviousMinMaxChanged { uint previous_min_max_changed_id[]; }; // [0] = min, [1] = max
 // Statistics counters
-layout(std430, binding = 8) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
+layout(std430, binding = 6) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
@@ -48,9 +44,10 @@ bool set_node_changed(uint node)
 void main() {
     statisticsInit();
     
-    uint u = previous_min_max_changed_id[0] + gl_GlobalInvocationID.x;
+    uint num_blocks = (pc.n + 31) / 32;
+    uint u = previous_changed[num_blocks] + gl_GlobalInvocationID.x;
 
-    if (u <= previous_min_max_changed_id[1]) {
+    if (u <= previous_changed[num_blocks + 1]) {
         uint du = dist[u];
         if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta && was_node_changed(u)) {
             uint local_max = 0;
@@ -85,8 +82,8 @@ void main() {
 
             if (subgroupElect() && subgroup_min_id < pc.n) {
                 atomicMax(dist[pc.n], subgroup_max_dist);
-                atomicMin(current_min_max_changed_id[0], subgroup_min_id);
-                atomicMax(current_min_max_changed_id[1], subgroup_max_id);
+                atomicMin(current_changed[num_blocks], subgroup_min_id);
+                atomicMax(current_changed[num_blocks + 1], subgroup_max_id);
             }
         }
     }
