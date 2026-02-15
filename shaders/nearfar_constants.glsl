@@ -7,5 +7,7 @@
 #define COUNTER_NUM_FAR_NEXT 3
 
 #define RESULT_BEST_DISTANCE 0
+#define RESULT_NUM_NEAR 1
+#define RESULT_NUM_FAR 2
 
 #endif

@@ -67,7 +67,6 @@ template <typename GraphT> class NearFar
               near_1_buffer,
               far_0_buffer,
               far_1_buffer,
-              counters_buffer,
               dispatch_relax_buffer,
               processed_buffer] = nearfar_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
@@ -81,7 +80,6 @@ template <typename GraphT> class NearFar
                                                                near_0_buffer,
                                                                near_1_buffer,
                                                                far_0_buffer,
-                                                               counters_buffer,
                                                                statistics_buffer},
                                                               {first_edges_buffer,
                                                                targets_buffer,
@@ -90,7 +88,6 @@ template <typename GraphT> class NearFar
                                                                near_0_buffer,
                                                                near_1_buffer,
                                                                far_1_buffer,
-                                                               counters_buffer,
                                                                statistics_buffer},
                                                               {first_edges_buffer,
                                                                targets_buffer,
@@ -99,7 +96,6 @@ template <typename GraphT> class NearFar
                                                                near_1_buffer,
                                                                near_0_buffer,
                                                                far_0_buffer,
-                                                               counters_buffer,
                                                                statistics_buffer},
                                                               {first_edges_buffer,
                                                                targets_buffer,
@@ -108,7 +104,6 @@ template <typename GraphT> class NearFar
                                                                near_1_buffer,
                                                                near_0_buffer,
                                                                far_1_buffer,
-                                                               counters_buffer,
                                                                statistics_buffer}},
                                                              {workgroup_size});
 
@@ -118,23 +113,21 @@ template <typename GraphT> class NearFar
                                                                  far_0_buffer,
                                                                  near_0_buffer,
                                                                  far_1_buffer,
-                                                                 counters_buffer,
                                                                  processed_buffer,
                                                                  statistics_buffer},
                                                                 {dist_buffer,
                                                                  far_1_buffer,
                                                                  near_0_buffer,
                                                                  far_0_buffer,
-                                                                 counters_buffer,
                                                                  processed_buffer,
                                                                  statistics_buffer}},
                                                                {workgroup_size});
 
-        prepare_dispatch_pipeline =
-            create_compute_pipeline(device,
-                                    "nearfar_prepare_dispatch.spv",
-                                    {{counters_buffer, dispatch_relax_buffer}},
-                                    {workgroup_size});
+        prepare_dispatch_pipeline = create_compute_pipeline<uint32_t>(
+            device,
+            "nearfar_prepare_dispatch.spv",
+            {{near_0_buffer, dispatch_relax_buffer}, {near_1_buffer, dispatch_relax_buffer}},
+            {workgroup_size});
     }
 
     template <typename QueueT>
@@ -162,31 +155,27 @@ template <typename GraphT> class NearFar
               near_1_buffer,
               far_0_buffer,
               far_1_buffer,
-              counters_buffer,
               dispatch_relax_buffer,
               processed_buffer] = nearfar_buffers.buffers();
 
         vk::BufferCopy results_copy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)};
+        vk::BufferCopy near_count_copy{
+            num_nodes * sizeof(uint32_t), 1 * sizeof(uint32_t), sizeof(uint32_t)};
+        vk::BufferCopy far_count_copy{
+            num_nodes * sizeof(uint32_t), 2 * sizeof(uint32_t), sizeof(uint32_t)};
 
         auto record_0_start = common::Statistics::get().start(
             common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
-        if (src_node > 0)
-        {
-            cmd_buf.fillBuffer(dist_buffer, 0, src_node * sizeof(uint32_t), common::INF_WEIGHT);
-        }
+        cmd_buf.fillBuffer(dist_buffer, 0, num_nodes * sizeof(uint32_t), common::INF_WEIGHT);
         cmd_buf.fillBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), 0);
-        if (src_node < num_nodes - 1)
-        {
-            cmd_buf.fillBuffer(
-                dist_buffer, (src_node + 1) * sizeof(uint32_t), VK_WHOLE_SIZE, common::INF_WEIGHT);
-        }
 
         cmd_buf.fillBuffer(near_0_buffer, 0, sizeof(uint32_t), src_node);
-
-        cmd_buf.fillBuffer(counters_buffer, 0, sizeof(uint32_t), 1);
-        cmd_buf.fillBuffer(counters_buffer, sizeof(uint32_t), 3 * sizeof(uint32_t), 0);
+        // initialize near_0 counter with 1
+        cmd_buf.fillBuffer(near_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 1);
+        // initialize far_0 counter with 0
+        cmd_buf.fillBuffer(far_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
 
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
@@ -206,14 +195,16 @@ template <typename GraphT> class NearFar
                                 {});
 
         cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
+        cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);
+        cmd_buf.copyBuffer(far_0_buffer, results_buffer, 1, &far_count_copy);
 
-        cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                vk::PipelineStageFlagBits::eHost,
-                                vk::DependencyFlags{},
-                                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                  vk::AccessFlagBits::eHostRead},
-                                {},
-                                {});
+        cmd_buf.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eHost,
+            vk::DependencyFlags{},
+            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead},
+            {},
+            {});
 
         cmd_buf.end();
         common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION,
@@ -221,11 +212,9 @@ template <typename GraphT> class NearFar
         queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
         queue.waitIdle();
 
-        uint32_t current_near_buffer = 0;
-        uint32_t current_far_buffer = 0;
+        uint32_t current_near_buffer_idx = 0;
+        uint32_t current_far_buffer_idx = 0;
         uint32_t phase = 0;
-        uint32_t num_near = 1;
-        uint32_t num_far = 0;
 
         common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_INIT_DURATION, init_start);
 
@@ -236,10 +225,10 @@ template <typename GraphT> class NearFar
             auto relax_start =
                 common::Statistics::get().start(common::StatisticsEvent::NEARFAR_RELAX_DURATION);
 
-            while (num_near > 0)
+            while (*gpu_num_near > 0)
             {
                 common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
-                common::log_debug() << phase << " " << num_near << " best distance "
+                common::log_debug() << phase << " " << *gpu_num_near << " best distance "
                                     << *gpu_best_distance << std::endl;
                 auto record_1_start = common::Statistics::get().start(
                     common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
@@ -247,11 +236,16 @@ template <typename GraphT> class NearFar
 
                 for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
                 {
-                    uint32_t relax_desc_idx = current_near_buffer * 2 + current_far_buffer;
+                    uint32_t relax_desc_idx = current_near_buffer_idx * 2 + current_far_buffer_idx;
                     auto relax_desc_set = relax_pipeline.descriptor_sets[relax_desc_idx];
 
+                    auto next_near_buffer =
+                        current_near_buffer_idx == 0 ? near_1_buffer : near_0_buffer;
+                    auto far_buffer = current_far_buffer_idx == 0 ? far_0_buffer : far_1_buffer;
+
                     // clear size of next_near
-                    cmd_buf.fillBuffer(counters_buffer, 1 * sizeof(uint32_t), sizeof(uint32_t), 0);
+                    cmd_buf.fillBuffer(
+                        next_near_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
                     cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                             vk::PipelineStageFlagBits::eComputeShader,
                                             vk::DependencyFlags{},
@@ -263,11 +257,17 @@ template <typename GraphT> class NearFar
 
                     cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute,
                                          prepare_dispatch_pipeline.pipeline);
-                    cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-                                               prepare_dispatch_pipeline.layout,
-                                               0,
-                                               prepare_dispatch_pipeline.descriptor_sets[0],
-                                               {});
+                    cmd_buf.bindDescriptorSets(
+                        vk::PipelineBindPoint::eCompute,
+                        prepare_dispatch_pipeline.layout,
+                        0,
+                        prepare_dispatch_pipeline.descriptor_sets[current_near_buffer_idx],
+                        {});
+                    cmd_buf.pushConstants(prepare_dispatch_pipeline.layout,
+                                          vk::ShaderStageFlagBits::eCompute,
+                                          0,
+                                          4,
+                                          &num_nodes);
                     cmd_buf.dispatch(1, 1, 1);
 
                     cmd_buf.pipelineBarrier(
@@ -295,59 +295,37 @@ template <typename GraphT> class NearFar
                                           &pc);
                     cmd_buf.dispatchIndirect(dispatch_relax_buffer, 0);
 
-                    cmd_buf.pipelineBarrier(
-                        vk::PipelineStageFlagBits::eComputeShader,
-                        vk::PipelineStageFlagBits::eTransfer,
-                        vk::DependencyFlags{},
-                        vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                          vk::AccessFlagBits::eTransferRead |
-                                              vk::AccessFlagBits::eTransferWrite},
-                        {},
-                        {});
-
-                    // copy size of next_near to current
-                    vk::BufferCopy copy_region{
-                        1 * sizeof(uint32_t), 0 * sizeof(uint32_t), sizeof(uint32_t)};
-                    cmd_buf.copyBuffer(counters_buffer, counters_buffer, 1, &copy_region);
-
-                    cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                            vk::PipelineStageFlagBits::eComputeShader,
+                    cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                            vk::PipelineStageFlagBits::eTransfer,
                                             vk::DependencyFlags{},
-                                            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                              vk::AccessFlagBits::eShaderRead |
-                                                                  vk::AccessFlagBits::eShaderWrite},
+                                            vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                              vk::AccessFlagBits::eTransferRead},
                                             {},
                                             {});
 
-                    current_near_buffer = 1 - current_near_buffer;
+                    cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
+                    cmd_buf.copyBuffer(next_near_buffer, results_buffer, 1, &near_count_copy);
+                    cmd_buf.copyBuffer(far_buffer, results_buffer, 1, &far_count_copy);
+
+                    cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                            vk::PipelineStageFlagBits::eHost |
+                                                vk::PipelineStageFlagBits::eComputeShader,
+                                            vk::DependencyFlags{},
+                                            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                              vk::AccessFlagBits::eHostRead |
+                                                                  vk::AccessFlagBits::eShaderRead},
+                                            {},
+                                            {});
+
+                    current_near_buffer_idx = 1 - current_near_buffer_idx;
                 }
 
                 common::Statistics::get().stop(
                     common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION, record_1_start);
 
-                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                        vk::PipelineStageFlagBits::eTransfer,
-                                        vk::DependencyFlags{},
-                                        vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                                          vk::AccessFlagBits::eTransferRead},
-                                        {},
-                                        {});
-
-                cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
-
-                cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                        vk::PipelineStageFlagBits::eHost,
-                                        vk::DependencyFlags{},
-                                        vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                          vk::AccessFlagBits::eHostRead},
-                                        {},
-                                        {});
-
                 cmd_buf.end();
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
                 queue.waitIdle();
-
-                num_near = *gpu_num_near;
             }
 
             common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_RELAX_DURATION,
@@ -366,23 +344,24 @@ template <typename GraphT> class NearFar
             auto compact_start =
                 common::Statistics::get().start(common::StatisticsEvent::NEARFAR_COMPACT_DURATION);
 
-            num_far = *gpu_num_far;
-            if (num_far == 0)
+            if (*gpu_num_far == 0)
             {
                 break;
             }
 
-            common::log_debug() << phase << " far " << num_far << " best distance "
+            common::log_debug() << phase << " far " << *gpu_num_far << " best distance "
                                 << *gpu_best_distance << std::endl;
 
             auto record_2_start = common::Statistics::get().start(
                 common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
-            auto compact_desc_set = compact_pipeline.descriptor_sets[current_far_buffer];
+            auto compact_desc_set = compact_pipeline.descriptor_sets[current_far_buffer_idx];
 
-            cmd_buf.fillBuffer(counters_buffer, 0 * sizeof(uint32_t), sizeof(uint32_t), 0);
-            cmd_buf.fillBuffer(counters_buffer, 3 * sizeof(uint32_t), sizeof(uint32_t), 0);
+            auto next_far_buffer = current_far_buffer_idx == 0 ? far_1_buffer : far_0_buffer;
+
+            cmd_buf.fillBuffer(near_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
+            cmd_buf.fillBuffer(next_far_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
             cmd_buf.fillBuffer(processed_buffer, 0, VK_WHOLE_SIZE, 0);
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                     vk::PipelineStageFlagBits::eComputeShader,
@@ -400,29 +379,7 @@ template <typename GraphT> class NearFar
             PushConsts pc{src_node, dst_node, num_nodes, phase, delta};
             cmd_buf.pushConstants(
                 compact_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-            cmd_buf.dispatch((num_far + workgroup_size - 1) / workgroup_size, 1, 1);
-
-            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::PipelineStageFlagBits::eTransfer,
-                                    vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                                      vk::AccessFlagBits::eTransferRead |
-                                                          vk::AccessFlagBits::eTransferWrite},
-                                    {},
-                                    {});
-
-            vk::BufferCopy copy_region{
-                3 * sizeof(uint32_t), 2 * sizeof(uint32_t), sizeof(uint32_t)};
-            cmd_buf.copyBuffer(counters_buffer, counters_buffer, 1, &copy_region);
-
-            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                    vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                      vk::AccessFlagBits::eShaderRead |
-                                                          vk::AccessFlagBits::eShaderWrite},
-                                    {},
-                                    {});
+            cmd_buf.dispatch((*gpu_num_far + workgroup_size - 1) / workgroup_size, 1, 1);
 
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                     vk::PipelineStageFlagBits::eTransfer,
@@ -433,6 +390,8 @@ template <typename GraphT> class NearFar
                                     {});
 
             cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
+            cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);
+            cmd_buf.copyBuffer(next_far_buffer, results_buffer, 1, &far_count_copy);
 
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                     vk::PipelineStageFlagBits::eHost,
@@ -449,14 +408,11 @@ template <typename GraphT> class NearFar
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
             queue.waitIdle();
 
-            current_far_buffer = 1 - current_far_buffer;
-            current_near_buffer = 0;
+            current_far_buffer_idx = 1 - current_far_buffer_idx;
+            current_near_buffer_idx = 0;
 
-            num_near = *gpu_num_near;
-            num_far = *gpu_num_far;
-
-            common::log_debug() << phase << " compacted to: far " << num_far << " near " << num_near
-                                << std::endl;
+            common::log_debug() << phase << " compacted to: far " << *gpu_num_far << " near "
+                                << *gpu_num_near << std::endl;
 
             common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_COMPACT_DURATION,
                                            compact_start);
