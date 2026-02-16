@@ -34,6 +34,7 @@ layout(push_constant) uniform PushConsts
     uint delta;
     uint bucket_index;
     uint buffer_index;
+    uint grouping_size;
 }
 pc;
 
@@ -93,7 +94,7 @@ void main()
     }
     else if (pc.color_mode == COLOR_MODE_WORKGROUP)
     {
-        uint block_idx = i / 64;
+        uint block_idx = i / pc.grouping_size;
         float hue = float(block_idx * 137.508) ; // Use golden angle for good distribution
         hue = mod(hue, 360.0);
         rgb = oklch_to_rgb(0.7, 0.15, hue);

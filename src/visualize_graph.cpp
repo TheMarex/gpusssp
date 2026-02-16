@@ -18,7 +18,6 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -296,6 +295,7 @@ struct SharedContext
     bool color_update_requested = false;
     bool color_shutdown = false;
     ColorMode current_color_mode = ColorMode::Fixed;
+    uint32_t grouping_size = 64;
     uint32_t delta = 3600;
 
     gpu::DeltaStepTracer tracer;
@@ -313,6 +313,7 @@ struct State
     bool is_dragging = false;
 
     ColorMode color_mode = ColorMode::Fixed;
+    uint32_t grouping_size = 64;
     bool restart_requested = false;
     bool white_background = false;
 
@@ -390,8 +391,35 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
             }
             else if (g_state.color_mode == ColorMode::Ordering)
             {
-                common::log() << "Coloring by workgroup (64 nodes)" << std::endl;
                 g_state.color_mode = ColorMode::Workgroup;
+                g_state.grouping_size = 32;
+                common::log() << "Coloring by workgroup (32 nodes)" << std::endl;
+            }
+            else if (g_state.color_mode == ColorMode::Workgroup)
+            {
+                if (g_state.grouping_size == 32)
+                {
+                    g_state.grouping_size = 64;
+                }
+                else if (g_state.grouping_size == 64)
+                {
+                    g_state.grouping_size = 128;
+                }
+                else if (g_state.grouping_size == 128)
+                {
+                    g_state.grouping_size = 256;
+                }
+                else
+                {
+                    g_state.color_mode = ColorMode::Fixed;
+                    common::log() << "Coloring: Fixed" << std::endl;
+                }
+
+                if (g_state.color_mode == ColorMode::Workgroup)
+                {
+                    common::log() << "Coloring by workgroup (" << g_state.grouping_size << " nodes)"
+                                  << std::endl;
+                }
             }
             else
             {
@@ -485,6 +513,11 @@ void key_callback(GLFWwindow *, int key, int, int action, int)
                 {
                     g_state.recorder->start_recording();
                 }
+            }
+            else
+            {
+                common::log_warning()
+                    << "Can't start recording. No output directory specified." << std::endl;
             }
         }
     }
@@ -601,6 +634,7 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                 uint32_t delta;
                 uint32_t bucket_index;
                 uint32_t buffer_index;
+                uint32_t grouping_size;
             };
 
             auto deltastep_bufs = deltastep_buffers.buffers();
@@ -612,6 +646,7 @@ std::thread start_color_updater_thread(SharedContext &ctx,
             auto dispatch_shader = [&](const uint32_t color_mode_value,
                                        const uint32_t max_distance,
                                        const uint32_t delta,
+                                       const uint32_t grouping_size,
                                        const std::optional<gpu::DeltaStepPayload> &maybe_payload)
             {
                 auto bucket_index = UINT32_MAX;
@@ -626,7 +661,8 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                                        color_mode_value,
                                        delta,
                                        bucket_index,
-                                       buffer_index};
+                                       buffer_index,
+                                       grouping_size};
 
                 vk::CommandBuffer cmd = device.allocateCommandBuffers(
                     {cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
@@ -677,6 +713,7 @@ std::thread start_color_updater_thread(SharedContext &ctx,
             while (!ctx.color_shutdown)
             {
                 ColorMode mode;
+                uint32_t grouping_size;
                 {
                     std::unique_lock<std::mutex> lock(ctx.color_mutex);
                     ctx.color_cv.wait(
@@ -689,6 +726,7 @@ std::thread start_color_updater_thread(SharedContext &ctx,
 
                     ctx.color_update_requested = false;
                     mode = ctx.current_color_mode;
+                    grouping_size = ctx.grouping_size;
                 }
 
                 if (is_trace_mode(mode))
@@ -696,6 +734,7 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                     while (true)
                     {
                         mode = ctx.current_color_mode;
+                        grouping_size = ctx.grouping_size;
 
                         if (!is_trace_mode(mode))
                         {
@@ -707,6 +746,7 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                             dispatch_shader(static_cast<uint32_t>(mode),
                                             *deltastep_buffers.max_distance(),
                                             ctx.delta,
+                                            grouping_size,
                                             ctx.tracer.payload());
                             break;
                         }
@@ -716,21 +756,22 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                             dispatch_shader(static_cast<uint32_t>(mode),
                                             *deltastep_buffers.max_distance(),
                                             ctx.delta,
+                                            grouping_size,
                                             ctx.tracer.payload());
                         }
                     }
                 }
                 else if (mode == ColorMode::Fixed)
                 {
-                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, {});
+                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, grouping_size, {});
                 }
                 else if (mode == ColorMode::Ordering)
                 {
-                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, {});
+                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, grouping_size, {});
                 }
                 else if (mode == ColorMode::Workgroup)
                 {
-                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, {});
+                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, grouping_size, {});
                 }
             }
 
@@ -1142,6 +1183,7 @@ int main(int argc, char **argv)
     auto coord_buffers = coord_buffer.buffers();
 
     ColorMode previous_mode = g_state.color_mode;
+    uint32_t previous_grouping_size = g_state.grouping_size;
     uint32_t current_frame = 0;
 
     while (!context.should_close())
@@ -1152,12 +1194,13 @@ int main(int argc, char **argv)
         {
             g_state.restart_requested = false;
             previous_mode = ColorMode::Fixed;
+            previous_grouping_size = 0;
             g_state.color_mode = ColorMode::TraceDistance;
         }
 
-        if (g_state.color_mode != previous_mode)
+        if (g_state.color_mode != previous_mode || g_state.grouping_size != previous_grouping_size)
         {
-            if (is_trace_mode(g_state.color_mode))
+            if (is_trace_mode(g_state.color_mode) && !is_trace_mode(previous_mode))
             {
                 common::log() << "Entering Trace mode" << std::endl;
 
@@ -1171,11 +1214,13 @@ int main(int argc, char **argv)
             {
                 std::lock_guard<std::mutex> lock(shared_ctx.color_mutex);
                 shared_ctx.current_color_mode = g_state.color_mode;
+                shared_ctx.grouping_size = g_state.grouping_size;
                 shared_ctx.color_update_requested = true;
                 shared_ctx.color_cv.notify_one();
             }
 
             previous_mode = g_state.color_mode;
+            previous_grouping_size = g_state.grouping_size;
         }
 
         auto frame = context.begin_frame();
@@ -1210,7 +1255,6 @@ int main(int argc, char **argv)
         if (g_state.recorder && g_state.recorder->is_recording())
         {
             device.waitIdle();
-            uint8_t bg = g_state.white_background ? 255 : 0;
             g_state.recorder->capture_frame(frame.image);
         }
 
