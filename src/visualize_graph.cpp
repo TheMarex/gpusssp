@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <latch>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -285,15 +286,13 @@ struct PushConstants
 struct SharedContext
 {
     std::mutex sssp_mutex;
-    std::condition_variable sssp_cv;
+    std::condition_variable_any sssp_cv;
     bool sssp_run_requested = false;
     std::optional<uint32_t> sssp_result;
-    bool sssp_shutdown = false;
 
     std::mutex color_mutex;
-    std::condition_variable color_cv;
+    std::condition_variable_any color_cv;
     bool color_update_requested = false;
-    bool color_shutdown = false;
     ColorMode current_color_mode = ColorMode::Fixed;
     uint32_t grouping_size = 64;
     uint32_t delta = 3600;
@@ -543,15 +542,17 @@ void setup_glfw_callbacks(GLFWwindow *window, gpu::VulkanGraphicsContext *contex
     glfwSetFramebufferSizeCallback(window, framebuffer_resize_callback);
 }
 
-std::thread start_sssp_thread(SharedContext &ctx,
-                              const common::WeightedGraph<uint32_t> &graph,
-                              gpu::DeltaStepBuffers &deltastep_buffers,
-                              vk::Device device,
-                              vk::PhysicalDeviceMemoryProperties mem_props,
-                              gpu::SharedQueue &queue)
+std::jthread start_sssp_thread(SharedContext &ctx,
+                               const common::WeightedGraph<uint32_t> &graph,
+                               gpu::DeltaStepBuffers &deltastep_buffers,
+                               vk::Device device,
+                               vk::PhysicalDeviceMemoryProperties mem_props,
+                               gpu::SharedQueue &queue,
+                               std::latch &initialization_latch)
 {
-    return std::thread(
-        [&ctx, &graph, &deltastep_buffers, device, mem_props, &queue]() mutable
+    return std::jthread(
+        [&ctx, &graph, &deltastep_buffers, device, mem_props, &queue, &initialization_latch](
+            std::stop_token st) mutable
         {
             vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
                                                 0);
@@ -564,18 +565,17 @@ std::thread start_sssp_thread(SharedContext &ctx,
                 graph_buffers, deltastep_buffers, device, statistics);
             deltastep.initialize();
 
+            initialization_latch.count_down();
+
             std::random_device rd;
             std::mt19937 gen(rd());
             std::uniform_int_distribution<uint32_t> dist(0, graph.num_nodes() - 1);
 
-            while (true)
+            while (!st.stop_requested())
             {
                 {
                     std::unique_lock<std::mutex> lock(ctx.sssp_mutex);
-                    ctx.sssp_cv.wait(
-                        lock, [&ctx] { return ctx.sssp_run_requested || ctx.sssp_shutdown; });
-
-                    if (ctx.sssp_shutdown)
+                    if (!ctx.sssp_cv.wait(lock, st, [&ctx] { return ctx.sssp_run_requested; }))
                     {
                         break;
                     }
@@ -612,15 +612,17 @@ std::thread start_sssp_thread(SharedContext &ctx,
         });
 }
 
-std::thread start_color_updater_thread(SharedContext &ctx,
-                                       gpu::DeltaStepBuffers &deltastep_buffers,
-                                       vk::Device device,
-                                       vk::Buffer color_buffer,
-                                       size_t num_nodes,
-                                       gpu::SharedQueue &queue)
+std::jthread start_color_updater_thread(SharedContext &ctx,
+                                        gpu::DeltaStepBuffers &deltastep_buffers,
+                                        vk::Device device,
+                                        vk::Buffer color_buffer,
+                                        size_t num_nodes,
+                                        gpu::SharedQueue &queue,
+                                        std::latch &initialization_latch)
 {
-    return std::thread(
-        [&ctx, &deltastep_buffers, device, color_buffer, num_nodes, &queue]() mutable
+    return std::jthread(
+        [&ctx, &deltastep_buffers, device, color_buffer, num_nodes, &queue, &initialization_latch](
+            std::stop_token st) mutable
         {
             vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
                                                 0);
@@ -642,6 +644,8 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                 device,
                 "node_color.spv",
                 {{deltastep_bufs[0], color_buffer, deltastep_bufs[2], deltastep_bufs[3]}});
+
+            initialization_latch.count_down();
 
             auto dispatch_shader = [&](const uint32_t color_mode_value,
                                        const uint32_t max_distance,
@@ -710,16 +714,13 @@ std::thread start_color_updater_thread(SharedContext &ctx,
                 device.freeCommandBuffers(cmd_pool, 1, &cmd);
             };
 
-            while (!ctx.color_shutdown)
+            while (!st.stop_requested())
             {
                 ColorMode mode;
                 uint32_t grouping_size;
                 {
                     std::unique_lock<std::mutex> lock(ctx.color_mutex);
-                    ctx.color_cv.wait(
-                        lock, [&ctx] { return ctx.color_update_requested || ctx.color_shutdown; });
-
-                    if (ctx.color_shutdown)
+                    if (!ctx.color_cv.wait(lock, st, [&ctx] { return ctx.color_update_requested; }))
                     {
                         break;
                     }
@@ -731,7 +732,7 @@ std::thread start_color_updater_thread(SharedContext &ctx,
 
                 if (is_trace_mode(mode))
                 {
-                    while (true)
+                    while (!st.stop_requested())
                     {
                         mode = ctx.current_color_mode;
                         grouping_size = ctx.grouping_size;
@@ -1151,10 +1152,18 @@ int main(int argc, char **argv)
     g_shared_ctx = &shared_ctx;
 
     common::log() << "Starting worker threads..." << std::endl;
-    auto sssp_thread =
-        start_sssp_thread(shared_ctx, graph, deltastep_buffers, device, mem_props, queue);
-    auto color_thread = start_color_updater_thread(
-        shared_ctx, deltastep_buffers, device, color_buffer, coordinates.size(), queue);
+    std::latch initialization_latch(2);
+    auto sssp_thread = start_sssp_thread(
+        shared_ctx, graph, deltastep_buffers, device, mem_props, queue, initialization_latch);
+    auto color_thread = start_color_updater_thread(shared_ctx,
+                                                   deltastep_buffers,
+                                                   device,
+                                                   color_buffer,
+                                                   coordinates.size(),
+                                                   queue,
+                                                   initialization_latch);
+
+    initialization_latch.wait();
 
     {
         std::lock_guard<std::mutex> lock(shared_ctx.color_mutex);
@@ -1265,27 +1274,10 @@ int main(int argc, char **argv)
 
     common::log() << "Shutting down worker threads..." << std::endl;
 
-    {
-        std::lock_guard<std::mutex> lock(shared_ctx.sssp_mutex);
-        shared_ctx.sssp_shutdown = true;
-        shared_ctx.sssp_cv.notify_one();
-    }
-    {
-        std::lock_guard<std::mutex> lock(shared_ctx.color_mutex);
-        shared_ctx.color_shutdown = true;
-        shared_ctx.color_cv.notify_one();
-    }
+    sssp_thread.request_stop();
+    color_thread.request_stop();
 
     shared_ctx.tracer.continue_to_end();
-
-    if (sssp_thread.joinable())
-    {
-        sssp_thread.join();
-    }
-    if (color_thread.joinable())
-    {
-        color_thread.join();
-    }
 
     g_shared_ctx = nullptr;
 

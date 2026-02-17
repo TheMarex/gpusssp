@@ -16,7 +16,7 @@ template <typename PayloadT> class Tracer
 {
   public:
     Tracer()
-        : should_continue(false), ready_to_step(false), finished(false), auto_play_enabled(false),
+        : should_continue(false), ready_to_step(false), finished(true), auto_play_enabled(false),
           auto_play_interval_ms(500)
     {
     }
@@ -158,10 +158,7 @@ template <typename PayloadT> class Tracer
         common::log() << "Auto-play speed changed to " << interval_ms << "ms" << std::endl;
     }
 
-    bool is_auto_playing() const
-    {
-        return auto_play_enabled;
-    }
+    bool is_auto_playing() const { return auto_play_enabled; }
 
   private:
     std::mutex step_mtx;
