@@ -382,7 +382,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             print(stderr, file=sys.stderr)
 
         print(f"\nCommitting results from {results_dir}...")
-        run_command(["git", "add", str(results_dir)])
+        run_command(["git", "add", "-f", str(results_dir)])
 
         commit_msg = f"result:xp:{xp_name}"
         if stdout:
