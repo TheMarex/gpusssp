@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple
 
 import click
 import pandas as pd
+from tabulate import tabulate
 
 from .paths import get_workspace_root
 
@@ -68,35 +69,6 @@ def get_experiment_data(
     return experiment_data
 
 
-def print_markdown_table(df: pd.DataFrame, index: bool = False) -> None:
-    """Simple markdown table printer to avoid dependency on tabulate."""
-    if index:
-        # Reset index to treat it as a column
-        df = df.reset_index()
-
-    headers = [str(col) for col in df.columns]
-    rows = df.values.tolist()
-
-    # Calculate column widths
-    widths = [len(h) for h in headers]
-    for row in rows:
-        for i, val in enumerate(row):
-            widths[i] = max(widths[i], len(str(val)))
-
-    # Format line helper
-    def format_row(values: List) -> str:
-        return (
-            "| "
-            + " | ".join(str(val).ljust(widths[i]) for i, val in enumerate(values))
-            + " |"
-        )
-
-    click.echo(format_row(headers))
-    click.echo("| " + " | ".join("-" * w for w in widths) + " |")
-    for row in rows:
-        click.echo(format_row(row))
-
-
 def print_tables(
     exp_key: Tuple[str, str, str],
     variant_dfs: Dict[str, pd.DataFrame],
@@ -111,8 +83,7 @@ def print_tables(
     if not all_variants:
         return
 
-    click.echo(f"\nGraph: {graph_name}, Query: {query_hash}, Device: {device_id}")
-    click.echo("=" * 80)
+    click.echo(f"Graph: {graph_name}, Query: {query_hash}, Device: {device_id}")
 
     # Table 1: Percentiles
     percentiles = [0.01, 0.1, 0.5, 0.9, 0.99]
@@ -128,7 +99,7 @@ def print_tables(
 
     perc_df = pd.DataFrame(perc_data)
     click.echo("\nExecution Time Percentiles (μs):")
-    print_markdown_table(perc_df)
+    click.echo(tabulate(perc_df, headers="keys", tablefmt="github", showindex=False))
 
     # Table 2: Avg time per rank
     combined_df = pd.concat(
@@ -140,9 +111,21 @@ def print_tables(
     # Format the rank_avg table for better readability
     rank_avg_formatted = rank_avg.map(lambda x: f"{x:,.0f}" if pd.notnull(x) else "-")
 
+    # Split the table into two halves by columns to avoid terminal overflow
+    num_cols = len(rank_avg_formatted.columns)
+    mid = (num_cols + 1) // 2
+
+    first_half = rank_avg_formatted.iloc[:, :mid]
+    second_half = rank_avg_formatted.iloc[:, mid:]
+
     click.echo("\nAverage Execution Time per Dijkstra Rank (μs):")
-    print_markdown_table(rank_avg_formatted, index=True)
-    click.echo("-" * 80)
+    click.echo(tabulate(first_half, headers="keys", tablefmt="github", showindex=True))
+
+    if not second_half.empty:
+        click.echo(
+            "\n"+
+            tabulate(second_half, headers="keys", tablefmt="github", showindex=True)
+        )
 
 
 def handle(xp_name: str | None = None, verbose: bool = True) -> str:
