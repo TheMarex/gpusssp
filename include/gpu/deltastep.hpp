@@ -35,7 +35,6 @@ template <typename GraphT> class DeltaStep
         uint32_t n;
         uint32_t bucket_idx;
         uint32_t delta;
-        uint32_t max_weight;
     };
 
   public:
@@ -158,7 +157,7 @@ template <typename GraphT> class DeltaStep
         for (uint32_t bucket = 0; bucket < max_buckets; bucket++)
         {
             common::Statistics::get().count(common::StatisticsEvent::DELTASTEP_BUCKET);
-            PushConsts pc{src_node, dst_node, num_nodes, bucket, delta, delta};
+            PushConsts pc{src_node, dst_node, num_nodes, bucket, delta};
 
             auto previous_changed_buffer = changed_buffer_0;
             auto current_changed_buffer = changed_buffer_1;
@@ -191,6 +190,7 @@ template <typename GraphT> class DeltaStep
                                     {},
                                     {});
 
+            bool has_more;
             do
             {
 
@@ -304,77 +304,16 @@ template <typename GraphT> class DeltaStep
                     << bucket << " changed " << *gpu_min_changed_id << "-" << *gpu_max_changed_id
                     << " ~ " << static_cast<double>(range_size) / num_nodes << '\n';
 
-                // start a new command buffer either for next iteration here or the heavy pass
-                record_start = common::Statistics::start(
-                    common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
-                cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+                has_more = *gpu_min_changed_id < num_nodes;
+                if (has_more)
+                {
+                    record_start = common::Statistics::start(
+                        common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
+                    cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+                }
 
                 // since we do this after the swap we need to look at prev not current
-            } while (*gpu_min_changed_id < num_nodes);
-
-            common::Statistics::get().count(common::StatisticsEvent::DELTASTEP_HEAVY);
-            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, main_pipeline.pipeline);
-            cmd_buf.bindDescriptorSets(
-                vk::PipelineBindPoint::eCompute, main_pipeline.layout, 0, current_desc_set, {});
-
-            cmd_buf.fillBuffer(
-                previous_changed_buffer, 0, num_blocks * sizeof(uint32_t), UINT32_MAX);
-            cmd_buf.updateBuffer(
-                previous_changed_buffer, num_blocks * sizeof(uint32_t), 8, first_pass_min_max);
-
-            cmd_buf.fillBuffer(current_changed_buffer, 0, num_blocks * sizeof(uint32_t), 0);
-            cmd_buf.updateBuffer(
-                current_changed_buffer, num_blocks * sizeof(uint32_t), 8, min_max_init);
-
-            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                    vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                      vk::AccessFlagBits::eShaderRead |
-                                                          vk::AccessFlagBits::eShaderWrite},
-                                    {},
-                                    {});
-
-            pc.max_weight = UINT32_MAX;
-            cmd_buf.pushConstants(
-                main_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-            cmd_buf.dispatch((num_nodes + workgroup_size - 1) / workgroup_size, 1, 1);
-            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::PipelineStageFlagBits::eTransfer,
-                                    vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                                      vk::AccessFlagBits::eTransferRead},
-                                    {},
-                                    {});
-            cmd_buf.copyBuffer(dist_buffer, results_buffer, results_copy);
-
-            cmd_buf.copyBuffer(current_changed_buffer, results_buffer, 1, &min_max_copy);
-
-            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer |
-                                        vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::PipelineStageFlagBits::eHost,
-                                    vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite |
-                                                          vk::AccessFlagBits::eShaderWrite,
-                                                      vk::AccessFlagBits::eHostRead},
-                                    {},
-                                    {});
-            cmd_buf.end();
-            common::Statistics::get().stop(
-                common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION, record_start);
-            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
-            queue.waitIdle();
-
-            if (tracer)
-            {
-                // we didn't do a swap before this, we want to display the current buffer
-                tracer->signal_and_wait(
-                    {bucket, current_changed_buffer == changed_buffer_0 ? 0u : 1u});
-            }
-
-            common::log_debug() << bucket << " heavy changed " << *gpu_min_changed_id << "-"
-                                << *gpu_max_changed_id << " max " << *gpu_max_distance << " best "
-                                << *gpu_best_distance << '\n';
+            } while (has_more);
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {

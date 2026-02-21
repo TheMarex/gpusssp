@@ -28,7 +28,6 @@ layout(push_constant) uniform PushConsts {
     uint n;
     uint bucket_idx;
     uint delta;
-    uint max_weight;
 } pc;
 
 bool was_node_changed(uint node)
@@ -58,13 +57,12 @@ void main() {
                 statisticsCount(STAT_DELTASTEP_EDGES_RELAXED);
                 
                 uint w = weight[eid];
-                if (w < pc.max_weight) {
-                  uint v = targets[eid];
-                  uint alt = du + w;
-                  uint prev = atomicMin(dist[v], alt);
-                  if (alt < prev) {
+                uint v = targets[eid];
+                uint alt = du + w;
+                uint prev = atomicMin(dist[v], alt);
+                if (alt < prev) {
                     statisticsCount(STAT_DELTASTEP_EDGES_IMPROVED);
-                    
+
                     // Update max_distance locally
                     local_max = max(local_max, alt);
                     bool was_set = set_node_changed(v);
@@ -72,7 +70,6 @@ void main() {
                         local_min_changed_id = min(local_min_changed_id, v);
                         local_max_changed_id = max(local_max_changed_id, v);
                     }
-                  }
                 }
             }
 
