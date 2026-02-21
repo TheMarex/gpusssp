@@ -12,9 +12,7 @@
 #include <cstdint>
 #include <string>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 enum class StatisticsEvent : uint8_t
@@ -28,6 +26,7 @@ enum class StatisticsEvent : uint8_t
     DELTASTEP_BUCKET,
     DELTASTEP_HEAVY,
     DELTASTEP_CMDBUF_RECORD_DURATION,
+    DELTASTEP_RANGE,
     NEARFAR_PHASE,
     NEARFAR_RELAX,
     NEARFAR_INIT_DURATION,
@@ -49,6 +48,7 @@ inline const char *event_to_name(StatisticsEvent name)
         "DELTASTEP_BUCKET",
         "DELTASTEP_HEAVY",
         "DELTASTEP_CMDBUF_RECORD_DURATION",
+        "DELTASTEP_RANGE",
         "NEARFAR_PHASE",
         "NEARFAR_RELAX",
         "NEARFAR_INIT_DURATION",
@@ -77,7 +77,18 @@ class Statistics
 #endif
     }
 
-    auto start(StatisticsEvent) { return std::chrono::high_resolution_clock::now(); }
+    void sum(StatisticsEvent event, std::size_t value)
+    {
+#ifdef ENABLE_STATISTICS
+        counts[static_cast<std::size_t>(event)] += value;
+#else
+        (void)this;
+        (void)event;
+        (void)value;
+#endif
+    }
+
+    static auto start(StatisticsEvent) { return std::chrono::high_resolution_clock::now(); }
     void stop(StatisticsEvent event, auto start_time)
     {
 #ifdef ENABLE_STATISTICS
@@ -85,11 +96,13 @@ class Statistics
         counts[static_cast<std::size_t>(event)] +=
             std::chrono::duration_cast<std::chrono::microseconds>(stop_time - start_time).count();
 #else
+        (void)this;
         (void)event;
         (void)start_time;
 #endif
     }
 
+    [[nodiscard]]
     std::string summary() const
     {
 #ifdef ENABLE_STATISTICS
@@ -102,6 +115,7 @@ class Statistics
         }
         return ss.str();
 #else
+        (void)this;
         return "";
 #endif
     }
@@ -114,7 +128,6 @@ class Statistics
 #endif
 };
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

@@ -51,7 +51,7 @@ void main() {
         uint du = dist[u];
         if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta && was_node_changed(u)) {
             uint local_max = 0;
-            uint local_min_changed_id = 0xFFFFFFFF;
+            uint local_min_changed_id = pc.n;
             uint local_max_changed_id = 0;
 
             for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
