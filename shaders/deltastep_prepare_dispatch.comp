@@ -1,12 +1,17 @@
 #version 450
 
-layout(constant_id = 0) const uint WORKGROUP_SIZE = 64;
-layout(local_size_x = 1) in;
+#extension GL_KHR_shader_subgroup_arithmetic: enable
+#extension GL_KHR_shader_subgroup_ballot: enable
 
-// Previous min/max values
+layout(constant_id = 0) const uint WORKGROUP_SIZE = 64;
+layout(local_size_x_id = 0) in;
+
+// Input: bit array with changed flags
 layout(std430, binding = 0) readonly buffer Changed { uint changed[]; };
-// Dispatch arguments for next run
-layout(std430, binding = 1) writeonly buffer DispatchIndirect {
+// Output: compact array of changed node IDs
+layout(std430, binding = 1) coherent buffer ChangedNodes { uint changed_nodes[]; };
+// Output: dispatch arguments for next run
+layout(std430, binding = 2) coherent buffer DispatchIndirect {
     uint num_groups_x;
     uint num_groups_y;
     uint num_groups_z;
@@ -16,16 +21,68 @@ layout(push_constant) uniform PushConsts {
     uint n;
 } pc;
 
+shared uint shared_nodes[WORKGROUP_SIZE * 32];
+shared uint shared_count;
+
 void main() {
     uint num_blocks = (pc.n + 31) / 32;
-    uint min_id = changed[num_blocks];
-    uint max_id = changed[num_blocks + 1];
-    if (min_id > max_id) {
-        num_groups_x = 0;
-    } else {
-        uint count = max_id - min_id + 1;
-        num_groups_x = (count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+    uint block_id = gl_GlobalInvocationID.x;
+    
+    if (gl_LocalInvocationID.x == 0) {
+        shared_count = 0;
     }
-    num_groups_y = 1;
-    num_groups_z = 1;
+    barrier();
+    
+    // Each thread processes one 32-bit block
+    uint local_count = 0;
+    uint local_nodes[32];
+    
+    if (block_id < num_blocks) {
+        uint bits = changed[block_id];
+        uint base_node = block_id * 32;
+        
+        // Scan bits and collect node IDs
+        while (bits != 0) {
+            uint bit_pos = findLSB(bits);
+            uint node_id = base_node + bit_pos;
+            if (node_id < pc.n) {
+                local_nodes[local_count++] = node_id;
+            }
+            bits &= ~(1u << bit_pos);
+        }
+    }
+    
+    // Use subgroup operations to reduce atomic contention
+    uint subgroup_total = subgroupAdd(local_count);
+    uint subgroup_offset = subgroupExclusiveAdd(local_count);
+    
+    // Reserve space in global buffer (one atomic per subgroup)
+    uint global_offset;
+    if (subgroupElect()) {
+        if (subgroup_total > 0) {
+            global_offset = atomicAdd(changed_nodes[pc.n], subgroup_total);
+        } else {
+            global_offset = 0;
+        }
+    }
+    global_offset = subgroupBroadcastFirst(global_offset);
+    
+    // Write node IDs to global memory
+    if (local_count > 0) {
+        for (uint i = 0; i < local_count; ++i) {
+            changed_nodes[global_offset + subgroup_offset + i] = local_nodes[i];
+        }
+    }
+    
+    // Each subgroup updates dispatch size using atomicMax
+    // This ensures correct value regardless of execution order
+    if (subgroupElect()) {
+        uint current_count = changed_nodes[pc.n];
+        uint required_groups = (current_count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+        atomicMax(num_groups_x, required_groups);
+        
+        // Set y and z dimensions (only needs to happen once, but harmless to repeat)
+        num_groups_y = 1;
+        num_groups_z = 1;
+    }
 }

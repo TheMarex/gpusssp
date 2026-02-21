@@ -21,6 +21,8 @@ layout(std430, binding = 4) coherent buffer CurrentChanged { uint current_change
 layout(std430, binding = 5) readonly buffer PreviousChanged { uint previous_changed[]; };
 // Statistics counters
 layout(std430, binding = 6) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
+// Compact array of changed node IDs from previous iteration
+layout(std430, binding = 7) readonly buffer ChangedNodes { uint changed_nodes[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
@@ -31,11 +33,6 @@ layout(push_constant) uniform PushConsts {
     uint max_weight;
 } pc;
 
-bool was_node_changed(uint node)
-{
-    return bit_vector_get(previous_changed, node);
-}
-
 bool set_node_changed(uint node)
 {
     return bit_vector_set(current_changed, node);
@@ -45,11 +42,15 @@ void main() {
     statisticsInit();
     
     uint num_blocks = (pc.n + 31) / 32;
-    uint u = previous_changed[num_blocks] + gl_GlobalInvocationID.x;
+    uint num_changed = changed_nodes[pc.n];
+    uint idx = gl_GlobalInvocationID.x;
 
-    if (u <= previous_changed[num_blocks + 1]) {
+    if (idx < num_changed) {
+        uint u = changed_nodes[idx];
         uint du = dist[u];
-        if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta && was_node_changed(u)) {
+        
+        // Check if node is in current bucket
+        if (du >= pc.bucket_idx * pc.delta && du < (pc.bucket_idx + 1) * pc.delta) {
             uint local_max = 0;
             uint local_min_changed_id = pc.n;
             uint local_max_changed_id = 0;
