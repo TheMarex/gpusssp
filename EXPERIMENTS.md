@@ -23,3 +23,5 @@ Outcome: hypothesis invalidated – reverting d0a22bd0 (min/max dispatch) was 25
 ## deltastep_no_heavy
 
 Hypothesis: Removing the DeltaStep heavy-pass (max-weight filtered sweep) and scanning all edges in the light-pass shader will retain correctness while lowering per-bucket runtime. Instrument `deltastep` on dataset `berlin_zorder` with `delta=900` via `xps.py` on a dedicated branch. Success requires equal best-distance results and a ≥5% reduction in average bucket runtime compared to the baseline commit; any regression or correctness issue fails the hypothesis.
+
+Outcome: hypothesis validated – removing the heavy pass cut average query time from 22.6 ms to 18.7 ms (delta 900 on berlin_zorder) with matching best distances.
