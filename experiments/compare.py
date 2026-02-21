@@ -2,12 +2,12 @@
 #
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["pandas"]
+# dependencies = ["pandas", "click"]
 # ///
 import pandas as pd
 from pathlib import Path
 import re
-import argparse
+import click
 import sys
 
 
@@ -16,7 +16,7 @@ def get_experiment_data(xp_path):
     experiments = {}
 
     if not xp_path.exists():
-        print(f"Error: Experiment path {xp_path} does not exist.")
+        click.echo(f"Error: Experiment path {xp_path} does not exist.", err=True)
         return {}
 
     # Scan through the hierarchy
@@ -91,10 +91,10 @@ def print_markdown_table(df, index=False):
             + " |"
         )
 
-    print(format_row(headers))
-    print("| " + " | ".join("-" * w for w in widths) + " |")
+    click.echo(format_row(headers))
+    click.echo("| " + " | ".join("-" * w for w in widths) + " |")
     for row in rows:
-        print(format_row(row))
+        click.echo(format_row(row))
 
 
 def print_tables(exp_key, variant_dfs, baseline_dfs=None):
@@ -107,8 +107,8 @@ def print_tables(exp_key, variant_dfs, baseline_dfs=None):
     if not all_variants:
         return
 
-    print(f"\nGraph: {graph_name}, Query: {query_hash}, Device: {device_id}")
-    print("=" * 80)
+    click.echo(f"\nGraph: {graph_name}, Query: {query_hash}, Device: {device_id}")
+    click.echo("=" * 80)
 
     # Table 1: Percentiles
     percentiles = [0.01, 0.1, 0.5, 0.9, 0.99]
@@ -123,7 +123,7 @@ def print_tables(exp_key, variant_dfs, baseline_dfs=None):
         perc_data.append(row)
 
     perc_df = pd.DataFrame(perc_data)
-    print("\nExecution Time Percentiles (μs):")
+    click.echo("\nExecution Time Percentiles (μs):")
     print_markdown_table(perc_df)
 
     # Table 2: Avg time per rank
@@ -136,32 +136,27 @@ def print_tables(exp_key, variant_dfs, baseline_dfs=None):
     # Format the rank_avg table for better readability
     rank_avg_formatted = rank_avg.map(lambda x: f"{x:,.0f}" if pd.notnull(x) else "-")
 
-    print("\nAverage Execution Time per Dijkstra Rank (μs):")
+    click.echo("\nAverage Execution Time per Dijkstra Rank (μs):")
     print_markdown_table(rank_avg_formatted, index=True)
-    print("-" * 80)
+    click.echo("-" * 80)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Compare experiment results and print summary tables."
-    )
-    parser.add_argument(
-        "xp_name", nargs="?", help="Name of the experiment (e.g., compare_algorithm)"
-    )
-    args = parser.parse_args()
-
+@click.command()
+@click.argument("xp_name", required=False)
+def main(xp_name):
+    """Compare experiment results and print summary tables."""
     results_base = Path("experiments/results")
 
-    if args.xp_name:
-        xp_names = [args.xp_name]
+    if xp_name:
+        xp_names = [xp_name]
     else:
         # Try to find experiments
         if not results_base.exists():
-            print(f"Error: {results_base} not found.")
+            click.echo(f"Error: {results_base} not found.", err=True)
             sys.exit(1)
         xp_names = [d.name for d in results_base.iterdir() if d.is_dir()]
         if not xp_names:
-            print("No experiments found in experiments/results/")
+            click.echo("No experiments found in experiments/results/", err=True)
             sys.exit(1)
 
     for xp_name in sorted(xp_names):

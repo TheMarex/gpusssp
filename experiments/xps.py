@@ -2,27 +2,13 @@
 #
 # /// script
 # requires-python = ">=3.12"
+# dependencies = ["click"]
 # ///
 """
 Unified experiment management tool for GPUSSSP.
-
-Commands:
-  create <xp_name>           Create a new experiment branch
-  add <runs> <params>        Add an instrumentation commit to current experiment branch
-  run                        Run all experiments in the current branch
-
-Examples:
-  # Create new experiment branch
-  xps.py create delta_sweep
-
-  # Add instrumentation commit
-  xps.py add "deltastep,nearfar" "delta=900,1800,3600 data=berlin"
-
-  # Run experiments
-  xps.py run
 """
 
-import argparse
+import click
 import os
 import re
 import subprocess
@@ -45,7 +31,7 @@ def get_workspace_root() -> Path:
 
 
 def error_exit(message: str) -> None:
-    print(f"ERROR: {message}", file=sys.stderr)
+    click.echo(f"ERROR: {message}", err=True)
     sys.exit(1)
 
 
@@ -80,11 +66,13 @@ def get_current_branch() -> str:
 
 def extract_xp_name(branch_name: str) -> str:
     match = re.match(r"^experiment/(.+)$", branch_name)
-    if not match:
-        error_exit(
-            f"Branch '{branch_name}' does not match pattern 'experiment/{{xp_name}}'"
-        )
-    return match.group(1)
+    if match:
+        return match.group(1)
+
+    error_exit(
+        f"Branch '{branch_name}' does not match pattern 'experiment/{{xp_name}}'"
+    )
+    return ""  # Unreachable
 
 
 def validate_xp_name(xp_name: str) -> None:
@@ -140,9 +128,8 @@ def build_commit_message(xp_name: str, run_targets: List[str], params: dict) -> 
 # ============================================================================
 
 
-def cmd_create(args: argparse.Namespace) -> None:
+def cmd_create(xp_name: str) -> None:
     """Create a new experiment branch."""
-    xp_name = args.xp_name
     validate_xp_name(xp_name)
 
     branch_name = f"experiment/{xp_name}"
@@ -155,21 +142,21 @@ def cmd_create(args: argparse.Namespace) -> None:
     if exit_code == 0:
         error_exit(f"Branch '{branch_name}' already exists")
 
-    print(f"Creating experiment branch: {branch_name}")
-    print(f"From branch: {current_branch}")
+    click.echo(f"Creating experiment branch: {branch_name}")
+    click.echo(f"From branch: {current_branch}")
 
     run_command(["git", "checkout", "-b", branch_name])
 
-    print()
-    print("=" * 80)
-    print(f"✓ Experiment branch '{branch_name}' created!")
-    print("=" * 80)
-    print()
-    print("Next steps:")
-    print(f"  1. Make code changes (if needed) and commit them")
-    print(f'  2. Add instrumentation: xps.py add "<runs>" "<params>"')
-    print(f"  3. Run experiments: xps.py run")
-    print()
+    click.echo()
+    click.echo("=" * 80)
+    click.echo(f"✓ Experiment branch '{branch_name}' created!")
+    click.echo("=" * 80)
+    click.echo()
+    click.echo("Next steps:")
+    click.echo(f"  1. Make code changes (if needed) and commit them")
+    click.echo(f'  2. Add instrumentation: xps.py add "<runs>" "<params>"')
+    click.echo(f"  3. Run experiments: xps.py run")
+    click.echo()
 
 
 # ============================================================================
@@ -177,7 +164,7 @@ def cmd_create(args: argparse.Namespace) -> None:
 # ============================================================================
 
 
-def cmd_add(args: argparse.Namespace) -> None:
+def cmd_add(run_targets: str, params_str: str) -> None:
     """Add an instrumentation commit to the current experiment branch."""
     current_branch = get_current_branch()
 
@@ -190,32 +177,32 @@ def cmd_add(args: argparse.Namespace) -> None:
     xp_name = extract_xp_name(current_branch)
 
     # Parse and validate inputs
-    run_targets = [t.strip() for t in args.run_targets.split(",")]
-    params = parse_params(args.params)
+    targets = [t.strip() for t in run_targets.split(",")]
+    params = parse_params(params_str)
 
-    validate_run_targets(run_targets)
+    validate_run_targets(targets)
     validate_params(params)
 
     # Build commit message
-    xp_commit_msg = build_commit_message(xp_name, run_targets, params)
+    xp_commit_msg = build_commit_message(xp_name, targets, params)
 
-    print(f"Adding instrumentation commit to branch: {current_branch}")
-    print(f"Commit message: {xp_commit_msg}")
-    print()
+    click.echo(f"Adding instrumentation commit to branch: {current_branch}")
+    click.echo(f"Commit message: {xp_commit_msg}")
+    click.echo()
 
     run_command(["git", "commit", "--allow-empty", "-m", xp_commit_msg])
 
-    print("=" * 80)
-    print("✓ Instrumentation commit created!")
-    print("=" * 80)
-    print(f"Experiment: {xp_name}")
-    print(f"Run targets: {', '.join(run_targets)}")
-    print(f"Parameters: {' '.join(f'{k}={v}' for k, v in params.items())}")
-    print()
-    print("Next steps:")
-    print('  - Add more variants: xps.py add "<runs>" "<params>"')
-    print("  - Run experiments: xps.py run")
-    print()
+    click.echo("=" * 80)
+    click.echo("✓ Instrumentation commit created!")
+    click.echo("=" * 80)
+    click.echo(f"Experiment: {xp_name}")
+    click.echo(f"Run targets: {', '.join(targets)}")
+    click.echo(f"Parameters: {' '.join(f'{k}={v}' for k, v in params.items())}")
+    click.echo()
+    click.echo("Next steps:")
+    click.echo('  - Add more variants: xps.py add "<runs>" "<params>"')
+    click.echo("  - Run experiments: xps.py run")
+    click.echo()
 
 
 # ============================================================================
@@ -266,7 +253,7 @@ def parse_commit_message(message: str, xp_name: str) -> Optional[ExperimentConfi
 
 
 def build_experiment_binary(target: str, build_dir: Path) -> None:
-    print(f"Building experiment_{target}...")
+    click.echo(f"Building experiment_{target}...")
     run_command(
         ["cmake", "--build", str(build_dir), "--target", f"experiment_{target}"],
         cwd=build_dir.parent,
@@ -309,19 +296,19 @@ def run_experiment(
 
     for cmd in cmds:
         cmd_str = " ".join(cmd)
-        print(f"Running '{cmd_str}'...")
+        click.echo(f"Running '{cmd_str}'...")
         run_command(cmd, cwd=build_dir, env=env, capture=False)
 
 
 def ensure_release_build(build_dir: Path, workspace_root: Path) -> None:
-    print("Configuring build for Release mode...")
+    click.echo("Configuring build for Release mode...")
     run_command(
         ["cmake", "-B", str(build_dir), "-DCMAKE_BUILD_TYPE=Release"],
         cwd=workspace_root,
     )
 
 
-def cmd_run(args: argparse.Namespace) -> None:
+def cmd_run() -> None:
     """Run all experiments in the current branch."""
     workspace_root = get_workspace_root()
     build_dir = workspace_root / "build"
@@ -331,7 +318,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     original_branch = get_current_branch()
     xp_name = extract_xp_name(original_branch)
-    print(f"Running experiments for: {xp_name}")
+    click.echo(f"Running experiments for: {xp_name}")
 
     commits = get_recent_commits(100)
     experiment_configs = []
@@ -346,14 +333,14 @@ def cmd_run(args: argparse.Namespace) -> None:
         error_exit(f"No commits found matching 'xp:{xp_name}'")
 
     experiment_configs.reverse()
-    print(f"\nFound {len(experiment_configs)} experiment commit(s) to process\n")
+    click.echo(f"\nFound {len(experiment_configs)} experiment commit(s) to process\n")
 
     for i, config in enumerate(experiment_configs, 1):
-        print(f"\n{'=' * 80}")
-        print(f"{xp_name} {i}/{len(experiment_configs)}: {config.commit_sha[:9]}")
-        print(f"{'=' * 80}\n")
+        click.echo(f"\n{'=' * 80}")
+        click.echo(f"{xp_name} {i}/{len(experiment_configs)}: {config.commit_sha[:9]}")
+        click.echo(f"{'=' * 80}\n")
 
-        print(f"Checking out {config.commit_sha[:9]}...")
+        click.echo(f"Checking out {config.commit_sha[:9]}...")
         run_command(["git", "checkout", config.commit_sha])
 
         ensure_release_build(build_dir, workspace_root)
@@ -370,29 +357,29 @@ def cmd_run(args: argparse.Namespace) -> None:
             [str(compare_script), xp_name], cwd=workspace_root, check=False
         )
         if stdout:
-            print(f"\nIntermediate results for {xp_name}:")
-            print(stdout)
+            click.echo(f"\nIntermediate results for {xp_name}:")
+            click.echo(stdout)
 
-    print(f"\n{'=' * 80}")
-    print("All experiments completed successfully!")
-    print(f"{'=' * 80}\n")
-    print(f"Returning to branch: {original_branch}")
+    click.echo(f"\n{'=' * 80}")
+    click.echo("All experiments completed successfully!")
+    click.echo(f"{'=' * 80}\n")
+    click.echo(f"Returning to branch: {original_branch}")
     run_command(["git", "checkout", original_branch])
 
     results_dir = workspace_root / "experiments" / "results" / xp_name
     if results_dir.exists():
-        print(f"\nComparing results...")
+        click.echo(f"\nComparing results...")
         compare_script = workspace_root / "experiments" / "compare.py"
         _, stdout, stderr = run_command(
             [str(compare_script), xp_name], cwd=workspace_root, check=False
         )
 
         if stdout:
-            print(stdout)
+            click.echo(stdout)
         if stderr:
-            print(stderr, file=sys.stderr)
+            click.echo(stderr, err=True)
 
-        print(f"\nCommitting results from {results_dir}...")
+        click.echo(f"\nCommitting results from {results_dir}...")
         run_command(["git", "add", "-f", str(results_dir)])
 
         commit_msg = f"result:xp:{xp_name}"
@@ -403,7 +390,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     else:
         error_exit(f"Results directory not found: {results_dir}")
 
-    print("\n✓ Experiment run complete!")
+    click.echo("\n✓ Experiment run complete!")
 
 
 # ============================================================================
@@ -411,10 +398,9 @@ def cmd_run(args: argparse.Namespace) -> None:
 # ============================================================================
 
 
-def cmd_rebase_helper(args: argparse.Namespace) -> None:
+def cmd_rebase_helper(xp_name: str, todo_file_path: str) -> None:
     """Hidden helper for interactive rebase to drop result commits."""
-    todo_file = Path(args.todo_file)
-    xp_name = args.xp_name
+    todo_file = Path(todo_file_path)
 
     if not todo_file.exists():
         error_exit(f"Rebase todo file not found: {todo_file}")
@@ -436,12 +422,12 @@ def cmd_rebase_helper(args: argparse.Namespace) -> None:
         f.writelines(new_lines)
 
 
-def cmd_update(args: argparse.Namespace) -> None:
+def cmd_update(xp_name_arg: Optional[str]) -> None:
     """Update experiment branch by rebasing on main and removing result commits."""
     current_branch = get_current_branch()
 
-    if args.xp_name:
-        xp_name = args.xp_name
+    if xp_name_arg:
+        xp_name = xp_name_arg
         branch_name = f"experiment/{xp_name}"
     else:
         if not current_branch.startswith("experiment/"):
@@ -451,10 +437,10 @@ def cmd_update(args: argparse.Namespace) -> None:
 
     # Checkout branch if not already on it
     if current_branch != branch_name:
-        print(f"Switching to branch: {branch_name}")
+        click.echo(f"Switching to branch: {branch_name}")
         run_command(["git", "checkout", branch_name])
 
-    print(f"Rebasing {branch_name} on origin/main and dropping result commits...")
+    click.echo(f"Rebasing {branch_name} on origin/main and dropping result commits...")
 
     env = os.environ.copy()
     script_path = Path(__file__).resolve()
@@ -468,81 +454,57 @@ def cmd_update(args: argparse.Namespace) -> None:
     )
 
     if exit_code != 0:
-        print(f"Rebase failed. Please resolve conflicts manually.\n{stderr}")
+        click.echo(
+            f"Rebase failed. Please resolve conflicts manually.\n{stderr}", err=True
+        )
         sys.exit(exit_code)
 
-    print("\n" + "=" * 80)
-    print(f"✓ Experiment branch '{branch_name}' updated and cleaned!")
-    print("=" * 80)
-    print()
+    click.echo("\n" + "=" * 80)
+    click.echo(f"✓ Experiment branch '{branch_name}' updated and cleaned!")
+    click.echo("=" * 80)
+    click.echo()
 
 
-# ============================================================================
-# Main
-# ============================================================================
-
-
+@click.group()
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Unified experiment management tool for GPUSSSP",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
+    """Unified experiment management tool for GPUSSSP."""
+    pass
 
-    subparsers = parser.add_subparsers(dest="command", help="Command to run")
-    subparsers.required = True
 
-    # create command
-    create_parser = subparsers.add_parser(
-        "create",
-        help="Create a new experiment branch",
-        description="Create a new experiment branch named experiment/<xp_name>",
-    )
-    create_parser.add_argument(
-        "xp_name", help="Experiment name (lowercase, underscores only)"
-    )
-    create_parser.set_defaults(func=cmd_create)
+@main.command()
+@click.argument("xp_name")
+def create(xp_name: str) -> None:
+    """Create a new experiment branch."""
+    cmd_create(xp_name)
 
-    # add command
-    add_parser = subparsers.add_parser(
-        "add",
-        help="Add an instrumentation commit",
-        description="Add an empty instrumentation commit to the current experiment branch",
-    )
-    add_parser.add_argument(
-        "run_targets", help="Comma-separated run targets (e.g., 'deltastep,nearfar')"
-    )
-    add_parser.add_argument(
-        "params", help="Space-separated parameters (e.g., 'delta=900,1800 data=berlin')"
-    )
-    add_parser.set_defaults(func=cmd_add)
 
-    # run command
-    run_parser = subparsers.add_parser(
-        "run",
-        help="Run all experiments in the current branch",
-        description="Run all experiments defined by instrumentation commits in the current branch",
-    )
-    run_parser.set_defaults(func=cmd_run)
+@main.command()
+@click.argument("run_targets")
+@click.argument("params")
+def add(run_targets: str, params: str) -> None:
+    """Add an instrumentation commit to the current experiment branch."""
+    cmd_add(run_targets, params)
 
-    # update command
-    update_parser = subparsers.add_parser(
-        "update",
-        help="Update experiment branch and clean results",
-        description="Rebase experiment branch on recent main and remove result commits",
-    )
-    update_parser.add_argument(
-        "xp_name", nargs="?", help="Experiment name (optional if on experiment branch)"
-    )
-    update_parser.set_defaults(func=cmd_update)
 
-    # hidden _rebase command
-    rebase_parser = subparsers.add_parser("_rebase", help=argparse.SUPPRESS)
-    rebase_parser.add_argument("xp_name")
-    rebase_parser.add_argument("todo_file")
-    rebase_parser.set_defaults(func=cmd_rebase_helper)
+@main.command()
+def run() -> None:
+    """Run all experiments in the current branch."""
+    cmd_run()
 
-    args = parser.parse_args()
-    args.func(args)
+
+@main.command()
+@click.argument("xp_name", required=False)
+def update(xp_name: Optional[str]) -> None:
+    """Update experiment branch by rebasing on main and removing result commits."""
+    cmd_update(xp_name)
+
+
+@main.command(hidden=True)
+@click.argument("xp_name")
+@click.argument("todo_file")
+def _rebase(xp_name: str, todo_file: str) -> None:
+    """Hidden helper for interactive rebase to drop result commits."""
+    cmd_rebase_helper(xp_name, todo_file)
 
 
 if __name__ == "__main__":
