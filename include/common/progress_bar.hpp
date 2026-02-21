@@ -11,20 +11,28 @@ namespace gpusssp::common
 class ProgressBar
 {
     static const constexpr size_t WIDTH = 40;
+    static const constexpr float MIN_INCREMENT = 0.01;
 
   public:
     explicit ProgressBar(size_t total) : total_count(total) { update(0); }
 
     void update(size_t count)
     {
+        current_count = count;
+
         auto &os = Logger::get().log(LogLevel::INFO);
         if (os.rdbuf() == nullptr)
         {
             return;
         }
 
-        current_count = count;
+        auto prev_progress = static_cast<float>(prev_update) / static_cast<float>(total_count);
         auto progress = static_cast<float>(current_count) / static_cast<float>(total_count);
+        if (progress - prev_progress < MIN_INCREMENT && current_count < total_count)
+        {
+            return;
+        }
+
         auto pos = static_cast<size_t>(static_cast<float>(WIDTH) * progress);
 
         os << "\r[";
@@ -54,6 +62,8 @@ class ProgressBar
         {
             os.flush();
         }
+
+        prev_update = current_count;
     }
 
     void increment() { update(current_count + 1); }
@@ -61,6 +71,7 @@ class ProgressBar
   private:
     size_t total_count;
     size_t current_count = 0;
+    size_t prev_update = 0;
 };
 
 } // namespace gpusssp::common
