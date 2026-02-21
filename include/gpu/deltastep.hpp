@@ -67,11 +67,8 @@ template <typename GraphT> class DeltaStep
     void initialize()
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
-        auto [dist_buffer,
-              results_buffer,
-              changed_buffer_0,
-              changed_buffer_1,
-              dispatch_buffer] = deltastep_buffers.buffers();
+        auto [dist_buffer, results_buffer, changed_buffer_0, changed_buffer_1, dispatch_buffer] =
+            deltastep_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
         main_pipeline = create_compute_pipeline<PushConsts>(device,
@@ -126,11 +123,8 @@ template <typename GraphT> class DeltaStep
         uint32_t *gpu_best_distance = deltastep_buffers.best_distance();
         uint32_t *gpu_max_distance = deltastep_buffers.max_distance();
 
-        auto [dist_buffer,
-              results_buffer,
-              changed_buffer_0,
-              changed_buffer_1,
-              dispatch_buffer] = deltastep_buffers.buffers();
+        auto [dist_buffer, results_buffer, changed_buffer_0, changed_buffer_1, dispatch_buffer] =
+            deltastep_buffers.buffers();
 
         const std::array<vk::BufferCopy, 2> results_copy = {
             vk::BufferCopy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)},
@@ -276,8 +270,7 @@ template <typename GraphT> class DeltaStep
 
                 // Copy min/max changed ID back to host-visible buffer
                 // After the swap, previous_changed_buffer has the latest results
-                cmd_buf.copyBuffer(
-                    previous_changed_buffer, results_buffer, 1, &min_max_copy);
+                cmd_buf.copyBuffer(previous_changed_buffer, results_buffer, 1, &min_max_copy);
 
                 cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                         vk::PipelineStageFlagBits::eHost,
@@ -373,14 +366,14 @@ template <typename GraphT> class DeltaStep
             }
 
             common::log_debug() << bucket << " heavy changed " << *gpu_min_changed_id << "-"
-                                << *gpu_max_changed_id << " max " << *gpu_max_distance
-                                << " best " << *gpu_best_distance << std::endl;
+                                << *gpu_max_changed_id << " max " << *gpu_max_distance << " best "
+                                << *gpu_best_distance << std::endl;
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {
                 // If the distance is smaller then the current bucket,
                 // we have already settled the destination
-                if (*gpu_best_distance < bucket * delta)
+                if (*gpu_best_distance < (bucket + 1) * delta)
                 {
                     break;
                 }
