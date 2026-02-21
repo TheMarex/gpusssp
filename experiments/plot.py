@@ -11,13 +11,63 @@ import sys
 from typing import Dict, Tuple
 
 import click
+import numpy as np
 import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-from plots import plot_histogram, plot_rank_boxplot
 from evaluation import validate_distances
 
 
 RESULTS_BASE = Path("experiments/results")
+
+def _plot_histogram(variant_dfs, title, output_path, variant_filter=None):
+    if variant_filter is not None:
+        variant_dfs = {name: df for name, df in variant_dfs.items() if variant_filter in name}
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    all_times = np.concatenate([df['time'].values for df in variant_dfs.values()])
+    p99 = np.percentile(all_times, 99)
+    all_times = all_times[all_times <= p99]
+    bins = np.histogram_bin_edges(all_times, bins=50)
+    
+    for name, df in variant_dfs.items():
+        sns.histplot(df['time'], label=name, alpha=0.5, ax=ax, bins=bins)
+    
+    ax.set_xlabel('Time (μs)')
+    ax.set_ylabel('Count')
+    ax.set_title(title)
+    ax.legend()
+    plt.tight_layout()
+
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
+
+def _plot_rank_boxplot(
+    variant_dfs,
+    title,
+    output_path,
+    variant_filter=None,
+):
+    filtered_items = [
+        df.assign(variant=name)
+        for name, df in variant_dfs.items()
+        if variant_filter is None or variant_filter in name
+    ]
+    if not filtered_items:
+        raise ValueError("No variants available for rank boxplot")
+    df_plot = pd.concat(filtered_items, ignore_index=True)
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    sns.boxplot(data=df_plot, x="rank", y="time", hue="variant", ax=ax)
+    ax.set_xlabel("Query Rank")
+    ax.set_ylabel("Time (μs)")
+    plt.yscale("log")
+    ax.set_title(title)
+    plt.tight_layout()
+
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
 
 
 @dataclass
@@ -83,7 +133,7 @@ def _group_by_query(experiments):
     return grouped
 
 
-def _save_plots(graph, query, device, entry, baseline_entry, show):
+def _save_plots(graph, query, device, entry, baseline_entry):
     all_variants = {}
     if baseline_entry:
         all_variants.update(baseline_entry.dfs)
@@ -105,17 +155,15 @@ def _save_plots(graph, query, device, entry, baseline_entry, show):
 
     title = f"{graph} device={device}"
 
-    plot_histogram(
+    _plot_histogram(
         all_variants,
         title,
-        output_path=histogram_path,
-        show=show,
+        histogram_path,
     )
-    plot_rank_boxplot(
+    _plot_rank_boxplot(
         all_variants,
         title,
-        output_path=rank_path,
-        show=show,
+        rank_path,
     )
 
     click.echo(
@@ -126,10 +174,7 @@ def _save_plots(graph, query, device, entry, baseline_entry, show):
 
 @click.command()
 @click.argument("xp_name", required=False)
-@click.option(
-    "--show", is_flag=True, help="Display plots interactively in addition to saving."
-)
-def main(xp_name, show):
+def main(xp_name):
     if xp_name:
         xp_names = [xp_name]
     else:
@@ -153,7 +198,7 @@ def main(xp_name, show):
             for device, entry in sorted(devices.items()):
                 if device == "cpu":
                     continue
-                _save_plots(graph, query, device, entry, baseline, show)
+                _save_plots(graph, query, device, entry, baseline)
 
 
 if __name__ == "__main__":
