@@ -67,12 +67,8 @@ template <typename GraphT> class DeltaStep
     void initialize()
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
-        auto [dist_buffer,
-              results_buffer,
-              changed_buffer_0,
-              changed_buffer_1,
-              dispatch_buffer,
-              changed_nodes_buffer] = deltastep_buffers.buffers();
+        auto [dist_buffer, results_buffer, changed_buffer_0, changed_buffer_1, dispatch_buffer] =
+            deltastep_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
         main_pipeline = create_compute_pipeline<PushConsts>(device,
@@ -83,23 +79,20 @@ template <typename GraphT> class DeltaStep
                                                               dist_buffer,
                                                               changed_buffer_0,
                                                               changed_buffer_1,
-                                                              statistics_buffer,
-                                                              changed_nodes_buffer},
+                                                              statistics_buffer},
                                                              {first_edges_buffer,
                                                               targets_buffer,
                                                               weights_buffer,
                                                               dist_buffer,
                                                               changed_buffer_1,
                                                               changed_buffer_0,
-                                                              statistics_buffer,
-                                                              changed_nodes_buffer}},
+                                                              statistics_buffer}},
                                                             {workgroup_size});
 
         prepare_dispatch_pipeline = create_compute_pipeline<uint32_t>(
             device,
             "deltastep_prepare_dispatch.spv",
-            {{changed_buffer_1, changed_nodes_buffer, dispatch_buffer},
-             {changed_buffer_0, changed_nodes_buffer, dispatch_buffer}},
+            {{changed_buffer_1, dispatch_buffer}, {changed_buffer_0, dispatch_buffer}},
             {workgroup_size});
     }
 
@@ -130,12 +123,8 @@ template <typename GraphT> class DeltaStep
         uint32_t *gpu_best_distance = deltastep_buffers.best_distance();
         uint32_t *gpu_max_distance = deltastep_buffers.max_distance();
 
-        auto [dist_buffer,
-              results_buffer,
-              changed_buffer_0,
-              changed_buffer_1,
-              dispatch_buffer,
-              changed_nodes_buffer] = deltastep_buffers.buffers();
+        auto [dist_buffer, results_buffer, changed_buffer_0, changed_buffer_1, dispatch_buffer] =
+            deltastep_buffers.buffers();
 
         const std::array<vk::BufferCopy, 2> results_copy = {
             vk::BufferCopy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)},
@@ -207,19 +196,6 @@ template <typename GraphT> class DeltaStep
 
                 for (uint32_t batch_iter = 0; batch_iter < batch_size; ++batch_iter)
                 {
-                    // Initialize changed_nodes count and dispatch buffer to 0
-                    uint32_t zero = 0;
-                    cmd_buf.fillBuffer(
-                        changed_nodes_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
-                    cmd_buf.updateBuffer(dispatch_buffer, 0, sizeof(uint32_t), &zero);
-                    cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                            vk::PipelineStageFlagBits::eComputeShader,
-                                            vk::DependencyFlags{},
-                                            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                              vk::AccessFlagBits::eShaderRead |
-                                                                  vk::AccessFlagBits::eShaderWrite},
-                                            {},
-                                            {});
 
                     cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute,
                                          prepare_dispatch_pipeline.pipeline);
@@ -233,8 +209,7 @@ template <typename GraphT> class DeltaStep
                                           0,
                                           4,
                                           &num_nodes);
-                    uint32_t num_prep_groups = (num_blocks + workgroup_size - 1) / workgroup_size;
-                    cmd_buf.dispatch(num_prep_groups, 1, 1);
+                    cmd_buf.dispatch(1, 1, 1);
                     cmd_buf.pipelineBarrier(
                         vk::PipelineStageFlagBits::eComputeShader,
                         vk::PipelineStageFlagBits::eComputeShader,
@@ -338,6 +313,9 @@ template <typename GraphT> class DeltaStep
             } while (*gpu_min_changed_id < num_nodes);
 
             common::Statistics::get().count(common::StatisticsEvent::DELTASTEP_HEAVY);
+            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, main_pipeline.pipeline);
+            cmd_buf.bindDescriptorSets(
+                vk::PipelineBindPoint::eCompute, main_pipeline.layout, 0, current_desc_set, {});
 
             cmd_buf.fillBuffer(
                 previous_changed_buffer, 0, num_blocks * sizeof(uint32_t), UINT32_MAX);
@@ -348,12 +326,6 @@ template <typename GraphT> class DeltaStep
             cmd_buf.updateBuffer(
                 current_changed_buffer, num_blocks * sizeof(uint32_t), 8, min_max_init);
 
-            // Prepare changed_nodes and dispatch buffer for heavy pass
-            uint32_t zero = 0;
-            cmd_buf.fillBuffer(
-                changed_nodes_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
-            cmd_buf.updateBuffer(dispatch_buffer, 0, sizeof(uint32_t), &zero);
-
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                     vk::PipelineStageFlagBits::eComputeShader,
                                     vk::DependencyFlags{},
@@ -363,39 +335,10 @@ template <typename GraphT> class DeltaStep
                                     {},
                                     {});
 
-            // Run prepare_dispatch to populate changed_nodes
-            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute,
-                                 prepare_dispatch_pipeline.pipeline);
-            cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-                                       prepare_dispatch_pipeline.layout,
-                                       0,
-                                       current_dispatch_desc_set,
-                                       {});
-            cmd_buf.pushConstants(prepare_dispatch_pipeline.layout,
-                                  vk::ShaderStageFlagBits::eCompute,
-                                  0,
-                                  4,
-                                  &num_nodes);
-            uint32_t num_prep_groups = (num_blocks + workgroup_size - 1) / workgroup_size;
-            cmd_buf.dispatch(num_prep_groups, 1, 1);
-            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                                      vk::AccessFlagBits::eShaderRead |
-                                                          vk::AccessFlagBits::eIndirectCommandRead},
-                                    {},
-                                    {});
-
-            // Run heavy pass
-            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, main_pipeline.pipeline);
-            cmd_buf.bindDescriptorSets(
-                vk::PipelineBindPoint::eCompute, main_pipeline.layout, 0, current_desc_set, {});
-
             pc.max_weight = UINT32_MAX;
             cmd_buf.pushConstants(
                 main_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-            cmd_buf.dispatchIndirect(dispatch_buffer, 0);
+            cmd_buf.dispatch((num_nodes + workgroup_size - 1) / workgroup_size, 1, 1);
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                     vk::PipelineStageFlagBits::eTransfer,
                                     vk::DependencyFlags{},
