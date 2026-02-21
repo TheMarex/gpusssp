@@ -4,6 +4,7 @@
 #include "common/files.hpp"
 #include "common/id_queue.hpp"
 #include "common/logger.hpp"
+#include "common/progress_bar.hpp"
 #include "common/statistics.hpp"
 #include "experiment_util.hpp"
 #include "queries.hpp"
@@ -62,7 +63,7 @@ int main(int argc, char **argv)
 
     common::log() << "Running queries..." << std::endl;
 
-    int progress_counter = 0;
+    common::ProgressBar progress_bar(queries.size());
     uint64_t total_duration = 0;
     for (const auto &query : queries)
     {
@@ -77,11 +78,7 @@ int main(int argc, char **argv)
         writer.write({query.from, query.to, query.rank, dist, duration});
 
         total_duration += duration;
-        progress_counter++;
-        if (progress_counter % 100 == 0)
-        {
-            common::log() << "Processed " << progress_counter << " queries." << std::endl;
-        }
+        progress_bar.increment();
     }
 
     common::log() << "Done." << std::endl;

@@ -1,6 +1,7 @@
 #include "common/dijkstra.hpp"
 #include "common/files.hpp"
 #include "common/logger.hpp"
+#include "common/progress_bar.hpp"
 #include "queries.hpp"
 
 #include <algorithm>
@@ -79,6 +80,7 @@ int main(int argc, char **argv)
         common::log() << "Generating rank queries with " << num_sources << " sources and "
                       << num_targets << " targets per source." << std::endl;
 
+        common::ProgressBar progress_bar(num_sources);
         std::vector<uint32_t> sources;
         sources.reserve(num_sources);
         for (uint32_t i = 0; i < num_sources; ++i)
@@ -111,6 +113,7 @@ int main(int argc, char **argv)
                 auto index = (1u << rank) - 1;
                 queries.push_back({source, nodes[index], rank});
             }
+            progress_bar.increment();
         }
 
         common::log() << "Generated " << queries.size() << " rank queries." << std::endl;
