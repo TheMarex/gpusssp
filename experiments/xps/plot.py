@@ -1,7 +1,4 @@
-import re
 import sys
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, Tuple
 
 import click
@@ -11,13 +8,13 @@ import pandas as pd
 import seaborn as sns
 
 from ..evaluation import validate_distances
+from .discovery import (
+    ExperimentEntry,
+    collect_experiments,
+    get_experiment_names,
+    group_by_query,
+)
 from .paths import get_workspace_root
-
-
-@dataclass
-class ExperimentEntry:
-    dfs: Dict[str, pd.DataFrame]
-    directory: Path
 
 
 def _plot_histogram(variant_dfs, title, output_path, variant_filter=None):
@@ -72,63 +69,6 @@ def _plot_rank_boxplot(
     plt.close(fig)
 
 
-def _collect_experiments(xp_path: Path) -> Dict[Tuple[str, str, str], ExperimentEntry]:
-    experiments = {}
-
-    if not xp_path.exists():
-        click.echo(f"Error: Experiment path {xp_path} does not exist.", err=True)
-        return {}
-
-    for graph_dir in xp_path.iterdir():
-        if not graph_dir.is_dir():
-            continue
-        graph_name = graph_dir.name
-
-        for query_hash_dir in graph_dir.iterdir():
-            if not query_hash_dir.is_dir():
-                continue
-            query_hash = query_hash_dir.name
-
-            for device_dir in query_hash_dir.iterdir():
-                if not device_dir.is_dir():
-                    continue
-                device_id = device_dir.name
-
-                exp_key = (graph_name, query_hash, device_id)
-                entry = experiments.setdefault(
-                    exp_key, {"files": {}, "dir": device_dir}
-                )
-
-                for csv_file in device_dir.glob("*.csv"):
-                    match = re.match(r"(\d+)_(.+)\.csv", csv_file.name)
-                    if not match:
-                        continue
-                    timestamp = int(match.group(1))
-                    variant = match.group(2)
-                    entry["files"].setdefault(variant, []).append((timestamp, csv_file))
-
-    loaded = {}
-    for exp_key, entry in experiments.items():
-        variant_files = entry["files"]
-        for variant in variant_files:
-            variant_files[variant].sort(reverse=True, key=lambda item: item[0])
-
-        variant_dfs = {
-            variant: pd.read_csv(files[0][1])
-            for variant, files in variant_files.items()
-        }
-        loaded[exp_key] = ExperimentEntry(dfs=variant_dfs, directory=entry["dir"])
-
-    return loaded
-
-
-def _group_by_query(experiments):
-    grouped = {}
-    for (graph, query, device), entry in experiments.items():
-        grouped.setdefault((graph, query), {})[device] = entry
-    return grouped
-
-
 def _save_plots(graph, query, device, entry, baseline_entry):
     all_variants = {}
     if baseline_entry:
@@ -175,21 +115,15 @@ def handle(xp_name: str | None = None) -> None:
     if xp_name:
         xp_names = [xp_name]
     else:
-        if not results_base.exists():
-            click.echo(f"Error: {results_base} not found.", err=True)
-            sys.exit(1)
-        xp_names = [d.name for d in results_base.iterdir() if d.is_dir()]
-        if not xp_names:
-            click.echo("No experiments found in experiments/results/", err=True)
-            sys.exit(1)
+        xp_names = get_experiment_names(results_base)
 
     for name in sorted(xp_names):
         xp_path = results_base / name
-        experiments = _collect_experiments(xp_path)
+        experiments = collect_experiments(xp_path)
         if not experiments:
             continue
 
-        grouped = _group_by_query(experiments)
+        grouped = group_by_query(experiments)
         for (graph, query), devices in sorted(grouped.items()):
             baseline = devices.get("cpu")
             for device, entry in sorted(devices.items()):
