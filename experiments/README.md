@@ -129,6 +129,41 @@ Runs all experiments in the current branch. Must be run from an `experiment/*` b
 ./experiments/xps.py run
 ```
 
+### `xps.py compare [xp_name]`
+
+Compare experiment results and print summary tables. If `xp_name` is omitted, it shows results for all experiments found in `experiments/results/`.
+
+**Example:**
+```bash
+# Compare current experiment
+./experiments/xps.py compare
+
+# Compare a specific experiment
+./experiments/xps.py compare my_experiment
+```
+
+### `xps.py plot [xp_name]`
+
+Generate visualization plots (histograms and Dijkstra rank boxplots) for experiment results. Plots are saved in the respective results directories.
+
+**Example:**
+```bash
+# Generate plots for current experiment
+./experiments/xps.py plot
+
+# Generate plots for a specific experiment
+./experiments/xps.py plot my_experiment
+```
+
+### `xps.py update [xp_name]`
+
+Rebase the experiment branch on `main` and drop any previous result commits. This is useful for cleaning up a branch before a fresh run or after fixing code issues.
+
+**Example:**
+```bash
+./experiments/xps.py update
+```
+
 ## Files
 
 - `xps.py` - Main experiment management tool

@@ -2,7 +2,7 @@
 #
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["click"]
+# dependencies = ["click", "pandas", "matplotlib", "seaborn", "numpy"]
 # ///
 """Unified experiment management tool for GPUSSSP."""
 

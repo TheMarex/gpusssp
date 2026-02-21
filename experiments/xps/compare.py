@@ -1,17 +1,17 @@
-#!/usr/bin/env -S uv run --script
-#
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["pandas", "click"]
-# ///
-import pandas as pd
-from pathlib import Path
 import re
-import click
 import sys
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+import click
+import pandas as pd
+
+from .paths import get_workspace_root
 
 
-def get_experiment_data(xp_path):
+def get_experiment_data(
+    xp_path: Path,
+) -> Dict[Tuple[str, str, str], Dict[str, pd.DataFrame]]:
     # Discover experiment structure: {xp_base_path}/{xp_name}/{graph}/{query_hash}/{device_id}/*.csv
     experiments = {}
 
@@ -68,7 +68,7 @@ def get_experiment_data(xp_path):
     return experiment_data
 
 
-def print_markdown_table(df, index=False):
+def print_markdown_table(df: pd.DataFrame, index: bool = False) -> None:
     """Simple markdown table printer to avoid dependency on tabulate."""
     if index:
         # Reset index to treat it as a column
@@ -84,7 +84,7 @@ def print_markdown_table(df, index=False):
             widths[i] = max(widths[i], len(str(val)))
 
     # Format line helper
-    def format_row(values):
+    def format_row(values: List) -> str:
         return (
             "| "
             + " | ".join(str(val).ljust(widths[i]) for i, val in enumerate(values))
@@ -97,7 +97,11 @@ def print_markdown_table(df, index=False):
         click.echo(format_row(row))
 
 
-def print_tables(exp_key, variant_dfs, baseline_dfs=None):
+def print_tables(
+    exp_key: Tuple[str, str, str],
+    variant_dfs: Dict[str, pd.DataFrame],
+    baseline_dfs: Dict[str, pd.DataFrame] | None = None,
+) -> None:
     graph_name, query_hash, device_id = exp_key
 
     # Merge baseline (CPU) if provided
@@ -141,11 +145,10 @@ def print_tables(exp_key, variant_dfs, baseline_dfs=None):
     click.echo("-" * 80)
 
 
-@click.command()
-@click.argument("xp_name", required=False)
-def main(xp_name):
-    """Compare experiment results and print summary tables."""
-    results_base = Path("experiments/results")
+def handle(xp_name: str | None = None, verbose: bool = True) -> str:
+    """Compare experiment results and return/print summary tables."""
+    workspace_root = get_workspace_root()
+    results_base = workspace_root / "experiments" / "results"
 
     if xp_name:
         xp_names = [xp_name]
@@ -159,25 +162,31 @@ def main(xp_name):
             click.echo("No experiments found in experiments/results/", err=True)
             sys.exit(1)
 
-    for xp_name in sorted(xp_names):
-        xp_path = results_base / xp_name
-        data = get_experiment_data(xp_path)
+    import io
+    from contextlib import redirect_stdout
 
-        # Group by (graph, query) to find baseline
-        grouped_data = {}
-        for (graph, query, device), variants in data.items():
-            key = (graph, query)
-            if key not in grouped_data:
-                grouped_data[key] = {}
-            grouped_data[key][device] = variants
+    output = io.StringIO()
+    with redirect_stdout(output):
+        for name in sorted(xp_names):
+            xp_path = results_base / name
+            data = get_experiment_data(xp_path)
 
-        for (graph, query), devices in sorted(grouped_data.items()):
-            baseline_dfs = devices.get("cpu", {})
-            for device, variants in sorted(devices.items()):
-                if device == "cpu":
-                    continue
-                print_tables((graph, query, device), variants, baseline_dfs)
+            # Group by (graph, query) to find baseline
+            grouped_data = {}
+            for (graph, query, device), variants in data.items():
+                key = (graph, query)
+                if key not in grouped_data:
+                    grouped_data[key] = {}
+                grouped_data[key][device] = variants
 
+            for (graph, query), devices in sorted(grouped_data.items()):
+                baseline_dfs = devices.get("cpu", {})
+                for device, variants in sorted(devices.items()):
+                    if device == "cpu":
+                        continue
+                    print_tables((graph, query, device), variants, baseline_dfs)
 
-if __name__ == "__main__":
-    main()
+    final_output = output.getvalue()
+    if verbose:
+        click.echo(final_output, nl=False)
+    return final_output

@@ -1,7 +1,9 @@
 import click
 
 from . import add as add_cmd
+from . import compare as compare_cmd
 from . import create as create_cmd
+from . import plot as plot_cmd
 from . import run as run_cmd
 from . import update as update_cmd
 
@@ -41,6 +43,22 @@ def update(xp_name: str | None) -> None:
     """Rebase experiment branch on main and drop result commits."""
 
     update_cmd.handle(xp_name)
+
+
+@main.command()
+@click.argument("xp_name", required=False)
+def compare(xp_name: str | None) -> None:
+    """Compare experiment results and print summary tables."""
+
+    compare_cmd.handle(xp_name)
+
+
+@main.command()
+@click.argument("xp_name", required=False)
+def plot(xp_name: str | None) -> None:
+    """Generate plots for experiment results."""
+
+    plot_cmd.handle(xp_name)
 
 
 @main.command(name="_rebase", hidden=True)

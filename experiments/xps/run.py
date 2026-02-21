@@ -2,6 +2,7 @@ from pathlib import Path
 
 import click
 
+from . import compare as compare_cmd
 from .errors import error_exit
 from .gitops import (
     extract_xp_name,
@@ -36,8 +37,6 @@ def handle() -> None:
     experiment_configs.reverse()
     click.echo(f"\nFound {len(experiment_configs)} experiment commit(s) to process\n")
 
-    compare_script = workspace_root / "experiments" / "compare.py"
-
     for i, config in enumerate(experiment_configs, 1):
         click.echo(f"\n{'=' * 80}")
         click.echo(f"{xp_name} {i}/{len(experiment_configs)}: {config.commit_sha[:9]}")
@@ -54,9 +53,7 @@ def handle() -> None:
         for target in config.run_targets:
             run_experiment(target, config, workspace_root, build_dir)
 
-        _, stdout, _ = run_command(
-            [str(compare_script), xp_name], cwd=workspace_root, check=False
-        )
+        stdout = compare_cmd.handle(xp_name, verbose=False)
         if stdout:
             click.echo(f"\nIntermediate results for {xp_name}:")
             click.echo(stdout)
@@ -67,14 +64,10 @@ def handle() -> None:
     click.echo(f"Returning to branch: {original_branch}")
     run_command(["git", "checkout", original_branch])
 
-    _, stdout, stderr = run_command(
-        [str(compare_script), xp_name], cwd=workspace_root, check=False
-    )
+    stdout = compare_cmd.handle(xp_name, verbose=False)
 
     if stdout:
         click.echo(stdout)
-    if stderr:
-        click.echo(stderr, err=True)
 
     stage_and_commit_results(workspace_root, xp_name, stdout)
 

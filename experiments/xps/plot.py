@@ -1,47 +1,49 @@
-#!/usr/bin/env -S uv run --script
-#
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["pandas", "click", "matplotlib", "seaborn", "numpy"]
-# ///
-from dataclasses import dataclass
-from pathlib import Path
 import re
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Tuple
 
 import click
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import matplotlib.pyplot as plt
 
-from evaluation import validate_distances
+from ..evaluation import validate_distances
+from .paths import get_workspace_root
 
 
-RESULTS_BASE = Path("experiments/results")
+@dataclass
+class ExperimentEntry:
+    dfs: Dict[str, pd.DataFrame]
+    directory: Path
+
 
 def _plot_histogram(variant_dfs, title, output_path, variant_filter=None):
     if variant_filter is not None:
-        variant_dfs = {name: df for name, df in variant_dfs.items() if variant_filter in name}
+        variant_dfs = {
+            name: df for name, df in variant_dfs.items() if variant_filter in name
+        }
     fig, ax = plt.subplots(figsize=(10, 6))
-    
-    all_times = np.concatenate([df['time'].values for df in variant_dfs.values()])
+
+    all_times = np.concatenate([df["time"].values for df in variant_dfs.values()])
     p99 = np.percentile(all_times, 99)
     all_times = all_times[all_times <= p99]
     bins = np.histogram_bin_edges(all_times, bins=50)
-    
+
     for name, df in variant_dfs.items():
-        sns.histplot(df['time'], label=name, alpha=0.5, ax=ax, bins=bins)
-    
-    ax.set_xlabel('Time (μs)')
-    ax.set_ylabel('Count')
+        sns.histplot(df["time"], label=name, alpha=0.5, ax=ax, bins=bins)
+
+    ax.set_xlabel("Time (μs)")
+    ax.set_ylabel("Count")
     ax.set_title(title)
     ax.legend()
     plt.tight_layout()
 
     fig.savefig(output_path, dpi=200)
     plt.close(fig)
+
 
 def _plot_rank_boxplot(
     variant_dfs,
@@ -68,12 +70,6 @@ def _plot_rank_boxplot(
 
     fig.savefig(output_path, dpi=200)
     plt.close(fig)
-
-
-@dataclass
-class ExperimentEntry:
-    dfs: Dict[str, pd.DataFrame]
-    directory: Path
 
 
 def _collect_experiments(xp_path: Path) -> Dict[Tuple[str, str, str], ExperimentEntry]:
@@ -172,22 +168,23 @@ def _save_plots(graph, query, device, entry, baseline_entry):
     )
 
 
-@click.command()
-@click.argument("xp_name", required=False)
-def main(xp_name):
+def handle(xp_name: str | None = None) -> None:
+    workspace_root = get_workspace_root()
+    results_base = workspace_root / "experiments" / "results"
+
     if xp_name:
         xp_names = [xp_name]
     else:
-        if not RESULTS_BASE.exists():
-            click.echo(f"Error: {RESULTS_BASE} not found.", err=True)
+        if not results_base.exists():
+            click.echo(f"Error: {results_base} not found.", err=True)
             sys.exit(1)
-        xp_names = [d.name for d in RESULTS_BASE.iterdir() if d.is_dir()]
+        xp_names = [d.name for d in results_base.iterdir() if d.is_dir()]
         if not xp_names:
             click.echo("No experiments found in experiments/results/", err=True)
             sys.exit(1)
 
     for name in sorted(xp_names):
-        xp_path = RESULTS_BASE / name
+        xp_path = results_base / name
         experiments = _collect_experiments(xp_path)
         if not experiments:
             continue
@@ -199,7 +196,3 @@ def main(xp_name):
                 if device == "cpu":
                     continue
                 _save_plots(graph, query, device, entry, baseline)
-
-
-if __name__ == "__main__":
-    main()
