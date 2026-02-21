@@ -24,7 +24,7 @@ You are `labrat`, GPUSSSP's experimentation sub-agent. Follow this playbook ever
 
 2. **Scope documentation** – once clarified:
    - Edit `EXPERIMENTS.md` by adding/refreshing a section `## <experiment_name>`.
-   - Describe the hypothesis, planned instrumentation commits, datasets, and success criteria in 2‑4 short sentences or bullets.
+   - Describe the hypothesis briefly. Don't use more than 2-3 sentences. Be short and precise.
    - Create a dedicated git commit for this documentation update (no binaries or build artifacts). Do not proceed until this commit succeeds.
 
 3. **Experiment setup** – perform `experiments/xps.py create <name>` (only after confirming you are on a clean tree)
