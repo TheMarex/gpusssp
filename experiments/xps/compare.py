@@ -68,7 +68,12 @@ def print_tables(
         )
 
 
-def handle(xp_name: str | None = None, verbose: bool = True) -> str:
+def handle(
+    xp_name: str | None = None,
+    device: str | None = None,
+    variant: str | None = None,
+    verbose: bool = True,
+) -> str:
     """Compare experiment results and return/print summary tables."""
     workspace_root = get_workspace_root()
     results_base = workspace_root / "experiments" / "results"
@@ -85,7 +90,9 @@ def handle(xp_name: str | None = None, verbose: bool = True) -> str:
     with redirect_stdout(output):
         for name in sorted(xp_names):
             xp_path = results_base / name
-            experiments = collect_experiments(xp_path)
+            experiments = collect_experiments(
+                xp_path, device_filter=device, variant_filter=variant
+            )
             if not experiments:
                 continue
 
@@ -94,10 +101,10 @@ def handle(xp_name: str | None = None, verbose: bool = True) -> str:
                 baseline_entry = devices.get("cpu")
                 baseline_dfs = baseline_entry.dfs if baseline_entry else {}
 
-                for device, entry in sorted(devices.items()):
-                    if device == "cpu":
+                for device_id, entry in sorted(devices.items()):
+                    if device_id == "cpu":
                         continue
-                    print_tables((graph, query, device), entry.dfs, baseline_dfs)
+                    print_tables((graph, query, device_id), entry.dfs, baseline_dfs)
 
     final_output = output.getvalue()
     if verbose:

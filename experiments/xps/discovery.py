@@ -28,7 +28,11 @@ def get_experiment_names(results_base: Path) -> List[str]:
     return sorted(xp_names)
 
 
-def collect_experiments(xp_path: Path) -> Dict[Tuple[str, str, str], ExperimentEntry]:
+def collect_experiments(
+    xp_path: Path,
+    device_filter: str | None = None,
+    variant_filter: str | None = None,
+) -> Dict[Tuple[str, str, str], ExperimentEntry]:
     """Collect the most recent experiment results from a path."""
     experiments = {}
 
@@ -52,6 +56,9 @@ def collect_experiments(xp_path: Path) -> Dict[Tuple[str, str, str], ExperimentE
                     continue
                 device_id = device_id_dir.name
 
+                if device_filter and device_id != device_filter and device_id != "cpu":
+                    continue
+
                 exp_key = (graph_name, query_hash, device_id)
                 entry = experiments.setdefault(
                     exp_key, {"files": {}, "dir": device_id_dir}
@@ -63,15 +70,22 @@ def collect_experiments(xp_path: Path) -> Dict[Tuple[str, str, str], ExperimentE
                     if not match:
                         continue
 
-                    timestamp = int(match.group(1))
+                    # timestamp = int(match.group(1))
                     variant = match.group(2)
 
+                    if variant_filter and variant_filter not in variant:
+                        continue
+
+                    timestamp = int(match.group(1))
                     entry["files"].setdefault(variant, []).append((timestamp, csv_file))
 
     # Load data for the most recent variant of each experiment
     loaded = {}
     for exp_key, entry in experiments.items():
         variant_files = entry["files"]
+        if not variant_files:
+            continue
+
         for variant in variant_files:
             # Sort by timestamp (most recent first)
             variant_files[variant].sort(reverse=True, key=lambda item: item[0])

@@ -108,7 +108,11 @@ def _save_plots(graph, query, device, entry, baseline_entry):
     )
 
 
-def handle(xp_name: str | None = None) -> None:
+def handle(
+    xp_name: str | None = None,
+    device: str | None = None,
+    variant: str | None = None,
+) -> None:
     workspace_root = get_workspace_root()
     results_base = workspace_root / "experiments" / "results"
 
@@ -119,14 +123,18 @@ def handle(xp_name: str | None = None) -> None:
 
     for name in sorted(xp_names):
         xp_path = results_base / name
-        experiments = collect_experiments(xp_path)
+        experiments = collect_experiments(
+            xp_path, device_filter=device, variant_filter=variant
+        )
         if not experiments:
             continue
 
         grouped = group_by_query(experiments)
         for (graph, query), devices in sorted(grouped.items()):
             baseline = devices.get("cpu")
-            for device, entry in sorted(devices.items()):
-                if device == "cpu":
+            for device_id, entry in sorted(devices.items()):
+                if device_id == "cpu":
                     continue
-                _save_plots(graph, query, device, entry, baseline)
+                # If we filtered by device in collect_experiments, it should only contain the device and cpu
+                # So if device is set and device_id != device, it shouldn't be here anyway.
+                _save_plots(graph, query, device_id, entry, baseline)

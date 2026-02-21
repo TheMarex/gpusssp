@@ -47,18 +47,30 @@ def update(xp_name: str | None) -> None:
 
 @main.command()
 @click.argument("xp_name", required=False)
-def compare(xp_name: str | None) -> None:
+@click.option("--device", help="Filter by device hash.")
+@click.option("--variant", help="Filter variants by substring match.")
+def compare(
+    xp_name: str | None,
+    device: str | None,
+    variant: str | None,
+) -> None:
     """Compare experiment results and print summary tables."""
 
-    compare_cmd.handle(xp_name)
+    compare_cmd.handle(xp_name, device=device, variant=variant)
 
 
 @main.command()
 @click.argument("xp_name", required=False)
-def plot(xp_name: str | None) -> None:
+@click.option("--device", help="Filter by device hash.")
+@click.option("--variant", help="Filter variants by substring match.")
+def plot(
+    xp_name: str | None,
+    device: str | None,
+    variant: str | None,
+) -> None:
     """Generate plots for experiment results."""
 
-    plot_cmd.handle(xp_name)
+    plot_cmd.handle(xp_name, device=device, variant=variant)
 
 
 @main.command(name="_rebase", hidden=True)

@@ -129,9 +129,13 @@ Runs all experiments in the current branch. Must be run from an `experiment/*` b
 ./experiments/xps.py run
 ```
 
-### `xps.py compare [xp_name]`
+### `xps.py compare [xp_name] [--device <hash>] [--variant <substring>]`
 
 Compare experiment results and print summary tables. If `xp_name` is omitted, it shows results for all experiments found in `experiments/results/`.
+
+**Options:**
+- `--device <hash>`: Filter results by specific device hash.
+- `--variant <substring>`: Filter variants by substring match (e.g., `deltastep`).
 
 **Example:**
 ```bash
@@ -140,11 +144,18 @@ Compare experiment results and print summary tables. If `xp_name` is omitted, it
 
 # Compare a specific experiment
 ./experiments/xps.py compare my_experiment
+
+# Compare only deltastep variants on a specific device
+./experiments/xps.py compare --variant deltastep --device 0123abcd
 ```
 
-### `xps.py plot [xp_name]`
+### `xps.py plot [xp_name] [--device <hash>] [--variant <substring>]`
 
 Generate visualization plots (histograms and Dijkstra rank boxplots) for experiment results. Plots are saved in the respective results directories.
+
+**Options:**
+- `--device <hash>`: Filter results by specific device hash.
+- `--variant <substring>`: Filter variants by substring match (e.g., `nearfar`).
 
 **Example:**
 ```bash
@@ -153,6 +164,9 @@ Generate visualization plots (histograms and Dijkstra rank boxplots) for experim
 
 # Generate plots for a specific experiment
 ./experiments/xps.py plot my_experiment
+
+# Generate plots only for nearfar variants
+./experiments/xps.py plot --variant nearfar
 ```
 
 ### `xps.py update [xp_name]`
