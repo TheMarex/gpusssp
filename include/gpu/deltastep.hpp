@@ -190,8 +190,8 @@ template <typename GraphT> class DeltaStep
                                     {},
                                     {});
 
-            bool has_more;
-            do
+            bool converged = false;
+            while (!converged)
             {
 
                 for (uint32_t batch_iter = 0; batch_iter < batch_size; ++batch_iter)
@@ -304,8 +304,8 @@ template <typename GraphT> class DeltaStep
                     << bucket << " changed " << *gpu_min_changed_id << "-" << *gpu_max_changed_id
                     << " ~ " << static_cast<double>(range_size) / num_nodes << '\n';
 
-                has_more = *gpu_min_changed_id < num_nodes;
-                if (has_more)
+                converged = *gpu_min_changed_id >= num_nodes;
+                if (!converged)
                 {
                     record_start = common::Statistics::start(
                         common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
@@ -313,7 +313,7 @@ template <typename GraphT> class DeltaStep
                 }
 
                 // since we do this after the swap we need to look at prev not current
-            } while (has_more);
+            }
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {
