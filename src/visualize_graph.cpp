@@ -584,7 +584,7 @@ std::jthread start_sssp_thread(SharedContext &ctx,
                 }
 
                 uint32_t src_node = dist(gen);
-                uint32_t dst_node = UINT32_MAX;
+                uint32_t dst_node = dist(gen);
                 uint32_t delta = ctx.delta;
 
                 common::log() << "SSSP thread: Running delta-stepping from node " << src_node

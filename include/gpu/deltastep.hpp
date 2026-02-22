@@ -174,6 +174,7 @@ template <typename GraphT> class DeltaStep
             // All subsequent runs are limited to that.
             *gpu_min_changed_id = 0;
             *gpu_max_changed_id = num_nodes - 1;
+            *gpu_best_distance = common::INF_WEIGHT;
 
             uint32_t first_pass_min_max[] = {0, num_nodes - 1};
             cmd_buf.fillBuffer(
@@ -266,6 +267,7 @@ template <typename GraphT> class DeltaStep
                                         {},
                                         {});
 
+                // Copy max_distance and best_distance to host-visible buffer
                 cmd_buf.copyBuffer(dist_buffer, results_buffer, results_copy);
 
                 // Copy min/max changed ID back to host-visible buffer
