@@ -94,6 +94,10 @@ All GPU algorithms use Vulkan compute shaders and process road network graphs fr
 
 ### Code Style
 
+#### General
+- **Auto when static_cast**: Example `const auto value = static_cast<size_t>(other)`;
+- **Prefer default member initialization**: For static values prefer `class s { int value = 0; };`
+
 #### Naming Conventions
 The project follows strict naming conventions enforced by clang-tidy:
 - **Classes/Structs/Enums**: `PascalCase` (e.g., `WeightedGraph`, `VulkanContext`)
