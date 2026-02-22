@@ -25,3 +25,7 @@ Outcome: hypothesis invalidated – reverting d0a22bd0 (min/max dispatch) was 25
 Hypothesis: Removing the DeltaStep heavy-pass (max-weight filtered sweep) and scanning all edges in the light-pass shader will retain correctness while lowering per-bucket runtime.
 
 Outcome: hypothesis validated – removing the heavy pass cut average query time from 22.6 ms to 18.7 ms (delta 900 on berlin_zorder).
+
+## heatmap
+
+Hypothesis: Z-order sorting improves the memory locality of buffer access.
