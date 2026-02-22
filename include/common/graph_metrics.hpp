@@ -10,7 +10,7 @@ namespace common
 {
 
 template <typename WeightT>
-double compute_delta_heuristic(const WeightedGraph<WeightT> &graph, double C = 10.0)
+uint32_t compute_delta_heuristic(const WeightedGraph<WeightT> &graph, double C = 10.0)
 {
     if (graph.num_edges() == 0 || graph.num_nodes() == 0)
     {
@@ -26,7 +26,7 @@ double compute_delta_heuristic(const WeightedGraph<WeightT> &graph, double C = 1
 
     double avg_degree = static_cast<double>(graph.num_edges()) / graph.num_nodes();
 
-    return C * avg_weight / avg_degree;
+    return static_cast<uint32_t>(C * avg_weight / avg_degree);
 }
 
 } // namespace common
