@@ -192,6 +192,7 @@ int main(int argc, char **argv)
         std::size_t num_unreachable = 0;
         for (auto i = 0u; i < num_queries; i++)
         {
+            common::log() << "Running " << src_nodes[i] << "->" << dst_nodes[i] << '\n';
             auto time_1 = std::chrono::high_resolution_clock::now();
             auto expected_dist =
                 common::dijkstra(src_nodes[i], dst_nodes[i], graph, min_queue, costs, settled);
