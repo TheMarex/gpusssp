@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import List, Optional, Tuple
 
 import click
 
@@ -20,6 +21,22 @@ from .runner import (
 )
 
 
+def commits_since_last_result(
+    commits: List[Tuple[str, str]], xp_name: str
+) -> Tuple[List[Tuple[str, str]], Optional[str]]:
+    result_prefix = f"result:xp:{xp_name}"
+    filtered: List[Tuple[str, str]] = []
+    last_result_sha: Optional[str] = None
+
+    for sha, message in commits:
+        if message.startswith(result_prefix):
+            last_result_sha = sha
+            break
+        filtered.append((sha, message))
+
+    return filtered, last_result_sha
+
+
 def handle() -> None:
     workspace_root = get_workspace_root()
     build_dir = workspace_root / "build"
@@ -29,9 +46,25 @@ def handle() -> None:
     click.echo(f"Running experiments for: {xp_name}")
 
     commits = get_recent_commits(100)
+    commits, last_result_sha = commits_since_last_result(commits, xp_name)
+
+    if last_result_sha:
+        click.echo(
+            "Detected result commit "
+            f"{last_result_sha[:9]} -- skipping earlier experiment commits"
+        )
+
     experiment_configs = collect_experiment_configs(commits, xp_name)
 
     if not experiment_configs:
+        if last_result_sha:
+            click.echo(
+                "No commits found matching "
+                f"'xp:{xp_name}' after result {last_result_sha[:9]}"
+            )
+            click.echo("\n✓ Experiment run complete! (no pending commits)")
+            return
+
         error_exit(f"No commits found matching 'xp:{xp_name}'")
 
     experiment_configs.reverse()
