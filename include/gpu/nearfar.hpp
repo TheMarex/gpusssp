@@ -169,30 +169,33 @@ template <typename GraphT> class NearFar
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
         cmd_buf.fillBuffer(dist_buffer, 0, num_nodes * sizeof(uint32_t), common::INF_WEIGHT);
-        cmd_buf.fillBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), 0);
-
-        cmd_buf.fillBuffer(near_0_buffer, 0, sizeof(uint32_t), src_node);
-        // initialize near_0 counter with 1
-        cmd_buf.fillBuffer(near_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 1);
-        // initialize far_0 counter with 0
-        cmd_buf.fillBuffer(far_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
-
-        cmd_buf.pipelineBarrier(
-            vk::PipelineStageFlagBits::eTransfer,
-            vk::PipelineStageFlagBits::eComputeShader,
-            vk::DependencyFlags{},
-            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                              vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
-            {},
-            {});
-
         cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                 vk::PipelineStageFlagBits::eTransfer,
                                 vk::DependencyFlags{},
                                 vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                  vk::AccessFlagBits::eTransferRead},
+                                                  vk::AccessFlagBits::eTransferWrite},
                                 {},
                                 {});
+
+        uint32_t zero = 0;
+        uint32_t one = 1;
+        cmd_buf.updateBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), &zero);
+
+        cmd_buf.updateBuffer(near_0_buffer, 0, sizeof(uint32_t), &src_node);
+        // initialize near_0 counter with 1
+        cmd_buf.updateBuffer(near_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &one);
+        // initialize far_0 counter with 0
+        cmd_buf.updateBuffer(far_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &zero);
+
+        cmd_buf.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer,
+            vk::DependencyFlags{},
+            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                              vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite |
+                                  vk::AccessFlagBits::eTransferRead},
+            {},
+            {});
 
         cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
         cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);

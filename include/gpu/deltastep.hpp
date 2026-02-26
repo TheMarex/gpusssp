@@ -133,11 +133,19 @@ template <typename GraphT> class DeltaStep
         auto record_start =
             common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-        cmd_buf.fillBuffer(dist_buffer, 0, num_nodes * sizeof(uint32_t), common::INF_WEIGHT);
-        // initialize source wiht 0
-        cmd_buf.fillBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), 0);
-        // initialize max_distance with 0
-        cmd_buf.fillBuffer(dist_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
+        cmd_buf.fillBuffer(dist_buffer, 0, (num_nodes + 1) * sizeof(uint32_t), common::INF_WEIGHT);
+        cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                vk::PipelineStageFlagBits::eTransfer,
+                                vk::DependencyFlags{},
+                                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                  vk::AccessFlagBits::eTransferWrite},
+                                {},
+                                {});
+
+        // initialize source and max_distance with 0
+        uint32_t zero = 0;
+        cmd_buf.updateBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), &zero);
+        cmd_buf.updateBuffer(dist_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &zero);
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
             vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer,
@@ -247,10 +255,10 @@ template <typename GraphT> class DeltaStep
                                           &pc);
                     cmd_buf.dispatchIndirect(dispatch_buffer, 0);
                     cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                            vk::PipelineStageFlagBits::eHost,
+                                            vk::PipelineStageFlagBits::eComputeShader,
                                             vk::DependencyFlags{},
                                             vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                                              vk::AccessFlagBits::eHostRead},
+                                                              vk::AccessFlagBits::eShaderRead},
                                             {},
                                             {});
 
