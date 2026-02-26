@@ -106,7 +106,7 @@ def run_experiment(
 
     env = os.environ.copy()
     if "gpu" in config.params:
-        env["GPUSSSP_GPU"] = str(config.params["gpu"])
+        env["GPUSSSP_DEVICE"] = str(config.params["gpu"])
 
     cmds = format_cmd(
         build_dir,
