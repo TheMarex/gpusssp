@@ -1,6 +1,8 @@
 #ifndef GPUSSSP_TESTS_VULKAN_TEST_FIXTURE_HPP
 #define GPUSSSP_TESTS_VULKAN_TEST_FIXTURE_HPP
 
+#include "gpu/vulkan_context.hpp"
+
 #include <stdexcept>
 #include <vulkan/vulkan.hpp>
 
@@ -47,7 +49,8 @@ class VulkanTestFixture
         {
             throw std::runtime_error("No Vulkan-capable devices found");
         }
-        physical_device = physical_devices[0];
+        auto device_index = gpu::detail::selectDevice();
+        physical_device = physical_devices[device_index];
 
         // Get memory properties for later use
         memory_properties = physical_device.getMemoryProperties();
