@@ -29,3 +29,9 @@ Outcome: hypothesis validated – removing the heavy pass cut average query time
 ## heatmap
 
 Hypothesis: Z-order sorting improves the memory locality of buffer access.
+This is true memory access patterns are way more compact, for "natural" node ordering they are essentially random.
+
+## rangesize
+
+Hypothesis: Z-order descreases the min_changed_id .. max_changed_id size.
+This is true especially in the early phases of the search and in the late stages for each bucket.
