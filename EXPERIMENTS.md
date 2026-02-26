@@ -35,3 +35,7 @@ This is true memory access patterns are way more compact, for "natural" node ord
 
 Hypothesis: Z-order descreases the min_changed_id .. max_changed_id size.
 This is true especially in the early phases of the search and in the late stages for each bucket.
+
+## boxplot_delta900_berlin_germany
+
+Compare Dijkstra, DeltaStep, and NearFar at delta 900 on the berlin and germany caches using GPU 0 to capture boxplot comparisons. Hypothesis: Dijkstra should clearly lead on berlin with NearFar second, while on germany NearFar and Dijkstra stay close and DeltaStep is the slowest.
