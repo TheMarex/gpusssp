@@ -22,8 +22,8 @@ TEST_CASE("Delta heuristic computation", "[graph_metrics]")
         // - Average degree: 8 / 6 = 1.333...
         // - Expected delta: 10 * 1912.5 / 1.333... = 14343.75
 
-        double delta = compute_delta_heuristic(graph);
-        REQUIRE_THAT(delta, Catch::Matchers::WithinRel(14343.75, 0.0001));
+        auto delta = compute_delta_heuristic(graph);
+        REQUIRE(delta == 14343);
     }
 
     SECTION("Mock graph with custom C=5")
@@ -31,14 +31,14 @@ TEST_CASE("Delta heuristic computation", "[graph_metrics]")
         auto graph = create_mock_graph();
 
         // With C=5, delta should be half of the default
-        double delta = compute_delta_heuristic(graph, 5.0);
-        REQUIRE_THAT(delta, Catch::Matchers::WithinRel(7171.875, 0.0001));
+        auto delta = compute_delta_heuristic(graph, 5.0);
+        REQUIRE(delta == 7171);
     }
 
     SECTION("Empty graph")
     {
         WeightedGraph<uint32_t> graph;
-        double delta = compute_delta_heuristic(graph);
-        REQUIRE(delta == 0.0);
+        auto delta = compute_delta_heuristic(graph);
+        REQUIRE(delta == 0);
     }
 }
