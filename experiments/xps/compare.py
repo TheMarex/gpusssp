@@ -67,6 +67,64 @@ def print_tables(
             + tabulate(second_half, headers="keys", tablefmt="github", showindex=True)
         )
 
+    # Summary Result: Identify the fastest variant(s) based on rank data
+    winners_per_rank = rank_avg.idxmin(axis=0).dropna()
+    unique_winners = winners_per_rank.unique()
+
+    if not winners_per_rank.empty:
+        click.echo("\nWinners:")
+
+        def get_speedup_df(winner: str, ranks: pd.Index) -> pd.DataFrame:
+            speedup_data = {}
+            for v in sorted(all_variants.keys()):
+                if v == winner:
+                    continue
+                speedups = []
+                for r in ranks:
+                    val = rank_avg.loc[v, r] / rank_avg.loc[winner, r]
+                    speedups.append(f"{val:.2f}x")
+                speedup_data[v] = speedups
+            return pd.DataFrame(speedup_data, index=ranks).T
+
+        if len(unique_winners) == 1:
+            winner = unique_winners[0]
+            click.echo(f"\nWinner (all ranks): {winner}")
+            df = get_speedup_df(winner, rank_avg.columns)
+            click.echo(tabulate(df, headers="keys", tablefmt="github", showindex=True))
+        else:
+            # Find maximum range [0, m] where the first winner dominates
+            w_start = winners_per_rank.iloc[0]
+            m = 0
+            while (
+                m + 1 < len(winners_per_rank)
+                and winners_per_rank.iloc[m + 1] == w_start
+            ):
+                m += 1
+
+            # Find maximum range [k, n] where the last winner dominates
+            w_end = winners_per_rank.iloc[-1]
+            k = len(winners_per_rank) - 1
+            while k - 1 >= 0 and winners_per_rank.iloc[k - 1] == w_end:
+                k -= 1
+
+            # Use the actual rank values for the range display
+            start_ranks = winners_per_rank.index[0 : m + 1]
+            end_ranks = winners_per_rank.index[k:]
+
+            click.echo(
+                f"\nSpeedup of winner {w_start}"
+            )
+            df_start = get_speedup_df(w_start, start_ranks)
+            click.echo(
+                tabulate(df_start, headers="keys", tablefmt="github", showindex=True)
+            )
+
+            click.echo(f"\nSpeedup of winner {w_end}")
+            df_end = get_speedup_df(w_end, end_ranks)
+            click.echo(
+                tabulate(df_end, headers="keys", tablefmt="github", showindex=True)
+            )
+
 
 def handle(
     xp_name: str | None = None,
