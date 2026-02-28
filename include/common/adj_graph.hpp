@@ -11,9 +11,7 @@
 #include <tuple>
 #include <vector>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 class AdjGraph
@@ -25,16 +23,16 @@ class AdjGraph
     using edge_range_t = decltype(irange<edge_id_t>(0, 1));
     using node_range_t = decltype(irange<node_id_t>(0, 1));
 
-    AdjGraph() {}
+    AdjGraph() = default;
 
-    AdjGraph(std::vector<edge_id_t> first_edges_, std::vector<node_id_t> targets_)
-        : first_edges(std::move(first_edges_)), targets(std::move(targets_))
+    AdjGraph(std::vector<edge_id_t> first_edges, std::vector<node_id_t> targets)
+        : first_edges(std::move(first_edges)), targets(std::move(targets))
     {
         assert(first_edges.size() > 0);
     }
 
     template <typename EdgeT>
-    AdjGraph(std::size_t num_nodes_, const std::vector<EdgeT> &sorted_edges)
+    AdjGraph(std::size_t num_nodes, const std::vector<EdgeT> &sorted_edges)
     {
         assert(std::is_sorted(
             sorted_edges.begin(),
@@ -58,7 +56,7 @@ class AdjGraph
             targets.push_back(edge.target);
         }
         // fill up graps at the end
-        while (first_edges.size() < num_nodes_ + 1)
+        while (first_edges.size() < num_nodes + 1)
         {
             first_edges.push_back(targets.size());
         }
@@ -67,21 +65,24 @@ class AdjGraph
         assert(targets.size() == sorted_edges.size());
     }
 
-    std::size_t num_nodes() const { return first_edges.size() - 1; }
+    [[nodiscard]] std::size_t num_nodes() const { return first_edges.size() - 1; }
 
-    std::size_t num_edges() const { return targets.size(); }
+    [[nodiscard]] std::size_t num_edges() const { return targets.size(); }
 
-    node_range_t nodes() const { return irange<node_id_t>(0, num_nodes()); }
+    [[nodiscard]] node_range_t nodes() const { return irange<node_id_t>(0, num_nodes()); }
 
-    edge_range_t edges(node_id_t node) const { return irange<edge_id_t>(begin(node), end(node)); }
+    [[nodiscard]] edge_range_t edges(node_id_t node) const
+    {
+        return irange<edge_id_t>(begin(node), end(node));
+    }
 
-    edge_id_t begin(node_id_t node) const { return first_edges[node]; }
+    [[nodiscard]] edge_id_t begin(node_id_t node) const { return first_edges[node]; }
 
-    edge_id_t end(node_id_t node) const { return first_edges[node + 1]; }
+    [[nodiscard]] edge_id_t end(node_id_t node) const { return first_edges[node + 1]; }
 
-    node_id_t target(edge_id_t edge) const { return targets[edge]; }
+    [[nodiscard]] node_id_t target(edge_id_t edge) const { return targets[edge]; }
 
-    edge_id_t edge(node_id_t start_node, node_id_t target_node) const
+    [[nodiscard]] edge_id_t edge(node_id_t start_node, node_id_t target_node) const
     {
         for (auto edge = begin(start_node); edge < end(start_node); ++edge)
         {
@@ -92,7 +93,7 @@ class AdjGraph
         return INVALID_ID;
     }
 
-    std::vector<edge_t> edges() const
+    [[nodiscard]] std::vector<edge_t> edges() const
     {
         std::vector<edge_t> edges;
         edges.reserve(num_edges());
@@ -116,7 +117,6 @@ class AdjGraph
     std::vector<edge_id_t> first_edges;
     std::vector<node_id_t> targets;
 };
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

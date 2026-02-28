@@ -1,13 +1,13 @@
 #ifndef DIJKSTRA_HPP
 #define DIJKSTRA_HPP
 
+#include <algorithm>
+
 #include "common/id_queue.hpp"
 #include "common/lazy_clear_vector.hpp"
 #include "common/weighted_graph.hpp"
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 template <typename GraphT> using CostVector = LazyClearVector<typename GraphT::weight_t>;
@@ -362,7 +362,7 @@ auto dijkstra(typename GraphT::node_id_t source,
 {
     queue.clear();
     costs.clear();
-    std::fill(settled.begin(), settled.end(), false);
+    std::fill(settled.begin(), settled.end(), false); // NOLINT
     costs[source] = 0;
     queue.push({source, 0});
 
@@ -478,7 +478,6 @@ auto dijkstra(typename GraphT::node_id_t start,
                     terminate_sum_min<GraphT>);
 }
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

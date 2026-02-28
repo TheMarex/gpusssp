@@ -3,9 +3,7 @@
 
 #include "common/adj_graph.hpp"
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 template <typename WeightT> class WeightedGraph : public AdjGraph
@@ -18,16 +16,16 @@ template <typename WeightT> class WeightedGraph : public AdjGraph
 
     WeightedGraph() : AdjGraph() {}
 
-    WeightedGraph(std::vector<edge_id_t> first_edges_,
-                  std::vector<node_id_t> targets_,
-                  std::vector<weight_t> weights_)
-        : AdjGraph(std::move(first_edges_), std::move(targets_)), weights(std::move(weights_))
+    WeightedGraph(std::vector<edge_id_t> first_edges,
+                  std::vector<node_id_t> targets,
+                  std::vector<weight_t> weights)
+        : AdjGraph(std::move(first_edges), std::move(targets)), weights(std::move(weights))
     {
     }
 
     template <typename EdgeT>
-    WeightedGraph(std::size_t num_nodes_, const std::vector<EdgeT> &sorted_edges)
-        : AdjGraph(num_nodes_, sorted_edges)
+    WeightedGraph(std::size_t num_nodes, const std::vector<EdgeT> &sorted_edges)
+        : AdjGraph(num_nodes, sorted_edges)
     {
         assert(std::is_sorted(
             sorted_edges.begin(),
@@ -45,7 +43,7 @@ template <typename WeightT> class WeightedGraph : public AdjGraph
 
     using AdjGraph::edges;
 
-    std::vector<edge_t> edges() const
+    [[nodiscard]] std::vector<edge_t> edges() const
     {
         std::vector<edge_t> edges;
         edges.reserve(num_edges());
@@ -61,7 +59,7 @@ template <typename WeightT> class WeightedGraph : public AdjGraph
         return edges;
     }
 
-    const weight_t &weight(edge_id_t id) const { return weights[id]; }
+    [[nodiscard]] const weight_t &weight(edge_id_t id) const { return weights[id]; }
     weight_t &weight(edge_id_t id) { return weights[id]; }
 
     static std::tuple<std::vector<edge_id_t>, std::vector<node_id_t>, std::vector<weight_t>>
@@ -72,7 +70,6 @@ template <typename WeightT> class WeightedGraph : public AdjGraph
 
     std::vector<weight_t> weights;
 };
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

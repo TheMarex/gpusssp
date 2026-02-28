@@ -1,6 +1,9 @@
 #ifndef GPUSSSP_GPU_BELLMANFORD_BUFFERS_HPP
 #define GPUSSSP_GPU_BELLMANFORD_BUFFERS_HPP
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <vulkan/vulkan.hpp>
 
 #include "gpu/memory.hpp"
@@ -33,8 +36,8 @@ class BellmanFordBuffers
         mem_changed = gpu::alloc_and_bind(
             device, mem_props, buf_changed, vk::MemoryPropertyFlagBits::eHostVisible);
 
-        gpu_results = (uint32_t *)device.mapMemory(mem_results, 0, sizeof(uint32_t));
-        gpu_changed = (uint32_t *)device.mapMemory(mem_changed, 0, sizeof(uint32_t));
+        gpu_results = static_cast<uint32_t *>(device.mapMemory(mem_results, 0, sizeof(uint32_t)));
+        gpu_changed = static_cast<uint32_t *>(device.mapMemory(mem_changed, 0, sizeof(uint32_t)));
     }
 
     ~BellmanFordBuffers()
@@ -52,7 +55,10 @@ class BellmanFordBuffers
     uint32_t *best_distance() { return gpu_results; }
     uint32_t *changed() { return gpu_changed; }
 
-    std::array<const vk::Buffer, 3> buffers() const { return {buf_dist, buf_results, buf_changed}; }
+    [[nodiscard]] std::array<const vk::Buffer, 3> buffers() const
+    {
+        return {buf_dist, buf_results, buf_changed};
+    }
 
   private:
     vk::Buffer buf_dist;

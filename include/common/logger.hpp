@@ -1,15 +1,14 @@
 #ifndef GPUSSSP_COMMON_LOGGER_HPP
 #define GPUSSSP_COMMON_LOGGER_HPP
 
+#include <cstdint>
 #include <iostream>
 #include <ostream>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
-enum class LogLevel
+enum class LogLevel : std::uint8_t
 {
     DEBUG = 0,
     INFO = 1,
@@ -43,20 +42,17 @@ class Logger
         return null_stream;
     }
 
-  private:
-    Logger()
-#ifdef NDEBUG
-        : min_level(LogLevel::INFO)
-#else
-        : min_level(LogLevel::DEBUG)
-#endif
-    {
-    }
-
     Logger(const Logger &) = delete;
     Logger &operator=(const Logger &) = delete;
 
-    LogLevel min_level;
+  private:
+    Logger() = default;
+
+#ifdef NDEBUG
+    LogLevel min_level{LogLevel::INFO};
+#else
+    LogLevel min_level{LogLevel::DEBUG};
+#endif
     NullStream null_stream;
 };
 
@@ -74,7 +70,6 @@ inline NullStream log_debug() { return NullStream(); }
 inline std::ostream &log_debug() { return Logger::get().log(LogLevel::DEBUG); }
 #endif
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

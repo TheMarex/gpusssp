@@ -49,7 +49,7 @@ class VulkanTestFixture
         {
             throw std::runtime_error("No Vulkan-capable devices found");
         }
-        auto device_index = gpu::detail::selectDevice();
+        auto device_index = gpu::detail::select_device();
         physical_device = physical_devices[device_index];
 
         // Get memory properties for later use

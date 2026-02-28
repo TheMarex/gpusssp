@@ -3,7 +3,13 @@
 
 #include "gpu/vulkan_context.hpp"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <stdexcept>
 #include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_core.h>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -14,23 +20,23 @@ namespace gpusssp::gpu
 class VulkanGraphicsContext : public VulkanContext
 {
   public:
-    explicit VulkanGraphicsContext(const char *app_name, uint32_t width, uint32_t height)
+    explicit VulkanGraphicsContext(const char *app_name, uint32_t width, uint32_t height) // NOLINT
         : m_width(width), m_height(height)
     {
         initialize_glfw(app_name);
-        create_surface();
 
-        uint32_t glfwExtensionCount = 0;
-        const char **glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-        std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+        uint32_t glfw_extension_count = 0;
+        const char **glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+        std::vector<const char *> extensions(glfw_extensions,
+                                             glfw_extensions + glfw_extension_count);
 
         create_instance(app_name, extensions);
         create_vulkan_surface();
         select_physical_device(0);
         find_graphics_queue_family();
 
-        std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-        create_device_and_queue(m_graphics_queue_family, deviceExtensions);
+        std::vector<const char *> device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        create_device_and_queue(m_graphics_queue_family, device_extensions);
         create_command_pool(m_graphics_queue_family);
 
         create_swapchain();
@@ -68,9 +74,9 @@ class VulkanGraphicsContext : public VulkanContext
                 m_device.destroyRenderPass(m_render_pass);
             }
 
-            for (auto imageView : m_swapchain_image_views)
+            for (auto image_view : m_swapchain_image_views)
             {
-                m_device.destroyImageView(imageView);
+                m_device.destroyImageView(image_view);
             }
 
             if (m_swapchain)
@@ -105,7 +111,7 @@ class VulkanGraphicsContext : public VulkanContext
 
     bool should_close() const { return glfwWindowShouldClose(m_window); }
 
-    void poll_events() const { glfwPollEvents(); }
+    void poll_events() const { glfwPollEvents(); } // NOLINT
 
     struct FrameResources
     {
@@ -119,14 +125,14 @@ class VulkanGraphicsContext : public VulkanContext
 
     FrameResources begin_frame()
     {
-        m_device.waitForFences(1, &m_in_flight_fences[m_current_frame], VK_TRUE, UINT64_MAX);
+        (void)m_device.waitForFences(1, &m_in_flight_fences[m_current_frame], VK_TRUE, UINT64_MAX);
 
-        uint32_t imageIndex;
+        uint32_t image_index;
         auto result = m_device.acquireNextImageKHR(m_swapchain,
                                                    UINT64_MAX,
                                                    m_image_available_semaphores[m_current_frame],
                                                    nullptr,
-                                                   &imageIndex);
+                                                   &image_index);
 
         if (result == vk::Result::eErrorOutOfDateKHR)
         {
@@ -138,25 +144,25 @@ class VulkanGraphicsContext : public VulkanContext
             throw std::runtime_error("Failed to acquire swapchain image");
         }
 
-        m_device.resetFences(1, &m_in_flight_fences[m_current_frame]);
+        (void)m_device.resetFences(1, &m_in_flight_fences[m_current_frame]);
 
-        return {imageIndex,
-                m_swapchain_images[imageIndex],
-                m_framebuffers[imageIndex],
-                m_image_available_semaphores[m_current_frame],
-                m_render_finished_semaphores[m_current_frame],
-                m_in_flight_fences[m_current_frame]};
+        return {.image_index = image_index,
+                .image = m_swapchain_images[image_index],
+                .framebuffer = m_framebuffers[image_index],
+                .image_available = m_image_available_semaphores[m_current_frame],
+                .render_finished = m_render_finished_semaphores[m_current_frame],
+                .in_flight = m_in_flight_fences[m_current_frame]};
     }
 
     void end_frame(const FrameResources &frame)
     {
-        vk::PresentInfoKHR presentInfo(
+        vk::PresentInfoKHR present_info(
             1, &frame.render_finished, 1, &m_swapchain, &frame.image_index);
 
         vk::Result result = vk::Result::eSuccess;
         try
         {
-            result = shared_queue().presentKHR(presentInfo);
+            result = shared_queue().presentKHR(present_info);
         }
         catch (const vk::OutOfDateKHRError &)
         {
@@ -197,7 +203,7 @@ class VulkanGraphicsContext : public VulkanContext
     std::vector<vk::Semaphore> m_render_finished_semaphores;
     std::vector<vk::Fence> m_in_flight_fences;
 
-    uint32_t m_graphics_queue_family;
+    uint32_t m_graphics_queue_family{};
     uint32_t m_width;
     uint32_t m_height;
     uint32_t m_current_frame = 0;
@@ -219,7 +225,8 @@ class VulkanGraphicsContext : public VulkanContext
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-        m_window = glfwCreateWindow(m_width, m_height, app_name, nullptr, nullptr);
+        m_window = glfwCreateWindow(
+            static_cast<int>(m_width), static_cast<int>(m_height), app_name, nullptr, nullptr);
         if (!m_window)
         {
             glfwTerminate();
@@ -227,29 +234,27 @@ class VulkanGraphicsContext : public VulkanContext
         }
     }
 
-    void create_surface() {}
-
     void create_vulkan_surface()
     {
-        VkSurfaceKHR tmpSurface;
-        if (glfwCreateWindowSurface(m_instance, m_window, nullptr, &tmpSurface) != VK_SUCCESS)
+        VkSurfaceKHR tmp_surface;
+        if (glfwCreateWindowSurface(m_instance, m_window, nullptr, &tmp_surface) != VK_SUCCESS)
         {
             m_instance.destroy();
             glfwDestroyWindow(m_window);
             glfwTerminate();
             throw std::runtime_error("Failed to create window surface");
         }
-        m_surface = tmpSurface;
+        m_surface = tmp_surface;
     }
 
     void find_graphics_queue_family()
     {
-        auto queueFamilies = m_physical_device.getQueueFamilyProperties();
+        auto queue_families = m_physical_device.getQueueFamilyProperties();
         m_graphics_queue_family = UINT32_MAX;
 
-        for (uint32_t i = 0; i < queueFamilies.size(); ++i)
+        for (uint32_t i = 0; i < queue_families.size(); ++i)
         {
-            if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)
+            if (queue_families[i].queueFlags & vk::QueueFlagBits::eGraphics)
             {
                 if (m_physical_device.getSurfaceSupportKHR(i, m_surface))
                 {
@@ -273,30 +278,31 @@ class VulkanGraphicsContext : public VulkanContext
     {
         auto capabilities = m_physical_device.getSurfaceCapabilitiesKHR(m_surface);
         auto formats = m_physical_device.getSurfaceFormatsKHR(m_surface);
-        auto presentModes = m_physical_device.getSurfacePresentModesKHR(m_surface);
+        auto present_modes = m_physical_device.getSurfacePresentModesKHR(m_surface);
 
-        vk::SurfaceFormatKHR surfaceFormat = formats[0];
+        vk::SurfaceFormatKHR surface_format = formats[0];
         for (const auto &format : formats)
         {
             if (format.format == vk::Format::eB8G8R8A8Srgb &&
                 format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
             {
-                surfaceFormat = format;
+                surface_format = format;
                 break;
             }
         }
 
-        vk::PresentModeKHR presentMode = vk::PresentModeKHR::eFifo;
-        for (const auto &mode : presentModes)
+        vk::PresentModeKHR present_mode = vk::PresentModeKHR::eFifo;
+        for (const auto &mode : present_modes)
         {
             if (mode == vk::PresentModeKHR::eMailbox)
             {
-                presentMode = mode;
+                present_mode = mode;
                 break;
             }
         }
 
-        int width, height;
+        int width;
+        int height;
         glfwGetFramebufferSize(m_window, &width, &height);
 
         vk::Extent2D extent;
@@ -314,59 +320,59 @@ class VulkanGraphicsContext : public VulkanContext
                                        capabilities.maxImageExtent.height);
         }
 
-        uint32_t imageCount = std::min(capabilities.minImageCount + 1, capabilities.maxImageCount);
+        uint32_t image_count = std::min(capabilities.minImageCount + 1, capabilities.maxImageCount);
 
-        vk::SwapchainCreateInfoKHR createInfo({},
-                                              m_surface,
-                                              imageCount,
-                                              surfaceFormat.format,
-                                              surfaceFormat.colorSpace,
-                                              extent,
-                                              1,
-                                              vk::ImageUsageFlagBits::eColorAttachment,
-                                              vk::SharingMode::eExclusive,
-                                              0,
-                                              nullptr,
-                                              capabilities.currentTransform,
-                                              vk::CompositeAlphaFlagBitsKHR::eOpaque,
-                                              presentMode,
-                                              VK_TRUE);
+        vk::SwapchainCreateInfoKHR create_info({},
+                                               m_surface,
+                                               image_count,
+                                               surface_format.format,
+                                               surface_format.colorSpace,
+                                               extent,
+                                               1,
+                                               vk::ImageUsageFlagBits::eColorAttachment,
+                                               vk::SharingMode::eExclusive,
+                                               0,
+                                               nullptr,
+                                               capabilities.currentTransform,
+                                               vk::CompositeAlphaFlagBitsKHR::eOpaque,
+                                               present_mode,
+                                               VK_TRUE);
 
-        m_swapchain = m_device.createSwapchainKHR(createInfo);
+        m_swapchain = m_device.createSwapchainKHR(create_info);
         m_swapchain_images = m_device.getSwapchainImagesKHR(m_swapchain);
-        m_swapchain_image_format = surfaceFormat.format;
+        m_swapchain_image_format = surface_format.format;
         m_swapchain_extent = extent;
 
         m_swapchain_image_views.resize(m_swapchain_images.size());
         for (size_t i = 0; i < m_swapchain_images.size(); ++i)
         {
-            vk::ImageViewCreateInfo viewInfo({},
-                                             m_swapchain_images[i],
-                                             vk::ImageViewType::e2D,
-                                             m_swapchain_image_format,
-                                             {},
-                                             {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
+            vk::ImageViewCreateInfo view_info({},
+                                              m_swapchain_images[i],
+                                              vk::ImageViewType::e2D,
+                                              m_swapchain_image_format,
+                                              {},
+                                              {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
 
-            m_swapchain_image_views[i] = m_device.createImageView(viewInfo);
+            m_swapchain_image_views[i] = m_device.createImageView(view_info);
         }
     }
 
     void create_render_pass()
     {
-        vk::AttachmentDescription colorAttachment({},
-                                                  m_swapchain_image_format,
-                                                  vk::SampleCountFlagBits::e1,
-                                                  vk::AttachmentLoadOp::eClear,
-                                                  vk::AttachmentStoreOp::eStore,
-                                                  vk::AttachmentLoadOp::eDontCare,
-                                                  vk::AttachmentStoreOp::eDontCare,
-                                                  vk::ImageLayout::eUndefined,
-                                                  vk::ImageLayout::ePresentSrcKHR);
+        vk::AttachmentDescription color_attachment({},
+                                                   m_swapchain_image_format,
+                                                   vk::SampleCountFlagBits::e1,
+                                                   vk::AttachmentLoadOp::eClear,
+                                                   vk::AttachmentStoreOp::eStore,
+                                                   vk::AttachmentLoadOp::eDontCare,
+                                                   vk::AttachmentStoreOp::eDontCare,
+                                                   vk::ImageLayout::eUndefined,
+                                                   vk::ImageLayout::ePresentSrcKHR);
 
-        vk::AttachmentReference colorAttachmentRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+        vk::AttachmentReference color_attachment_ref(0, vk::ImageLayout::eColorAttachmentOptimal);
 
         vk::SubpassDescription subpass(
-            {}, vk::PipelineBindPoint::eGraphics, 0, nullptr, 1, &colorAttachmentRef);
+            {}, vk::PipelineBindPoint::eGraphics, 0, nullptr, 1, &color_attachment_ref);
 
         vk::SubpassDependency dependency(VK_SUBPASS_EXTERNAL,
                                          0,
@@ -375,10 +381,10 @@ class VulkanGraphicsContext : public VulkanContext
                                          {},
                                          vk::AccessFlagBits::eColorAttachmentWrite);
 
-        vk::RenderPassCreateInfo renderPassInfo(
-            {}, 1, &colorAttachment, 1, &subpass, 1, &dependency);
+        vk::RenderPassCreateInfo render_pass_info(
+            {}, 1, &color_attachment, 1, &subpass, 1, &dependency);
 
-        m_render_pass = m_device.createRenderPass(renderPassInfo);
+        m_render_pass = m_device.createRenderPass(render_pass_info);
     }
 
     void create_framebuffers()
@@ -389,15 +395,15 @@ class VulkanGraphicsContext : public VulkanContext
         {
             vk::ImageView attachments[] = {m_swapchain_image_views[i]};
 
-            vk::FramebufferCreateInfo framebufferInfo({},
-                                                      m_render_pass,
-                                                      1,
-                                                      attachments,
-                                                      m_swapchain_extent.width,
-                                                      m_swapchain_extent.height,
-                                                      1);
+            vk::FramebufferCreateInfo framebuffer_info({},
+                                                       m_render_pass,
+                                                       1,
+                                                       attachments,
+                                                       m_swapchain_extent.width,
+                                                       m_swapchain_extent.height,
+                                                       1);
 
-            m_framebuffers[i] = m_device.createFramebuffer(framebufferInfo);
+            m_framebuffers[i] = m_device.createFramebuffer(framebuffer_info);
         }
     }
 
@@ -407,14 +413,14 @@ class VulkanGraphicsContext : public VulkanContext
         m_render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
         m_in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
 
-        vk::SemaphoreCreateInfo semaphoreInfo;
-        vk::FenceCreateInfo fenceInfo(vk::FenceCreateFlagBits::eSignaled);
+        vk::SemaphoreCreateInfo semaphore_info;
+        vk::FenceCreateInfo fence_info(vk::FenceCreateFlagBits::eSignaled);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
         {
-            m_image_available_semaphores[i] = m_device.createSemaphore(semaphoreInfo);
-            m_render_finished_semaphores[i] = m_device.createSemaphore(semaphoreInfo);
-            m_in_flight_fences[i] = m_device.createFence(fenceInfo);
+            m_image_available_semaphores[i] = m_device.createSemaphore(semaphore_info);
+            m_render_finished_semaphores[i] = m_device.createSemaphore(semaphore_info);
+            m_in_flight_fences[i] = m_device.createFence(fence_info);
         }
     }
 
@@ -425,9 +431,9 @@ class VulkanGraphicsContext : public VulkanContext
             m_device.destroyFramebuffer(framebuffer);
         }
 
-        for (auto imageView : m_swapchain_image_views)
+        for (auto image_view : m_swapchain_image_views)
         {
-            m_device.destroyImageView(imageView);
+            m_device.destroyImageView(image_view);
         }
 
         m_device.destroySwapchainKHR(m_swapchain);
@@ -435,7 +441,8 @@ class VulkanGraphicsContext : public VulkanContext
 
     void recreate_swapchain()
     {
-        int width = 0, height = 0;
+        int width = 0;
+        int height = 0;
         glfwGetFramebufferSize(m_window, &width, &height);
         while (width == 0 || height == 0)
         {

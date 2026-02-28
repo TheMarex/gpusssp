@@ -6,9 +6,7 @@
 #include <cstdint>
 #include <immintrin.h>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 inline uint64_t morton_encode(uint32_t x, uint32_t y)
@@ -20,16 +18,15 @@ inline uint64_t morton_encode(uint32_t x, uint32_t y)
 // Offsets coordinates to make them positive, then interleaves bits
 inline std::uint64_t coordinate_to_zorder(const Coordinate &coord)
 {
-    constexpr std::int64_t lon_offset = static_cast<std::int64_t>(180 * Coordinate::PRECISION);
-    constexpr std::int64_t lat_offset = static_cast<std::int64_t>(90 * Coordinate::PRECISION);
+    constexpr auto LON_OFFSET = static_cast<std::int64_t>(180 * Coordinate::PRECISION);
+    constexpr auto LAT_OFFSET = static_cast<std::int64_t>(90 * Coordinate::PRECISION);
 
-    std::uint32_t lon_positive = static_cast<std::uint32_t>(coord.lon + lon_offset);
-    std::uint32_t lat_positive = static_cast<std::uint32_t>(coord.lat + lat_offset);
+    auto lon_positive = static_cast<std::uint32_t>(coord.lon + LON_OFFSET);
+    auto lat_positive = static_cast<std::uint32_t>(coord.lat + LAT_OFFSET);
 
     return morton_encode(lon_positive, lat_positive);
 }
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

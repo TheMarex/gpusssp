@@ -27,15 +27,15 @@ create_descriptor_sets(vk::Device &device, const std::vector<std::vector<vk::Buf
         throw std::runtime_error("buffer_sets cannot be empty");
     }
 
-    const uint32_t num_descriptor_sets = static_cast<uint32_t>(buffer_sets.size());
-    const uint32_t num_bindings = static_cast<uint32_t>(buffer_sets[0].size());
+    const auto num_descriptor_sets = static_cast<uint32_t>(buffer_sets.size());
+    const auto num_bindings = static_cast<uint32_t>(buffer_sets[0].size());
 
     std::vector<vk::DescriptorSetLayoutBinding> bindings;
     bindings.reserve(num_bindings);
     for (uint32_t i = 0; i < num_bindings; ++i)
     {
-        bindings.push_back(
-            {i, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute});
+        bindings.emplace_back(
+            i, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute);
     }
 
     vk::DescriptorSetLayout layout =
@@ -61,27 +61,27 @@ create_descriptor_sets(vk::Device &device, const std::vector<std::vector<vk::Buf
         buffer_infos.reserve(num_bindings);
         for (const auto &buffer : buffers)
         {
-            buffer_infos.push_back({buffer, 0, VK_WHOLE_SIZE});
+            buffer_infos.emplace_back(buffer, 0, VK_WHOLE_SIZE);
         }
 
         std::vector<vk::WriteDescriptorSet> writes;
         writes.reserve(num_bindings);
         for (uint32_t binding_idx = 0; binding_idx < num_bindings; ++binding_idx)
         {
-            writes.push_back({descriptor_sets[set_idx],
-                              binding_idx,
-                              0,
-                              1,
-                              vk::DescriptorType::eStorageBuffer,
-                              nullptr,
-                              &buffer_infos[binding_idx],
-                              nullptr});
+            writes.emplace_back(descriptor_sets[set_idx],
+                                binding_idx,
+                                0,
+                                1,
+                                vk::DescriptorType::eStorageBuffer,
+                                nullptr,
+                                &buffer_infos[binding_idx],
+                                nullptr);
         }
 
         device.updateDescriptorSets(writes, {});
     }
 
-    return {descriptor_sets, layout, pool};
+    return {.descriptor_sets = descriptor_sets, .layout = layout, .pool = pool};
 }
 } // namespace detail
 
@@ -136,8 +136,8 @@ create_compute_pipeline(vk::Device &device,
         spec_entries.reserve(specialization_constants.size());
         for (uint32_t i = 0; i < specialization_constants.size(); ++i)
         {
-            spec_entries.push_back(
-                {i, static_cast<uint32_t>(i * sizeof(uint32_t)), sizeof(uint32_t)});
+            spec_entries.emplace_back(
+                i, static_cast<uint32_t>(i * sizeof(uint32_t)), sizeof(uint32_t));
         }
         spec_info = {static_cast<uint32_t>(spec_entries.size()),
                      spec_entries.data(),
@@ -155,12 +155,12 @@ create_compute_pipeline(vk::Device &device,
     vk::Pipeline pipeline =
         device.createComputePipeline({}, {{}, shader_stage, pipeline_layout}).value;
 
-    return {shader,
-            pipeline,
-            pipeline_layout,
-            std::move(descriptor_sets),
-            descriptor_set_layout,
-            descriptor_pool};
+    return {.shader = shader,
+            .pipeline = pipeline,
+            .layout = pipeline_layout,
+            .descriptor_sets = std::move(descriptor_sets),
+            .descriptor_set_layout = descriptor_set_layout,
+            .descriptor_pool = descriptor_pool};
 }
 
 } // namespace gpusssp::gpu

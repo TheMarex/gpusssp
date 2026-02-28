@@ -5,11 +5,7 @@
 
 #include <vector>
 
-namespace gpusssp
-{
-namespace common
-{
-namespace serialization
+namespace gpusssp::common::serialization
 {
 template <typename T> void read(BinaryReader &reader, std::vector<T> &vector)
 {
@@ -24,8 +20,6 @@ template <typename T> void write(BinaryWriter &writer, const std::vector<T> &vec
     writer.write(vector.size(), 1);
     writer.write(*vector.data(), vector.size());
 }
-} // namespace serialization
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common::serialization
 
 #endif

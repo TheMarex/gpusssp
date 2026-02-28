@@ -3,6 +3,8 @@
 
 #include <array>
 
+#include <cstdint>
+#include <vector>
 #include <vulkan/vulkan.hpp>
 
 #include "gpu/memory.hpp"
@@ -65,10 +67,10 @@ template <typename GraphT> class GraphBuffers
         device.freeMemory(mem_weights);
     }
 
-    auto num_nodes() const { return graph.num_nodes(); }
-    auto num_edges() const { return graph.num_edges(); }
+    [[nodiscard]] auto num_nodes() const { return graph.num_nodes(); }
+    [[nodiscard]] auto num_edges() const { return graph.num_edges(); }
 
-    std::array<vk::Buffer, 3> buffers() const
+    [[nodiscard]] std::array<vk::Buffer, 3> buffers() const
     {
         return {buf_first_edges, buf_targets, buf_weights};
     }

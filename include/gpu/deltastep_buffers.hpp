@@ -1,6 +1,9 @@
 #ifndef GPUSSSP_GPU_DELTASTEP_BUFFERS_HPP
 #define GPUSSSP_GPU_DELTASTEP_BUFFERS_HPP
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <vulkan/vulkan.hpp>
 
 #include "gpu/memory.hpp"
@@ -62,7 +65,8 @@ class DeltaStepBuffers
         mem_dispatch_deltastep = gpu::alloc_and_bind(
             device, mem_props, buf_dispatch_deltastep, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-        gpu_results = (uint32_t *)device.mapMemory(mem_results, 0, 4 * sizeof(uint32_t));
+        gpu_results =
+            static_cast<uint32_t *>(device.mapMemory(mem_results, 0, 4 * sizeof(uint32_t)));
     }
 
     ~DeltaStepBuffers()
@@ -85,7 +89,7 @@ class DeltaStepBuffers
     uint32_t *min_changed_id() { return gpu_results + 2; }
     uint32_t *max_changed_id() { return gpu_results + 3; }
 
-    std::array<const vk::Buffer, 5> buffers() const
+    [[nodiscard]] std::array<const vk::Buffer, 5> buffers() const
     {
         return {buf_dist, buf_results, buf_changed_0, buf_changed_1, buf_dispatch_deltastep};
     }

@@ -5,9 +5,7 @@
 #include <fstream>
 #include <string>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 inline bool file_exists(const std::string &path)
@@ -19,7 +17,7 @@ inline bool file_exists(const std::string &path)
 class BinaryReader
 {
   public:
-    BinaryReader(const std::string &path) : stream(path, std::ios::binary)
+    explicit BinaryReader(const std::string &path) : stream(path, std::ios::binary)
     {
         stream.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     }
@@ -46,7 +44,7 @@ class BinaryReader
 class BinaryWriter
 {
   public:
-    BinaryWriter(const std::string &path) : stream(path, std::ios::binary)
+    explicit BinaryWriter(const std::string &path) : stream(path, std::ios::binary)
     {
         stream.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     }
@@ -61,7 +59,6 @@ class BinaryWriter
   private:
     std::ofstream stream;
 };
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

@@ -4,13 +4,11 @@
 #include "common/weighted_graph.hpp"
 #include <numeric>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 template <typename WeightT>
-uint32_t compute_delta_heuristic(const WeightedGraph<WeightT> &graph, double C = 10.0)
+uint32_t compute_delta_heuristic(const WeightedGraph<WeightT> &graph, double c = 10.0)
 {
     if (graph.num_edges() == 0 || graph.num_nodes() == 0)
     {
@@ -26,10 +24,9 @@ uint32_t compute_delta_heuristic(const WeightedGraph<WeightT> &graph, double C =
 
     double avg_degree = static_cast<double>(graph.num_edges()) / graph.num_nodes();
 
-    return static_cast<uint32_t>(C * avg_weight / avg_degree);
+    return static_cast<uint32_t>(c * avg_weight / avg_degree);
 }
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

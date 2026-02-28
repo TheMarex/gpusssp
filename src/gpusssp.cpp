@@ -1,12 +1,18 @@
+#include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <optional>
+#include <ostream>
 #include <random>
+#include <string>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
 #include "common/benchmark.hpp"
+#include "common/constants.hpp"
 #include "common/coordinate.hpp"
 #include "common/dijkstra.hpp"
 #include "common/files.hpp"
@@ -29,7 +35,7 @@
 
 using namespace gpusssp;
 
-std::optional<common::Coordinate> string_to_coordinate(const std::string &s)
+static std::optional<common::Coordinate> string_to_coordinate(const std::string &s)
 {
     if (s == "random")
     {
@@ -37,7 +43,7 @@ std::optional<common::Coordinate> string_to_coordinate(const std::string &s)
     }
 
     auto pos = s.find(',');
-    if (pos == s.npos)
+    if (pos == std::string::npos)
     {
         return {};
     }
@@ -45,9 +51,9 @@ std::optional<common::Coordinate> string_to_coordinate(const std::string &s)
                                              std::stod(s.substr(pos + 1)));
 }
 
-std::optional<uint32_t> string_to_node_id(const std::string &s)
+static std::optional<uint32_t> string_to_node_id(const std::string &s)
 {
-    if (s.size() < 1 || !std::isdigit(s[0]))
+    if (s.empty() || !std::isdigit(s[0]))
     {
         return {};
     }
@@ -69,10 +75,9 @@ int main(int argc, char **argv)
     {
         common::log_error()
             << "Usage: " << argv[0]
-            << " <graph_path> [SRC_LON,SRC_LAT DEST_LON,DEST_LAT] [DELTA] [NUM_QUERIES]"
-            << std::endl;
+            << " <graph_path> [SRC_LON,SRC_LAT DEST_LON,DEST_LAT] [DELTA] [NUM_QUERIES]" << '\n';
         common::log_error() << "Example: " << argv[0]
-                            << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600 1" << std::endl;
+                            << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600 1" << '\n';
         return 1;
     }
 
@@ -100,7 +105,7 @@ int main(int argc, char **argv)
         num_queries = std::stoi(argv[5]);
     }
 
-    common::log() << "Loading graph from: " << graph_path << std::endl;
+    common::log() << "Loading graph from: " << graph_path << '\n';
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_path);
     auto coordinates = common::files::read_coordinates(graph_path);
 
@@ -109,7 +114,7 @@ int main(int argc, char **argv)
     {
         delta = std::stoi(argv[4]);
     }
-    common::log() << "Using delta value " << delta << std::endl;
+    common::log() << "Using delta value " << delta << '\n';
 
     auto num_heavy = 0u;
     for (uint32_t eid = 0u; eid < graph.num_edges(); ++eid)
@@ -118,7 +123,7 @@ int main(int argc, char **argv)
     }
 
     common::log() << "Graph loaded: " << graph.num_nodes() << " nodes, " << graph.num_edges()
-                  << " edges (" << num_heavy << " heavy)" << std::endl;
+                  << " edges (" << num_heavy << " heavy)" << '\n';
 
     common::NearestNeighbour nn(coordinates);
 
@@ -131,35 +136,35 @@ int main(int argc, char **argv)
     std::vector<uint32_t> dst_nodes(num_queries);
     if (maybe_src_coord)
     {
-        std::fill(src_nodes.begin(), src_nodes.end(), nn.nearest(*maybe_src_coord));
+        std::ranges::fill(src_nodes, nn.nearest(*maybe_src_coord));
     }
     else if (maybe_src_node_id)
     {
-        std::fill(src_nodes.begin(), src_nodes.end(), *maybe_src_node_id);
+        std::ranges::fill(src_nodes, *maybe_src_node_id);
     }
     else
     {
-        std::generate(src_nodes.begin(), src_nodes.end(), [&]() { return random_node_id(gen); });
+        std::ranges::generate(src_nodes, [&]() { return random_node_id(gen); });
     }
     if (maybe_dst_coord)
     {
-        std::fill(dst_nodes.begin(), dst_nodes.end(), nn.nearest(*maybe_dst_coord));
+        std::ranges::fill(dst_nodes, nn.nearest(*maybe_dst_coord));
     }
     else if (maybe_dst_node_id)
     {
-        std::fill(dst_nodes.begin(), dst_nodes.end(), *maybe_dst_node_id);
+        std::ranges::fill(dst_nodes, *maybe_dst_node_id);
     }
     else
     {
-        std::generate(dst_nodes.begin(), dst_nodes.end(), [&]() { return random_node_id(gen); });
+        std::ranges::generate(dst_nodes, [&]() { return random_node_id(gen); });
     }
 
-    gpu::VulkanContext vk_ctx("DeltaStep", gpu::detail::selectDevice());
+    gpu::VulkanContext vk_ctx("DeltaStep", gpu::detail::select_device());
 
-    gpu::printDeviceInfo(vk_ctx);
+    gpu::print_device_info(vk_ctx);
     auto device = vk_ctx.device();
     auto queue = vk_ctx.queue();
-    auto cmdPool = vk_ctx.command_pool();
+    auto cmd_pool = vk_ctx.command_pool();
 
     {
         common::MinIDQueue min_queue(graph.num_nodes());
@@ -167,7 +172,7 @@ int main(int argc, char **argv)
                                                                   common::INF_WEIGHT);
         std::vector<bool> settled(graph.num_nodes(), false);
 
-        gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool, queue);
+        gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmd_pool, queue);
         gpu::DeltaStepBuffers deltastep_buffers(
             graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::BellmanFordBuffers bellmanford_buffers(
@@ -196,16 +201,16 @@ int main(int argc, char **argv)
             auto time_1 = std::chrono::high_resolution_clock::now();
             auto expected_dist =
                 common::dijkstra(src_nodes[i], dst_nodes[i], graph, min_queue, costs, settled);
-            common::DoNotOptimize(expected_dist);
+            common::do_not_optimize(expected_dist);
             auto time_2 = std::chrono::high_resolution_clock::now();
-            auto dist = deltastep.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
-            common::DoNotOptimize(dist);
+            auto dist = deltastep.run(cmd_pool, queue, src_nodes[i], dst_nodes[i], delta);
+            common::do_not_optimize(dist);
             auto time_3 = std::chrono::high_resolution_clock::now();
-            auto bf_dist = bellmanford.run(cmdPool, queue, src_nodes[i], dst_nodes[i]);
-            common::DoNotOptimize(bf_dist);
+            auto bf_dist = bellmanford.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
+            common::do_not_optimize(bf_dist);
             auto time_4 = std::chrono::high_resolution_clock::now();
-            auto nf_dist = nearfar.run(cmdPool, queue, src_nodes[i], dst_nodes[i], delta);
-            common::DoNotOptimize(nf_dist);
+            auto nf_dist = nearfar.run(cmd_pool, queue, src_nodes[i], dst_nodes[i], delta);
+            common::do_not_optimize(nf_dist);
             auto time_5 = std::chrono::high_resolution_clock::now();
 
             if (expected_dist == common::INF_WEIGHT)
@@ -226,19 +231,19 @@ int main(int argc, char **argv)
             {
                 common::log_error()
                     << "Error: DeltaStep distance " << src_nodes[i] << "->" << dst_nodes[i]
-                    << " mismatch. expected: " << expected_dist << " actual: " << dist << std::endl;
+                    << " mismatch. expected: " << expected_dist << " actual: " << dist << '\n';
             }
             if (bf_dist != expected_dist)
             {
-                common::log_error() << "Error: BellmanFord distance " << src_nodes[i] << "->"
-                                    << dst_nodes[i] << " mismatch. expected: " << expected_dist
-                                    << " actual: " << bf_dist << std::endl;
+                common::log_error()
+                    << "Error: BellmanFord distance " << src_nodes[i] << "->" << dst_nodes[i]
+                    << " mismatch. expected: " << expected_dist << " actual: " << bf_dist << '\n';
             }
             if (nf_dist != expected_dist)
             {
-                common::log_error() << "Error: NearFar distance " << src_nodes[i] << "->"
-                                    << dst_nodes[i] << " mismatch. expected: " << expected_dist
-                                    << " actual: " << nf_dist << std::endl;
+                common::log_error()
+                    << "Error: NearFar distance " << src_nodes[i] << "->" << dst_nodes[i]
+                    << " mismatch. expected: " << expected_dist << " actual: " << nf_dist << '\n';
             }
             checksum += dist;
         }
@@ -246,12 +251,12 @@ int main(int argc, char **argv)
         common::log() << "Processed " << num_reachable << " queries (" << num_unreachable
                       << " unreachable) in " << (dij_duration / num_reachable)
                       << "ms/req (dijkstra) " << (ds_duration / num_reachable)
-                      << "ms/req (deltastep " << (dij_duration / (double)ds_duration) << ") "
-                      << (bf_duration / num_reachable) << "ms/req (bellmanford "
-                      << (dij_duration / (double)bf_duration) << ") "
+                      << "ms/req (deltastep " << (dij_duration / static_cast<double>(ds_duration))
+                      << ") " << (bf_duration / num_reachable) << "ms/req (bellmanford "
+                      << (dij_duration / static_cast<double>(bf_duration)) << ") "
                       << (nf_duration / num_reachable) << "ms/req (nearfar "
-                      << (dij_duration / (double)nf_duration) << ")" << std::endl;
-        common::log() << "Checksum: " << (checksum / num_reachable) << std::endl;
+                      << (dij_duration / static_cast<double>(nf_duration)) << ")" << '\n';
+        common::log() << "Checksum: " << (checksum / num_reachable) << '\n';
 
 #ifdef ENABLE_STATISTICS
         common::log() << "Statistics: " << std::endl

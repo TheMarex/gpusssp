@@ -13,27 +13,28 @@ class SharedQueue
     SharedQueue() : m_queue(nullptr) {}
     explicit SharedQueue(vk::Queue queue) : m_queue(queue) {}
 
-    vk::Result submit(uint32_t submitCount, const vk::SubmitInfo *pSubmits, vk::Fence fence = nullptr)
+    vk::Result
+    submit(uint32_t submit_count, const vk::SubmitInfo *p_submits, vk::Fence fence = nullptr)
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        return m_queue.submit(submitCount, pSubmits, fence);
+        std::scoped_lock lock(m_mutex);
+        return m_queue.submit(submit_count, p_submits, fence);
     }
 
     void submit(const vk::ArrayProxy<const vk::SubmitInfo> &submits, vk::Fence fence = nullptr)
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         m_queue.submit(submits, fence);
     }
 
-    vk::Result presentKHR(const vk::PresentInfoKHR &presentInfo)
+    vk::Result presentKHR(const vk::PresentInfoKHR &present_info) // NOLINT
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        return m_queue.presentKHR(presentInfo);
+        std::scoped_lock lock(m_mutex);
+        return m_queue.presentKHR(present_info);
     }
 
-    void waitIdle()
+    void waitIdle() // NOLINT
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         m_queue.waitIdle();
     }
 

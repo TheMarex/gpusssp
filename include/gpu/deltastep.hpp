@@ -1,7 +1,11 @@
 #ifndef GPUSSSP_GPU_DELTASETP_HPP
 #define GPUSSSP_GPU_DELTASETP_HPP
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
 #include <vulkan/vulkan.hpp>
 
 #include "common/constants.hpp"
@@ -23,7 +27,7 @@ struct DeltaStepPayload
     uint32_t buffer_index;
 };
 
-using DeltaStepTracer = Tracer<DeltaStepPayload>;
+using DeltaStepTracer = Tracer<DeltaStepPayload>; // NOLINT
 
 template <typename GraphT> class DeltaStep
 {

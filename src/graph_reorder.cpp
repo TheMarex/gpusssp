@@ -1,3 +1,4 @@
+#include "common/coordinate.hpp"
 #include "common/files.hpp"
 #include "common/graph_transform.hpp"
 #include "common/logger.hpp"
@@ -6,7 +7,10 @@
 #include "common/zorder.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdlib>
 #include <numeric>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -16,10 +20,10 @@ int main(int argc, char **argv)
 {
     if (argc < 4)
     {
-        common::log() << argv[0] << " METHOD INPUT_PATH OUTPUT_PATH" << std::endl;
+        common::log() << argv[0] << " METHOD INPUT_PATH OUTPUT_PATH" << '\n';
         common::log() << "Example: " << argv[0] << " zorder cache/berlin cache/berlin_zorder"
-                      << std::endl;
-        common::log() << "Methods: zorder" << std::endl;
+                      << '\n';
+        common::log() << "Methods: zorder" << '\n';
         return EXIT_FAILURE;
     }
 
@@ -29,8 +33,8 @@ int main(int argc, char **argv)
 
     if (method != "zorder")
     {
-        common::log() << "Error: Unknown method '" << method << "'" << std::endl;
-        common::log() << "Available methods: zorder" << std::endl;
+        common::log() << "Error: Unknown method '" << method << "'" << '\n';
+        common::log() << "Available methods: zorder" << '\n';
         return EXIT_FAILURE;
     }
 
@@ -43,12 +47,12 @@ int main(int argc, char **argv)
     if (graph.num_nodes() != coordinates.size())
     {
         common::log() << "Error: Graph has " << graph.num_nodes() << " nodes but "
-                      << coordinates.size() << " coordinates" << std::endl;
+                      << coordinates.size() << " coordinates" << '\n';
         return EXIT_FAILURE;
     }
 
     common::log() << "Graph has " << graph.num_nodes() << " nodes and " << graph.num_edges()
-                  << " edges" << std::endl;
+                  << " edges" << '\n';
 
     // Compute z-order values for all nodes
     common::TimedLogger time_zorder("Computing z-order values");
@@ -66,10 +70,10 @@ int main(int argc, char **argv)
     std::iota(sorted_nodes.begin(), sorted_nodes.end(), 0);
 
     // Sort nodes by their z-order values
-    std::sort(sorted_nodes.begin(),
-              sorted_nodes.end(),
-              [&zorder_values](std::uint32_t lhs, std::uint32_t rhs)
-              { return zorder_values[lhs] < zorder_values[rhs]; });
+    std::ranges::sort(sorted_nodes,
+
+                      [&zorder_values](std::uint32_t lhs, std::uint32_t rhs)
+                      { return zorder_values[lhs] < zorder_values[rhs]; });
 
     // Create inverse permutation: old_id -> new_id
     std::vector<std::uint32_t> permutation(graph.num_nodes());
@@ -83,8 +87,8 @@ int main(int argc, char **argv)
     // Apply permutation to graph edges
     common::TimedLogger time_reorder("Reordering graph");
     auto edges = graph.edges();
-    common::renumberEdges(edges, permutation);
-    std::sort(edges.begin(), edges.end());
+    common::renumber_edges(edges, permutation);
+    std::ranges::sort(edges);
     auto reordered_graph = common::WeightedGraph<std::uint32_t>(graph.num_nodes(), edges);
     time_reorder.finished();
 
@@ -104,7 +108,7 @@ int main(int argc, char **argv)
     common::files::write_coordinates(output_path, reordered_coordinates);
     time_write.finished();
 
-    common::log() << "Successfully reordered graph using " << method << " method" << std::endl;
+    common::log() << "Successfully reordered graph using " << method << " method" << '\n';
 
     return EXIT_SUCCESS;
 }

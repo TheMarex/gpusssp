@@ -8,9 +8,7 @@
 #include <tuple>
 #include <vector>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 inline constexpr long double DEGREE_TO_RAD = 0.017453292519943295769236907684886;
@@ -26,11 +24,11 @@ struct Coordinate
 
     static Coordinate from_floating(double lon, double lat)
     {
-        return Coordinate{static_cast<std::int32_t>(lon * PRECISION),
-                          static_cast<std::int32_t>(lat * PRECISION)};
+        return Coordinate{.lon = static_cast<std::int32_t>(lon * PRECISION),
+                          .lat = static_cast<std::int32_t>(lat * PRECISION)};
     }
 
-    std::tuple<double, double> to_floating() const
+    [[nodiscard]] std::tuple<double, double> to_floating() const
     {
         return std::make_tuple(lon / PRECISION, lat / PRECISION);
     }
@@ -59,7 +57,7 @@ inline long euclid_squared_distance(const Coordinate &lhs, const Coordinate &rhs
     const long dlat = lhs.lat - rhs.lat;
     const long dlon = lhs.lon - rhs.lon;
 
-    return dlat * dlat + dlon * dlon;
+    return (dlat * dlat) + (dlon * dlon);
 }
 
 inline double bearing(const Coordinate &lhs, const Coordinate &rhs)
@@ -72,7 +70,7 @@ inline double bearing(const Coordinate &lhs, const Coordinate &rhs)
     const auto lat2 = DEGREE_TO_RAD * rhs_lat;
     const auto y = std::sin(lon_delta) * std::cos(lat2);
     const auto x =
-        std::cos(lat1) * std::sin(lat2) - std::sin(lat1) * std::cos(lat2) * std::cos(lon_delta);
+        (std::cos(lat1) * std::sin(lat2)) - (std::sin(lat1) * std::cos(lat2) * std::cos(lon_delta));
     double result = RAD_TO_DEGREE * std::atan2(y, x);
 
     while (result < 0.0)
@@ -103,17 +101,17 @@ inline double haversine_distance(const Coordinate lhs, const Coordinate rhs)
     const double dlat = dlat1 - dlat2;
 
     const double aharv = std::pow(std::sin(dlat / 2.0), 2.0) +
-                         std::cos(dlat1) * std::cos(dlat2) * std::pow(std::sin(dlong / 2.), 2);
+                         (std::cos(dlat1) * std::cos(dlat2) * std::pow(std::sin(dlong / 2.), 2));
     const double charv = 2. * std::atan2(std::sqrt(aharv), std::sqrt(1.0 - aharv));
     return EARTH_RADIUS * charv;
 }
 
-static const constexpr Coordinate INVALID_COORD = {std::numeric_limits<std::int32_t>::max(),
-                                                   std::numeric_limits<std::int32_t>::max()};
+static const constexpr Coordinate INVALID_COORD = {.lon = std::numeric_limits<std::int32_t>::max(),
+                                                   .lat = std::numeric_limits<std::int32_t>::max()};
 
 inline BoundingBox bounds(const std::vector<Coordinate> &coordinates)
 {
-    BoundingBox bbox{INVALID_COORD, {0, 0}};
+    BoundingBox bbox{.south_east = INVALID_COORD, .north_west = {.lon = 0, .lat = 0}};
 
     for (const auto &c : coordinates)
     {
@@ -126,7 +124,6 @@ inline BoundingBox bounds(const std::vector<Coordinate> &coordinates)
     return bbox;
 }
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

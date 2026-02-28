@@ -5,9 +5,7 @@
 
 #include <tuple>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 template <typename NodeT, typename WeightT> struct Edge
 {
@@ -16,14 +14,28 @@ template <typename NodeT, typename WeightT> struct Edge
 
     Edge() : start(INVALID_ID), target(INVALID_ID), weight{} {}
 
-    Edge(NodeT start_, NodeT target_, WeightT weight_)
-        : start(start_), target(target_), weight(weight_)
+    Edge(NodeT start, NodeT target, WeightT weight) : start(start), target(target), weight(weight)
     {
     }
 
     bool operator<(const Edge &rhs) const
     {
         return std::tie(start, target, weight) < std::tie(rhs.start, rhs.target, rhs.weight);
+    }
+
+    bool operator>(const Edge &rhs) const
+    {
+        return std::tie(start, target, weight) > std::tie(rhs.start, rhs.target, rhs.weight);
+    }
+
+    bool operator>=(const Edge &rhs) const
+    {
+        return std::tie(start, target, weight) >= std::tie(rhs.start, rhs.target, rhs.weight);
+    }
+
+    bool operator<=(const Edge &rhs) const
+    {
+        return std::tie(start, target, weight) <= std::tie(rhs.start, rhs.target, rhs.weight);
     }
 
     bool operator==(const Edge &rhs) const
@@ -36,6 +48,8 @@ template <typename NodeT, typename WeightT> struct Edge
     NodeT start;
     NodeT target;
     WeightT weight;
+
+    static_assert(std::totally_ordered<Edge<NodeT, WeightT>>, "Needs to be totally_ordered");
 };
 
 template <typename NodeT> struct Edge<NodeT, void>
@@ -44,11 +58,26 @@ template <typename NodeT> struct Edge<NodeT, void>
 
     Edge() : start(INVALID_ID), target(INVALID_ID) {}
 
-    Edge(NodeT start_, NodeT target_) : start(start_), target(target_) {}
+    Edge(NodeT start, NodeT target) : start(start), target(target) {}
 
     bool operator<(const Edge &rhs) const
     {
         return std::tie(start, target) < std::tie(rhs.start, rhs.target);
+    }
+
+    bool operator>(const Edge &rhs) const
+    {
+        return std::tie(start, target) > std::tie(rhs.start, rhs.target);
+    }
+
+    bool operator>=(const Edge &rhs) const
+    {
+        return std::tie(start, target) >= std::tie(rhs.start, rhs.target);
+    }
+
+    bool operator<=(const Edge &rhs) const
+    {
+        return std::tie(start, target) <= std::tie(rhs.start, rhs.target);
     }
 
     bool operator==(const Edge &rhs) const
@@ -60,8 +89,9 @@ template <typename NodeT> struct Edge<NodeT, void>
 
     NodeT start;
     NodeT target;
+
+    static_assert(std::totally_ordered<Edge<NodeT, void>>, "Needs to be totally_ordered");
 };
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

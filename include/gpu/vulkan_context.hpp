@@ -3,9 +3,13 @@
 #include "common/logger.hpp"
 #include "gpu/shared_queue.hpp"
 
+#include <cstdint>
 #include <cstdlib>
+#include <stdexcept>
+#include <string>
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_core.h>
 
 namespace gpusssp::gpu
 {
@@ -14,7 +18,7 @@ namespace detail
 {
 static constexpr size_t GPUSSSP_DEFAULT_DEVICE = 0;
 
-inline auto selectDevice()
+inline auto select_device()
 {
     if (const char *env_device = std::getenv("GPUSSSP_DEVICE"))
     {
@@ -75,46 +79,46 @@ class VulkanContext
 
     void create_instance(const char *app_name, const std::vector<const char *> &extensions)
     {
-        vk::ApplicationInfo appInfo(app_name, 1, "NoEngine", 1, VK_API_VERSION_1_3);
-        vk::InstanceCreateInfo instanceInfo(
-            {}, &appInfo, 0, nullptr, static_cast<uint32_t>(extensions.size()), extensions.data());
-        m_instance = vk::createInstance(instanceInfo);
+        vk::ApplicationInfo app_info(app_name, 1, "NoEngine", 1, VK_API_VERSION_1_3);
+        vk::InstanceCreateInfo instance_info(
+            {}, &app_info, 0, nullptr, static_cast<uint32_t>(extensions.size()), extensions.data());
+        m_instance = vk::createInstance(instance_info);
     }
 
     void select_physical_device(uint32_t device_index)
     {
-        auto physDevices = m_instance.enumeratePhysicalDevices();
+        auto phys_devices = m_instance.enumeratePhysicalDevices();
 
-        if (device_index >= physDevices.size())
+        if (device_index >= phys_devices.size())
         {
             common::log_error() << "Error: device_index " << device_index
-                                << " is out of range. Found " << physDevices.size() << " device(s)."
-                                << std::endl;
+                                << " is out of range. Found " << phys_devices.size()
+                                << " device(s)." << '\n';
             m_instance.destroy();
             throw std::runtime_error("Invalid device_index value");
         }
-        m_physical_device = physDevices[device_index];
+        m_physical_device = phys_devices[device_index];
         common::log() << "Using device " << device_index << ": "
-                      << m_physical_device.getProperties().deviceName << std::endl;
+                      << m_physical_device.getProperties().deviceName << '\n';
     }
 
     void create_device_and_queue(uint32_t queue_family_index,
                                  const std::vector<const char *> &device_extensions)
     {
-        float queuePriority = 1.0f;
-        vk::DeviceQueueCreateInfo queueInfo({}, queue_family_index, 1, &queuePriority);
+        float queue_priority = 1.0f;
+        vk::DeviceQueueCreateInfo queue_info({}, queue_family_index, 1, &queue_priority);
 
-        vk::PhysicalDeviceFeatures deviceFeatures;
-        vk::DeviceCreateInfo deviceInfo({},
-                                        1,
-                                        &queueInfo,
-                                        0,
-                                        nullptr,
-                                        device_extensions.size(),
-                                        device_extensions.data(),
-                                        &deviceFeatures);
+        vk::PhysicalDeviceFeatures device_features;
+        vk::DeviceCreateInfo device_info({},
+                                         1,
+                                         &queue_info,
+                                         0,
+                                         nullptr,
+                                         device_extensions.size(),
+                                         device_extensions.data(),
+                                         &device_features);
 
-        m_device = m_physical_device.createDevice(deviceInfo);
+        m_device = m_physical_device.createDevice(device_info);
         vk::Queue raw_queue = m_device.getQueue(queue_family_index, 0);
         new (&m_shared_queue) SharedQueue(raw_queue);
     }

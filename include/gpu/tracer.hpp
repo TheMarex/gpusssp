@@ -189,14 +189,14 @@ template <typename PayloadT> struct Tracer
     void continue_to_end() {}
     bool wait_for_signal(int = 100) { return false; }
     void wait_for_finished() {}
-    bool is_finished() const { return false; }
+    [[nodiscard]] bool is_finished() const { return false; }
     void finish() {}
     void start() {}
     std::optional<PayloadT> payload() { return {}; }
     void start_auto_play(uint32_t = 500) {}
     void stop_auto_play() {}
     void set_auto_play_speed(uint32_t) {}
-    bool is_auto_playing() const { return false; }
+    [[nodiscard]] bool is_auto_playing() const { return false; }
 };
 
 } // namespace gpusssp::gpu

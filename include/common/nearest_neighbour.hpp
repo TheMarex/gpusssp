@@ -7,22 +7,23 @@
 #include <cassert>
 #include <cstdint>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 namespace gpusssp::common
 {
 
-template <std::uint32_t MIN_LEAF_SIZE = 128> class NearestNeighbour
+template <std::uint32_t MinLeafSize = 128> class NearestNeighbour
 {
   public:
-    NearestNeighbour(const std::vector<Coordinate> &coordinates)
+    explicit NearestNeighbour(const std::vector<Coordinate> &coordinates)
         : values(coordinates.size()), coordinates(coordinates)
     {
         std::iota(values.begin(), values.end(), 0);
         partition_x(values.begin(), values.end());
     }
 
-    std::size_t nearest(const Coordinate &coordinate) const
+    [[nodiscard]] std::size_t nearest(const Coordinate &coordinate) const
     {
         std::size_t level = 0;
 
@@ -33,13 +34,13 @@ template <std::uint32_t MIN_LEAF_SIZE = 128> class NearestNeighbour
         using iter = decltype(begin);
         std::vector<std::tuple<iter, iter>> queue;
 
-        queue.push_back({begin, end});
+        queue.emplace_back(begin, end);
         while (!queue.empty())
         {
             auto [begin, end] = queue.back();
             queue.pop_back();
             auto size = std::distance(begin, end);
-            if (size <= MIN_LEAF_SIZE)
+            if (std::cmp_less_equal(size, MinLeafSize))
             {
                 while (begin != end)
                 {
@@ -64,34 +65,34 @@ template <std::uint32_t MIN_LEAF_SIZE = 128> class NearestNeighbour
             {
                 if (coordinate.lon < coordinates[*mid].lon)
                 {
-                    queue.push_back({begin, mid});
+                    queue.emplace_back(begin, mid);
                 }
                 else if (coordinate.lon > coordinates[*mid].lon)
                 {
-                    queue.push_back({std::next(mid), end});
+                    queue.emplace_back(std::next(mid), end);
                 }
                 else
                 {
                     assert(coordinate.lon == coordinates[*mid].lon);
-                    queue.push_back({begin, mid});
-                    queue.push_back({std::next(mid), end});
+                    queue.emplace_back(begin, mid);
+                    queue.emplace_back(std::next(mid), end);
                 }
             }
             else
             {
                 if (coordinate.lat < coordinates[*mid].lat)
                 {
-                    queue.push_back({begin, mid});
+                    queue.emplace_back(begin, mid);
                 }
                 else if (coordinate.lat > coordinates[*mid].lat)
                 {
-                    queue.push_back({std::next(mid), end});
+                    queue.emplace_back(std::next(mid), end);
                 }
                 else
                 {
                     assert(coordinate.lat == coordinates[*mid].lat);
-                    queue.push_back({begin, mid});
-                    queue.push_back({std::next(mid), end});
+                    queue.emplace_back(begin, mid);
+                    queue.emplace_back(std::next(mid), end);
                 }
             }
             level++;
@@ -105,12 +106,12 @@ template <std::uint32_t MIN_LEAF_SIZE = 128> class NearestNeighbour
     template <typename Iter> void partition_x(Iter begin, Iter end)
     {
         auto size = std::distance(begin, end);
-        if (size <= MIN_LEAF_SIZE)
+        if (size <= MinLeafSize)
         {
             return;
         }
         assert(size > 2);
-        auto mid = begin + size / 2;
+        auto mid = begin + (size / 2);
         assert(mid != begin);
         assert(mid != end);
 
@@ -127,12 +128,12 @@ template <std::uint32_t MIN_LEAF_SIZE = 128> class NearestNeighbour
     template <typename Iter> void partition_y(Iter begin, Iter end)
     {
         auto size = std::distance(begin, end);
-        if (size <= MIN_LEAF_SIZE)
+        if (size <= MinLeafSize)
         {
             return;
         }
         assert(size > 2);
-        const auto mid = begin + size / 2;
+        const auto mid = begin + (size / 2);
         assert(mid != begin);
         assert(mid != end);
 

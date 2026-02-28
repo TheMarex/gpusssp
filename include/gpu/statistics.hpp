@@ -45,7 +45,7 @@ class Statistics
 {
   public:
     Statistics(vk::Device &device, const vk::PhysicalDeviceMemoryProperties &mem_props)
-        : device(device), gpu_statistics_counters(nullptr)
+        : device(device)
     {
 #ifdef ENABLE_STATISTICS
         buf_statistics = create_exclusive_buffer<uint64_t>(
@@ -75,7 +75,7 @@ class Statistics
         device.freeMemory(mem_statistics);
     }
 
-    vk::Buffer buffer() const { return buf_statistics; }
+    [[nodiscard]] vk::Buffer buffer() const { return buf_statistics; }
 
     void reset()
     {
@@ -84,7 +84,7 @@ class Statistics
 #endif
     }
 
-    std::string summary() const
+    [[nodiscard]] static std::string summary()
     {
 #ifdef ENABLE_STATISTICS
         std::stringstream ss;
@@ -107,7 +107,7 @@ class Statistics
     vk::Buffer buf_statistics;
     vk::DeviceMemory mem_statistics;
 
-    uint64_t *gpu_statistics_counters;
+    uint64_t *gpu_statistics_counters{nullptr};
 };
 
 } // namespace gpusssp::gpu

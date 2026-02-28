@@ -9,12 +9,10 @@
 #include <unordered_map>
 #include <vector>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
-template <typename T, typename = int> struct is_weighted_edge : std::false_type
+template <typename T, typename = int> struct is_weighted_edge : std::false_type // NOLINT
 {
 };
 
@@ -22,7 +20,7 @@ template <typename T> struct is_weighted_edge<T, decltype((void)T::weight, 0)> :
 {
 };
 
-template <typename EdgeT> void invertEdges(std::vector<EdgeT> &edges)
+template <typename EdgeT> void invert_edges(std::vector<EdgeT> &edges)
 {
     if constexpr (is_weighted_edge<EdgeT>::value)
     {
@@ -41,7 +39,7 @@ template <typename EdgeT> void invertEdges(std::vector<EdgeT> &edges)
     }
 }
 
-template <typename EdgeT> void deduplicateEdges(std::vector<EdgeT> &edges)
+template <typename EdgeT> void deduplicate_edges(std::vector<EdgeT> &edges)
 {
     auto new_end = std::unique(edges.begin(),
                                edges.end(),
@@ -53,7 +51,7 @@ template <typename EdgeT> void deduplicateEdges(std::vector<EdgeT> &edges)
 // Returns a map old -> new
 template <typename EdgeT>
 std::pair<std::size_t, std::unordered_map<typename EdgeT::node_t, typename EdgeT::node_t>>
-renumberEdges(std::vector<EdgeT> &sorted_edges)
+renumber_edges(std::vector<EdgeT> &sorted_edges)
 {
     std::vector<typename EdgeT::node_t> node_ids;
     for (const auto &e : sorted_edges)
@@ -80,7 +78,7 @@ renumberEdges(std::vector<EdgeT> &sorted_edges)
 }
 
 template <typename EdgeT>
-void renumberEdges(std::vector<EdgeT> &edges, std::vector<typename EdgeT::node_t> &permutation)
+void renumber_edges(std::vector<EdgeT> &edges, std::vector<typename EdgeT::node_t> &permutation)
 {
     for (auto &e : edges)
     {
@@ -89,11 +87,11 @@ void renumberEdges(std::vector<EdgeT> &edges, std::vector<typename EdgeT::node_t
     }
 }
 
-template <typename GraphT> GraphT toUndirected(const GraphT &graph)
+template <typename GraphT> GraphT to_undirected(const GraphT &graph)
 {
     auto edges = graph.edges();
     auto reverse_edges = edges;
-    invertEdges(reverse_edges);
+    invert_edges(reverse_edges);
     edges.insert(edges.end(), reverse_edges.begin(), reverse_edges.end());
     reverse_edges.clear();
 
@@ -116,7 +114,7 @@ template <typename GraphT> GraphT invert(const GraphT &graph)
     return GraphT{graph.num_nodes(), std::move(edges)};
 }
 
-template <typename NodeT> std::vector<unsigned> orderToRank(const std::vector<NodeT> &order)
+template <typename NodeT> std::vector<unsigned> order_to_rank(const std::vector<NodeT> &order)
 {
     std::vector<unsigned> rank;
     rank.reserve(order.size());
@@ -132,7 +130,7 @@ template <typename NodeT> std::vector<unsigned> orderToRank(const std::vector<No
 }
 
 template <typename GraphT>
-GraphT filterByRank(const GraphT &graph, const std::vector<unsigned> &rank)
+GraphT filter_by_rank(const GraphT &graph, const std::vector<unsigned> &rank)
 {
     std::vector<typename GraphT::edge_t> remaining_edges;
 
@@ -152,10 +150,10 @@ GraphT filterByRank(const GraphT &graph, const std::vector<unsigned> &rank)
     return GraphT{graph.num_nodes(), std::move(remaining_edges)};
 }
 
-template <typename GraphT> auto computeDegree(const GraphT &graph)
+template <typename GraphT> auto compute_degree(const GraphT &graph)
 {
     std::vector<std::size_t> degree(graph.num_nodes(), 0);
-    auto undirected_graph = common::toUndirected(graph);
+    auto undirected_graph = common::to_undirected(graph);
 
     for (auto node : undirected_graph.nodes())
     {
@@ -165,7 +163,7 @@ template <typename GraphT> auto computeDegree(const GraphT &graph)
     return degree;
 }
 
-template <typename GraphT> auto computeComponents(const GraphT &undirected_graph)
+template <typename GraphT> auto compute_components(const GraphT &undirected_graph)
 {
     std::vector<std::size_t> component(undirected_graph.num_nodes(), common::INVALID_ID);
     std::vector<std::size_t> component_sizes;
@@ -207,7 +205,7 @@ template <typename GraphT> auto computeComponents(const GraphT &undirected_graph
 }
 
 template <typename GraphT, typename TurnCostModelT>
-GraphT toTurnGraph(const GraphT &graph, const TurnCostModelT &turn_cost_model)
+GraphT to_turn_graph(const GraphT &graph, const TurnCostModelT &turn_cost_model)
 {
     auto degree = computeDegree(toUndirected(graph));
     std::vector<typename GraphT::edge_t> turn_edges;
@@ -233,7 +231,7 @@ GraphT toTurnGraph(const GraphT &graph, const TurnCostModelT &turn_cost_model)
     return GraphT{graph.num_edges(), std::move(turn_edges)};
 }
 
-template <typename GraphT> auto edgeToStartNode(const GraphT &graph)
+template <typename GraphT> auto edge_to_start_node(const GraphT &graph)
 {
     std::vector<typename GraphT::edge_id_t> edge_to_start_node(graph.num_edges());
 
@@ -248,7 +246,6 @@ template <typename GraphT> auto edgeToStartNode(const GraphT &graph)
     return edge_to_start_node;
 }
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

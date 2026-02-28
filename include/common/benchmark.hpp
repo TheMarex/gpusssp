@@ -4,7 +4,7 @@
 namespace gpusssp::common
 {
 
-template <typename T> inline void DoNotOptimize(T const &value)
+template <typename T> inline void do_not_optimize(T const &value)
 {
 #if defined(__clang__) || defined(__GNUC__)
     asm volatile("" : : "r,m"(value) : "memory");

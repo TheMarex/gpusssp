@@ -52,7 +52,7 @@ int main(int argc, char **argv)
     auto queries = experiments::read_queries(graph_base_path);
     common::log() << "Loaded " << queries.size() << " queries." << std::endl;
 
-    gpu::VulkanContext vk_ctx("DeltaStepExperiment", gpu::detail::selectDevice());
+    gpu::VulkanContext vk_ctx("DeltaStepExperiment", gpu::detail::select_device());
     uint64_t timestamp = experiments::get_unix_timestamp();
     std::string query_hash = experiments::hash_queries_content(queries);
     std::string device_id = experiments::hash_device_name(vk_ctx.device_name());

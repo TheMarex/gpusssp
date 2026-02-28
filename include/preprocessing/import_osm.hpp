@@ -1,12 +1,21 @@
 #ifndef GPUSSSP_IMPORT_OSM_HPP
 #define GPUSSSP_IMPORT_OSM_HPP
 
+#include "common/constants.hpp"
 #include "common/coordinate.hpp"
 #include "common/dyn_graph.hpp"
 #include "common/graph_transform.hpp"
 #include "common/irange.hpp"
 #include "common/weighted_graph.hpp"
+#include "osmium/io/file.hpp"
+#include "osmium/osm/location.hpp"
+#include "osmium/osm/types.hpp"
 
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
 #include <osmium/handler.hpp>
 #include <osmium/handler/node_locations_for_ways.hpp>
 #include <osmium/index/map/sparse_mem_array.hpp>
@@ -15,13 +24,13 @@
 #include <osmium/visitor.hpp>
 
 #include <algorithm>
+#include <stdexcept>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
-namespace gpusssp
-{
-namespace preprocessing
+namespace gpusssp::preprocessing
 {
 
 struct OSMNetwork
@@ -51,7 +60,7 @@ namespace detail
 class ParsingHandler : public osmium::handler::Handler
 {
   public:
-    ParsingHandler(OSMNetwork &network)
+    explicit ParsingHandler(OSMNetwork &network)
         : network(network), highway_filter{false}, access_filter{true}, oneway_filter{false},
           reversed_filter{false}, tunnel_filter{false}
     {
@@ -166,8 +175,8 @@ class ParsingHandler : public osmium::handler::Handler
         }
         else if (is_oneway)
         {
-            auto begin = way.nodes().begin();
-            auto end = way.nodes().end();
+            const auto *begin = way.nodes().begin();
+            const auto *end = way.nodes().end();
             for (auto current = begin, next = std::next(current); next != end; ++current, ++next)
             {
                 auto start = osm_to_local[current->ref()];
@@ -178,8 +187,8 @@ class ParsingHandler : public osmium::handler::Handler
         }
         else
         {
-            auto begin = way.nodes().begin();
-            auto end = way.nodes().end();
+            const auto *begin = way.nodes().begin();
+            const auto *end = way.nodes().end();
             for (auto current = begin, next = std::next(current); next != end; ++current, ++next)
             {
                 auto start = osm_to_local[current->ref()];
@@ -220,7 +229,7 @@ class ParsingHandler : public osmium::handler::Handler
         return "5";
     }
 
-    double value_to_number(const std::string &value, const char *fallback_value) const
+    static double value_to_number(const std::string &value, const char *fallback_value)
     {
         auto begin_mph = value.find("mph");
 
@@ -250,10 +259,12 @@ class ParsingHandler : public osmium::handler::Handler
 
     std::tuple<double, double> compute_max_speed(const osmium::Way &way) const noexcept
     {
-        auto default_max_speed_value = default_max_speed(way);
-        auto max_speed_value = way.get_value_by_key("maxspeed", default_max_speed_value);
-        auto forward_max_speed_value = way.get_value_by_key("maxspeed:forward", max_speed_value);
-        auto backward_max_speed_value = way.get_value_by_key("maxspeed:backward", max_speed_value);
+        const auto *default_max_speed_value = default_max_speed(way);
+        const auto *max_speed_value = way.get_value_by_key("maxspeed", default_max_speed_value);
+        const auto *forward_max_speed_value =
+            way.get_value_by_key("maxspeed:forward", max_speed_value);
+        const auto *backward_max_speed_value =
+            way.get_value_by_key("maxspeed:backward", max_speed_value);
         auto forward_max_speed = std::max(
             5.0,
             std::min(140.0, value_to_number(forward_max_speed_value, default_max_speed_value)));
@@ -305,15 +316,15 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
 
     using edge_t = common::DynDataGraph<OSMNetwork::EdgeMetaData>::edge_t;
     std::vector<edge_t> edges(network.edges.size());
-    std::transform(network.edges.begin(),
-                   network.edges.end(),
-                   edges.begin(),
-                   [](const auto &edge)
-                   {
-                       auto [start, target, data] = edge;
-                       return edge_t{start, target, data};
-                   });
-    std::sort(edges.begin(), edges.end());
+    std::ranges::transform(network.edges,
+
+                           edges.begin(),
+                           [](const auto &edge)
+                           {
+                               auto [start, target, data] = edge;
+                               return edge_t{start, target, data};
+                           });
+    std::ranges::sort(edges);
 
     common::DynDataGraph<OSMNetwork::EdgeMetaData> graph{num_nodes, edges};
 
@@ -322,20 +333,20 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
     std::vector<std::size_t> component_sizes;
 
     {
-        auto undirected_graph = common::toUndirected(graph);
-        degree = computeDegree(undirected_graph);
-        std::tie(component, component_sizes) = computeComponents(undirected_graph);
+        auto undirected_graph = common::to_undirected(graph);
+        degree = compute_degree(undirected_graph);
+        std::tie(component, component_sizes) = compute_components(undirected_graph);
     }
 
     auto filtered_edges = graph.edges();
-    auto new_end =
-        std::remove_if(filtered_edges.begin(),
-                       filtered_edges.end(),
-                       [&](const auto &edge)
-                       {
-                           return component_sizes[component[edge.start]] < small_component_size ||
-                                  component_sizes[component[edge.target]] < small_component_size;
-                       });
+    auto new_end = std::remove_if( // NOLINT
+        filtered_edges.begin(),
+        filtered_edges.end(),
+        [&](const auto &edge)
+        {
+            return component_sizes[component[edge.start]] < small_component_size ||
+                   component_sizes[component[edge.target]] < small_component_size;
+        });
     auto new_size = new_end - filtered_edges.begin();
     filtered_edges.resize(new_size);
     graph = {num_nodes, filtered_edges};
@@ -422,7 +433,7 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
     std::vector<bool> used(graph.num_nodes(), false);
     for (const auto &edge : graph.edges())
     {
-        network.edges.push_back(OSMNetwork::Edge{edge.start, edge.target, edge.weight});
+        network.edges.emplace_back(edge.start, edge.target, edge.weight);
         used[edge.start] = true;
         used[edge.target] = true;
     }
@@ -453,10 +464,10 @@ inline auto simplify_network(OSMNetwork network, std::size_t small_component_siz
 auto coordinates_from_network(const OSMNetwork &network)
 {
     std::vector<common::Coordinate> coordinates(network.nodes.size());
-    std::transform(network.nodes.begin(),
-                   network.nodes.end(),
-                   coordinates.begin(),
-                   [](const auto &data) { return data.coordinate; });
+    std::ranges::transform(network.nodes,
+
+                           coordinates.begin(),
+                           [](const auto &data) { return data.coordinate; });
     return coordinates;
 }
 
@@ -478,18 +489,15 @@ auto weighted_graph_from_network(const OSMNetwork &network)
         {
             throw new std::runtime_error("Invalid maximum speed");
         }
-        auto weight = (uint32_t)(length / (double)max_speed * 3.6 * 10);
+        auto weight = static_cast<uint32_t>(length / static_cast<double>(max_speed) * 3.6 * 10);
 
-        edges.push_back(edge_t{static_cast<typename GraphT::node_id_t>(start),
-                               static_cast<typename GraphT::node_id_t>(target),
-                               weight});
+        edges.emplace_back(static_cast<node_id_t>(start), static_cast<node_id_t>(target), weight);
     }
 
-    std::sort(edges.begin(), edges.end());
+    std::ranges::sort(edges);
 
     return GraphT{network.nodes.size(), edges};
 }
-} // namespace preprocessing
-} // namespace gpusssp
+} // namespace gpusssp::preprocessing
 
 #endif

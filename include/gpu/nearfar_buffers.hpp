@@ -1,6 +1,9 @@
 #ifndef GPUSSSP_GPU_NEARFAR_BUFFERS_HPP
 #define GPUSSSP_GPU_NEARFAR_BUFFERS_HPP
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <vulkan/vulkan.hpp>
 
 #include "gpu/memory.hpp"
@@ -57,7 +60,8 @@ class NearFarBuffers
         mem_processed = gpu::alloc_and_bind(
             device, mem_props, buf_processed, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-        gpu_results = (uint32_t *)device.mapMemory(mem_results, 0, 3 * sizeof(uint32_t));
+        gpu_results =
+            static_cast<uint32_t *>(device.mapMemory(mem_results, 0, 3 * sizeof(uint32_t)));
     }
 
     ~NearFarBuffers()
@@ -86,7 +90,7 @@ class NearFarBuffers
     uint32_t *num_near() { return gpu_results + 1; }
     uint32_t *num_far() { return gpu_results + 2; }
 
-    std::array<const vk::Buffer, 8> buffers() const
+    [[nodiscard]] std::array<const vk::Buffer, 8> buffers() const
     {
         return {buf_dist,
                 buf_results,
@@ -120,7 +124,7 @@ class NearFarBuffers
     vk::DeviceMemory mem_processed;
 
     uint32_t *gpu_results;
-    uint32_t *gpu_counters;
+    uint32_t *gpu_counters{};
 
     vk::Device &device;
 };

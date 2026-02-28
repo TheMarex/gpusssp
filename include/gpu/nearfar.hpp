@@ -1,7 +1,11 @@
 #ifndef GPUSSSP_GPU_NEARFAR_HPP
 #define GPUSSSP_GPU_NEARFAR_HPP
 
+#include <cstddef>
+#include <cstdint>
+#include <ostream>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_core.h>
 
 #include "common/constants.hpp"
 #include "common/logger.hpp"
@@ -232,14 +236,15 @@ template <typename GraphT> class NearFar
             {
                 common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
                 common::log_debug() << phase << " " << *gpu_num_near << " best distance "
-                                    << *gpu_best_distance << std::endl;
+                                    << *gpu_best_distance << '\n';
                 auto record_1_start = common::Statistics::get().start(
                     common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
                 for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
                 {
-                    uint32_t relax_desc_idx = current_near_buffer_idx * 2 + current_far_buffer_idx;
+                    uint32_t relax_desc_idx =
+                        (current_near_buffer_idx * 2) + current_far_buffer_idx;
                     auto relax_desc_set = relax_pipeline.descriptor_sets[relax_desc_idx];
 
                     auto next_near_buffer =
@@ -353,7 +358,7 @@ template <typename GraphT> class NearFar
             }
 
             common::log_debug() << phase << " far " << *gpu_num_far << " best distance "
-                                << *gpu_best_distance << std::endl;
+                                << *gpu_best_distance << '\n';
 
             auto record_2_start = common::Statistics::get().start(
                 common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
@@ -415,7 +420,7 @@ template <typename GraphT> class NearFar
             current_near_buffer_idx = 0;
 
             common::log_debug() << phase << " compacted to: far " << *gpu_num_far << " near "
-                                << *gpu_num_near << std::endl;
+                                << *gpu_num_near << '\n';
 
             common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_COMPACT_DURATION,
                                            compact_start);

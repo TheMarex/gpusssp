@@ -6,9 +6,7 @@
 #include <limits>
 #include <vector>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 template <typename ElementT> class LazyClearVector
@@ -18,9 +16,9 @@ template <typename ElementT> class LazyClearVector
     using counter_t = std::uint8_t;
     static const constexpr counter_t INVALID_GENERATION = std::numeric_limits<counter_t>::max();
 
-    LazyClearVector(std::size_t size_, value_t default_value_)
-        : default_value(std::move(default_value_)), generation_counter(0), generations(size_, 0),
-          elements(size_, default_value)
+    LazyClearVector(std::size_t size, value_t default_value)
+        : default_value(std::move(default_value)), generations(size, 0),
+          elements(size, default_value)
     {
     }
 
@@ -30,12 +28,12 @@ template <typename ElementT> class LazyClearVector
 
         if (generation_counter == INVALID_GENERATION)
         {
-            std::fill(generations.begin(), generations.end(), INVALID_GENERATION);
+            std::ranges::fill(generations, INVALID_GENERATION);
             generation_counter = 0;
         }
     }
 
-    const value_t &peek(std::size_t index) const { return (*this)[index]; }
+    [[nodiscard]] const value_t &peek(std::size_t index) const { return (*this)[index]; }
 
     const value_t &operator[](std::size_t index) const
     {
@@ -60,11 +58,11 @@ template <typename ElementT> class LazyClearVector
         }
     }
 
-    std::size_t size() const { return elements.size(); }
+    [[nodiscard]] std::size_t size() const { return elements.size(); }
 
   private:
     value_t default_value;
-    counter_t generation_counter;
+    counter_t generation_counter{0};
     std::vector<counter_t> generations;
     std::vector<value_t> elements;
 };
@@ -76,9 +74,9 @@ template <> class LazyClearVector<bool>
     using counter_t = std::uint8_t;
     static const constexpr counter_t INVALID_GENERATION = std::numeric_limits<counter_t>::max();
 
-    LazyClearVector(std::size_t size_, value_t default_value_)
-        : default_value(std::move(default_value_)), generation_counter(0), generations(size_, 0),
-          elements(size_, default_value)
+    LazyClearVector(std::size_t size, value_t default_value)
+        : default_value(std::move(default_value)), generations(size, 0),
+          elements(size, default_value)
     {
     }
 
@@ -88,12 +86,12 @@ template <> class LazyClearVector<bool>
 
         if (generation_counter == INVALID_GENERATION)
         {
-            std::fill(generations.begin(), generations.end(), INVALID_GENERATION);
+            std::ranges::fill(generations, INVALID_GENERATION);
             generation_counter = 0;
         }
     }
 
-    value_t peek(std::size_t index) const { return (*this)[index]; }
+    [[nodiscard]] value_t peek(std::size_t index) const { return (*this)[index]; }
 
     value_t operator[](std::size_t index) const
     {
@@ -118,16 +116,15 @@ template <> class LazyClearVector<bool>
         }
     }
 
-    std::size_t size() const { return elements.size(); }
+    [[nodiscard]] std::size_t size() const { return elements.size(); }
 
   private:
     value_t default_value;
-    counter_t generation_counter;
+    counter_t generation_counter{0};
     std::vector<counter_t> generations;
     std::vector<value_t> elements;
 };
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

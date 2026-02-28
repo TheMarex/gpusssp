@@ -8,9 +8,7 @@
 #include <cassert>
 #include <vector>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 struct IDKeyPair
@@ -25,7 +23,7 @@ struct IDKeyPair
 class MinIDQueue
 {
   private:
-    static const unsigned tree_arity = 4;
+    static const unsigned TREE_ARITY = 4;
 
   public:
     MinIDQueue() : heap_size(0) {}
@@ -36,13 +34,13 @@ class MinIDQueue
     }
 
     //! Returns whether the queue is empty. Equivalent to checking whether size() returns 0.
-    bool empty() const { return heap_size == 0; }
+    [[nodiscard]] bool empty() const { return heap_size == 0; }
 
     //! Returns the number of elements in the queue.
-    unsigned size() const { return heap_size; }
+    [[nodiscard]] unsigned size() const { return heap_size; }
 
     //! Returns the id_count value passed to the constructor.
-    unsigned id_count() const { return id_pos.size(); }
+    [[nodiscard]] unsigned id_count() const { return id_pos.size(); }
 
     //! Checks whether an element is in the queue.
     bool contains_id(unsigned id)
@@ -59,7 +57,7 @@ class MinIDQueue
         heap_size = 0;
     }
 
-    friend void swap(MinIDQueue &l, MinIDQueue &r)
+    friend void swap(MinIDQueue &l, MinIDQueue &r) noexcept
     {
         using std::swap;
         swap(l.id_pos, r.id_pos);
@@ -70,7 +68,7 @@ class MinIDQueue
 
     //! Returns the current key of an element.
     //! Undefined if the element is not part of the queue.
-    auto get_key(unsigned id) const
+    [[nodiscard]] auto get_key(unsigned id) const
     {
         assert(id < id_count());
         assert(id_pos[id] != INVALID_ID);
@@ -78,7 +76,7 @@ class MinIDQueue
     }
 
     //! Returns the smallest element key pair without removing it from the queue.
-    IDKeyPair peek() const
+    [[nodiscard]] IDKeyPair peek() const
     {
         assert(!empty());
         return heap.front();
@@ -165,7 +163,7 @@ class MinIDQueue
     {
         while (pos != 0)
         {
-            unsigned parent = (pos - 1) / tree_arity;
+            unsigned parent = (pos - 1) / TREE_ARITY;
             if (heap[parent].key > heap[pos].key)
             {
                 std::swap(heap[pos], heap[parent]);
@@ -179,12 +177,12 @@ class MinIDQueue
     {
         for (;;)
         {
-            unsigned first_child = tree_arity * pos + 1;
+            unsigned first_child = (TREE_ARITY * pos) + 1;
             if (first_child >= heap_size)
                 return; // no children
             unsigned smallest_child = first_child;
             for (unsigned c = first_child + 1;
-                 c < std::min(tree_arity * pos + tree_arity + 1, heap_size);
+                 c < std::min((TREE_ARITY * pos) + TREE_ARITY + 1, heap_size);
                  ++c)
             {
                 if (heap[smallest_child].key > heap[c].key)
@@ -208,7 +206,6 @@ class MinIDQueue
     unsigned heap_size;
 };
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

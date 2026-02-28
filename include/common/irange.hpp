@@ -3,14 +3,11 @@
 
 #include <ranges>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 template <std::integral I> auto irange(I begin, I end) { return std::views::iota(begin, end); }
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif // INTEGER_RANGE_HPP

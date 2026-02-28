@@ -5,6 +5,8 @@
 #include "gpu/memory.hpp"
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
@@ -51,9 +53,9 @@ class CoordinatesBuffer
         device.freeMemory(mem_output);
     }
 
-    std::array<vk::Buffer, 2> buffers() const { return {buf_input, buf_output}; }
+    [[nodiscard]] std::array<vk::Buffer, 2> buffers() const { return {buf_input, buf_output}; }
 
-    size_t num_vertices() const { return count; }
+    [[nodiscard]] size_t num_vertices() const { return count; }
 
   private:
     vk::Buffer buf_input;

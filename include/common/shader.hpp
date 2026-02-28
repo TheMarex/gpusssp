@@ -17,9 +17,9 @@ inline std::vector<uint32_t> read_spv(const std::string &filename)
     assert(file.is_open());
     std::vector<char> bytes((std::istreambuf_iterator<char>(file)),
                             std::istreambuf_iterator<char>());
-    size_t wordCount = bytes.size() / 4;
-    std::vector<uint32_t> spv(wordCount);
-    std::memcpy(spv.data(), bytes.data(), wordCount * 4);
+    size_t word_count = bytes.size() / 4;
+    std::vector<uint32_t> spv(word_count);
+    std::memcpy(spv.data(), bytes.data(), word_count * 4);
     return spv;
 }
 

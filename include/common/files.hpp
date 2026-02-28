@@ -5,11 +5,7 @@
 #include "common/serialization.hpp"
 #include "common/weighted_graph.hpp"
 
-namespace gpusssp
-{
-namespace common
-{
-namespace files
+namespace gpusssp::common::files
 {
 
 template <typename T> WeightedGraph<T> read_weighted_graph(const std::string &base_path)
@@ -67,8 +63,6 @@ inline void write_coordinates(const std::string &base_path,
     serialization::write(writer, coordinates);
 }
 
-} // namespace files
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common::files
 
 #endif

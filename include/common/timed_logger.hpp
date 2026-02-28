@@ -5,28 +5,25 @@
 #include <iostream>
 #include <string>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 struct TimedLogger
 {
-    TimedLogger(const std::string &msg) : start(std::chrono::high_resolution_clock::now())
+    explicit TimedLogger(const std::string &msg) : start(std::chrono::high_resolution_clock::now())
     {
         std::cerr << msg << "... " << std::flush;
     }
 
-    void finished()
+    void finished() const
     {
         auto end = std::chrono::high_resolution_clock::now();
         auto diff = end - start;
         std::cerr << std::chrono::duration_cast<std::chrono::microseconds>(diff).count() / 1000.
-                  << " ms." << std::endl;
+                  << " ms." << '\n';
     }
 
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
 };
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

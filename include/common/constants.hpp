@@ -5,9 +5,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace gpusssp
-{
-namespace common
+namespace gpusssp::common
 {
 
 constexpr std::uint32_t INVALID_ID = std::numeric_limits<std::uint32_t>::max();
@@ -18,14 +16,16 @@ constexpr double FIXED_POINT_RESOLUTION = 10.0;
 
 constexpr double from_fixed(std::int32_t value) { return value / common::FIXED_POINT_RESOLUTION; }
 
-constexpr std::int32_t to_fixed(double value) { return value * common::FIXED_POINT_RESOLUTION; }
+constexpr std::int32_t to_fixed(double value)
+{
+    return static_cast<std::int32_t>(value * common::FIXED_POINT_RESOLUTION);
+}
 
 inline std::int32_t to_upper_fixed(double value)
 {
     return std::ceil(value * common::FIXED_POINT_RESOLUTION);
 }
 
-} // namespace common
-} // namespace gpusssp
+} // namespace gpusssp::common
 
 #endif

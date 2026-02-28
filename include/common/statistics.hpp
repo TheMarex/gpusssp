@@ -68,7 +68,7 @@ class Statistics
         return instance;
     }
 
-    void count(StatisticsEvent event)
+    void count(StatisticsEvent event) // NOLINT
     {
 #ifdef ENABLE_STATISTICS
         counts[static_cast<std::size_t>(event)]++;

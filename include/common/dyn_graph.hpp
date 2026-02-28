@@ -11,8 +11,6 @@
 #include <cstdint>
 #include <vector>
 
-#include <iostream>
-
 #define OVER_ALLOCATION 1.1
 #define MAX_OVER_ALLOCATION 1.3
 
@@ -29,26 +27,26 @@ template <typename WeightT> class DynDataGraph
     using node_range_t = decltype(irange<node_id_t>(0, 1));
     using edge_range_t = decltype(irange<edge_id_t>(0, 1));
 
-    DynDataGraph(std::size_t num_nodes_, const std::vector<edge_t> &sorted_edges)
+    DynDataGraph(std::size_t num_nodes, const std::vector<edge_t> &sorted_edges)
     {
-        fromEdges(num_nodes_, sorted_edges);
+        from_edges(num_nodes, sorted_edges);
     }
 
-    std::size_t num_nodes() const { return begin_edges.size(); }
+    [[nodiscard]] std::size_t num_nodes() const { return begin_edges.size(); }
 
-    std::size_t num_edges() const { return num_edges_; }
+    [[nodiscard]] std::size_t num_edges() const { return num_edges_; }
 
-    edge_id_t begin(node_id_t node) const { return begin_edges[node]; }
+    [[nodiscard]] edge_id_t begin(node_id_t node) const { return begin_edges[node]; }
 
-    edge_id_t end(node_id_t node) const { return end_edges[node]; }
+    [[nodiscard]] edge_id_t end(node_id_t node) const { return end_edges[node]; }
 
-    node_id_t target(edge_id_t edge) const { return targets[edge]; }
+    [[nodiscard]] node_id_t target(edge_id_t edge) const { return targets[edge]; }
 
-    const weight_t &weight(edge_id_t edge) const { return weights[edge]; }
+    [[nodiscard]] const weight_t &weight(edge_id_t edge) const { return weights[edge]; }
 
     weight_t &weight(edge_id_t edge) { return weights[edge]; }
 
-    edge_id_t edge(node_id_t start_node, node_id_t target_node) const
+    [[nodiscard]] edge_id_t edge(node_id_t start_node, node_id_t target_node) const
     {
         for (auto edge = begin(start_node); edge < end(start_node); ++edge)
         {
@@ -61,14 +59,17 @@ template <typename WeightT> class DynDataGraph
         return INVALID_ID;
     }
 
-    node_range_t nodes() const { return irange<node_id_t>(0, num_nodes()); }
+    [[nodiscard]] node_range_t nodes() const { return irange<node_id_t>(0, num_nodes()); }
 
-    edge_range_t edges(node_id_t node) const { return irange<edge_id_t>(begin(node), end(node)); }
+    [[nodiscard]] edge_range_t edges(node_id_t node) const
+    {
+        return irange<edge_id_t>(begin(node), end(node));
+    }
 
-    std::vector<edge_t> edges() const
+    [[nodiscard]] std::vector<edge_t> edges() const
     {
         std::vector<edge_t> edges;
-        edges.reserve(num_edges());
+        edges.reserve(num_edges_);
 
         for (node_id_t node = 0; node < num_nodes(); ++node)
         {
@@ -142,7 +143,7 @@ template <typename WeightT> class DynDataGraph
         else
         {
             const auto old_size = targets.size();
-            const auto new_size = old_size + (old_num_edges + 1) * OVER_ALLOCATION;
+            const auto new_size = old_size + ((old_num_edges + 1) * OVER_ALLOCATION);
             // make sure we don't see a reallocation during insertion
             // if we don't do this, we the iterators will get invalidated
             targets.reserve(new_size);
@@ -208,19 +209,19 @@ template <typename WeightT> class DynDataGraph
         auto input_edges = edges();
         std::sort(input_edges.begin(), input_edges.end());
 
-        fromEdges(num_nodes(), input_edges);
+        from_edges(num_nodes(), input_edges);
     }
 
   private:
-    void fromEdges(std::size_t num_nodes_, const std::vector<edge_t> &sorted_edges)
+    void from_edges(std::size_t num_nodes, const std::vector<edge_t> &sorted_edges)
     {
         begin_edges.clear();
         end_edges.clear();
         targets.clear();
         weights.clear();
 
-        begin_edges.reserve(num_nodes_);
-        end_edges.reserve(num_nodes_);
+        begin_edges.reserve(num_nodes);
+        end_edges.reserve(num_nodes);
         targets.reserve(sorted_edges.size());
         weights.reserve(sorted_edges.size());
 
@@ -247,12 +248,12 @@ template <typename WeightT> class DynDataGraph
             weights.push_back(edge.weight);
         }
         // fill up graps at the end
-        while (begin_edges.size() < num_nodes_)
+        while (begin_edges.size() < num_nodes)
         {
             begin_edges.push_back(targets.size());
         }
         // save the end of the block as well
-        for (unsigned node = 0; node < num_nodes_ - 1; ++node)
+        for (unsigned node = 0; node < num_nodes - 1; ++node)
         {
             end_edges.push_back(begin_edges[node + 1]);
         }
@@ -265,9 +266,9 @@ template <typename WeightT> class DynDataGraph
         assert(weights.size() == sorted_edges.size());
     }
 
-    bool is_free(const edge_id_t edge) const { return targets[edge] == INVALID_ID; }
+    [[nodiscard]] bool is_free(const edge_id_t edge) const { return targets[edge] == INVALID_ID; }
 
-    bool is_degenerated() const
+    [[nodiscard]] bool is_degenerated() const
     {
         const auto over_allocation = targets.size() / (double)num_edges_;
         return over_allocation > MAX_OVER_ALLOCATION;
@@ -275,18 +276,18 @@ template <typename WeightT> class DynDataGraph
 
     void mark_free(const edge_id_t edge) { targets[edge] = INVALID_ID; }
 
-    std::size_t num_edges_;
+    std::size_t num_edges_ = 0; // NOLINT
     std::vector<edge_id_t> begin_edges;
     std::vector<edge_id_t> end_edges;
     std::vector<node_id_t> targets;
     std::vector<weight_t> weights;
 };
 
-struct empty_data_t
+struct empty_data_t // NOLINT
 {
 };
 
-typedef DynDataGraph<empty_data_t> DynGraph;
+using DynGraph = DynDataGraph<empty_data_t>;
 } // namespace gpusssp::common
 
 #endif
