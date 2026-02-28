@@ -40,3 +40,7 @@ This is true especially in the early phases of the search and in the late stages
 
 Compare Dijkstra, DeltaStep, and NearFar at delta 900 on the berlin and germany caches using GPU 0 to capture boxplot comparisons. Hypothesis: Dijkstra should clearly lead on berlin with NearFar second, while on germany NearFar and Dijkstra stay close and DeltaStep is the slowest.
 Outcome: hypothesis invalidated – on berlin_zorder p50 Dijkstra finished in 19 µs versus 11.7 ms for DeltaStep and 19.5 ms for NearFar (DeltaStep beat NearFar), and on germany_zorder Dijkstra’s p50 was 234 µs compared to 65 ms for NearFar and 133 ms for DeltaStep.
+
+## node_batching
+
+Hypothesis: batching multiple nodes per DeltaStep invocation reduces per-bucket runtime on berlin_zorder by amortizing control overhead. We will compare SPECIALIZATION_NODES_PER_INVOCATION values {1,4,8,16,32} with delta 900 on GPU 0.
