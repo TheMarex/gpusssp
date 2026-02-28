@@ -44,3 +44,4 @@ Outcome: hypothesis invalidated – on berlin_zorder p50 Dijkstra finished in 19
 ## node_batching
 
 Hypothesis: batching multiple nodes per DeltaStep invocation reduces per-bucket runtime on berlin_zorder by amortizing control overhead. We will compare SPECIALIZATION_NODES_PER_INVOCATION values {1,4,8,16,32} with delta 900 on GPU 0.
+Outcome: hypothesis largely invalidated – berlin_zorder p50 runtimes at delta 900 worsened for 4–16 nodes/invocation (up to +10%), while 32 nodes/invocation only improved p50 from 10.8 ms to 10.7 ms and left high percentiles unchanged.
