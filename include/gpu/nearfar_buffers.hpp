@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vulkan/vulkan.hpp>
 
+#include "common/constants.hpp"
 #include "gpu/memory.hpp"
 
 namespace gpusssp::gpu
@@ -17,7 +18,7 @@ class NearFarBuffers
     NearFarBuffers(size_t num_nodes,
                    vk::Device &device,
                    const vk::PhysicalDeviceMemoryProperties &mem_props)
-        : device(device)
+        : num_nodes(static_cast<uint32_t>(num_nodes)), device(device)
     {
         buf_dist = gpu::create_exclusive_buffer<uint32_t>(
             device,
@@ -130,6 +131,78 @@ class NearFarBuffers
                 buf_phase_params};
     }
 
+    void cmd_init_dist(vk::CommandBuffer &cmd_buf, uint32_t src_node)
+    {
+        cmd_buf.fillBuffer(buf_dist, 0, num_nodes * sizeof(uint32_t), common::INF_WEIGHT);
+        cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                vk::PipelineStageFlagBits::eTransfer,
+                                vk::DependencyFlags{},
+                                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                  vk::AccessFlagBits::eTransferWrite},
+                                {},
+                                {});
+        uint32_t zero = 0;
+        cmd_buf.updateBuffer(buf_dist, src_node * sizeof(uint32_t), sizeof(uint32_t), &zero);
+    }
+
+    void cmd_init_near_far(vk::CommandBuffer &cmd_buf, uint32_t src_node)
+    {
+        uint32_t zero = 0;
+        uint32_t one = 1;
+        cmd_buf.updateBuffer(buf_near_0, 0, sizeof(uint32_t), &src_node);
+        cmd_buf.updateBuffer(buf_near_0, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &one);
+        cmd_buf.updateBuffer(buf_far_0, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &zero);
+    }
+
+    void cmd_init_phase_params(vk::CommandBuffer &cmd_buf, uint32_t delta)
+    {
+        uint32_t zero = 0;
+        cmd_buf.updateBuffer(buf_phase_params, 0, sizeof(uint32_t), &zero);
+        cmd_buf.updateBuffer(buf_phase_params, sizeof(uint32_t), sizeof(uint32_t), &delta);
+    }
+
+    void cmd_clear_near(vk::CommandBuffer &cmd_buf, uint32_t buffer_idx)
+    {
+        auto &buf = buffer_idx == 0 ? buf_near_0 : buf_near_1;
+        cmd_buf.fillBuffer(buf, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
+    }
+
+    void cmd_clear_far_and_processed(vk::CommandBuffer &cmd_buf, uint32_t current_far_buffer_idx)
+    {
+        auto &next_far = current_far_buffer_idx == 0 ? buf_far_1 : buf_far_0;
+        cmd_buf.fillBuffer(buf_near_0, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
+        cmd_buf.fillBuffer(next_far, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
+        cmd_buf.fillBuffer(buf_processed, 0, VK_WHOLE_SIZE, 0);
+    }
+
+    void cmd_sync_dist(vk::CommandBuffer &cmd_buf, uint32_t dst_node)
+    {
+        vk::BufferCopy copy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)};
+        cmd_buf.copyBuffer(buf_dist, buf_results, 1, &copy);
+    }
+
+    void cmd_sync_near_count(vk::CommandBuffer &cmd_buf, uint32_t buffer_idx)
+    {
+        auto &buf = buffer_idx == 0 ? buf_near_0 : buf_near_1;
+        vk::BufferCopy copy{num_nodes * sizeof(uint32_t), 1 * sizeof(uint32_t), sizeof(uint32_t)};
+        cmd_buf.copyBuffer(buf, buf_results, 1, &copy);
+    }
+
+    void cmd_sync_far_count(vk::CommandBuffer &cmd_buf, uint32_t buffer_idx)
+    {
+        auto &buf = buffer_idx == 0 ? buf_far_0 : buf_far_1;
+        vk::BufferCopy copy{num_nodes * sizeof(uint32_t), 2 * sizeof(uint32_t), sizeof(uint32_t)};
+        cmd_buf.copyBuffer(buf, buf_results, 1, &copy);
+    }
+
+    void cmd_sync_phase_params(vk::CommandBuffer &cmd_buf)
+    {
+        vk::BufferCopy phase_copy{0, 3 * sizeof(uint32_t), sizeof(uint32_t)};
+        vk::BufferCopy delta_copy{sizeof(uint32_t), 4 * sizeof(uint32_t), sizeof(uint32_t)};
+        cmd_buf.copyBuffer(buf_phase_params, buf_results, 1, &phase_copy);
+        cmd_buf.copyBuffer(buf_phase_params, buf_results, 1, &delta_copy);
+    }
+
   private:
     vk::Buffer buf_dist;
     vk::Buffer buf_results;
@@ -156,6 +229,7 @@ class NearFarBuffers
     uint32_t *gpu_results;
     uint32_t *gpu_counters{};
 
+    uint32_t num_nodes;
     vk::Device &device;
 };
 
