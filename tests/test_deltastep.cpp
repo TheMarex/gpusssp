@@ -28,11 +28,12 @@ TEST_CASE("DeltaStep computes correct shortest paths", "[deltastep]")
     gpusssp::gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device, mem_props);
     gpusssp::gpu::Statistics gpu_statistics(device, mem_props);
 
-    gpusssp::gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics);
+    const uint32_t delta = 3600;
+    gpusssp::gpu::DeltaStep deltastep(
+        graph_buffers, deltastep_buffers, device, gpu_statistics, delta);
     deltastep.initialize();
 
     // Test parameters
-    const uint32_t delta = 3600;
 
     // Get expected distances
 
@@ -40,7 +41,7 @@ TEST_CASE("DeltaStep computes correct shortest paths", "[deltastep]")
     {
         for (uint32_t dst_node = 0; dst_node < graph.num_nodes(); ++dst_node)
         {
-            uint32_t computed_dist = deltastep.run(cmd_pool, queue, src_node, dst_node, delta);
+            uint32_t computed_dist = deltastep.run(cmd_pool, queue, src_node, dst_node);
 
             INFO("Source: " << src_node << ", Destination: " << dst_node);
             auto expected = gpusssp::test::get_expected_distances(src_node, dst_node);

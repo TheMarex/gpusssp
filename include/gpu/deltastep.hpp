@@ -32,6 +32,7 @@ using DeltaStepTracer = Tracer<DeltaStepPayload>; // NOLINT
 template <typename GraphT> class DeltaStep
 {
     static constexpr const size_t DEFAULT_WORKGROUP_SIZE = 64u;
+    static constexpr const uint32_t DEFAULT_RELAX_BATCH_SIZE = 64u;
     struct PushConsts
     {
         uint32_t src_node;
@@ -46,9 +47,12 @@ template <typename GraphT> class DeltaStep
               DeltaStepBuffers &deltastep_buffers,
               vk::Device &device,
               Statistics &statistics,
+              uint32_t delta,
+              uint32_t relax_batch_size = DEFAULT_RELAX_BATCH_SIZE,
               uint32_t workgroup_size = DEFAULT_WORKGROUP_SIZE)
         : graph_buffers(graph_buffers), deltastep_buffers(deltastep_buffers),
-          statistics(statistics), device(device), workgroup_size(workgroup_size)
+          statistics(statistics), device(device), delta(delta),
+          relax_batch_size(relax_batch_size), workgroup_size(workgroup_size)
     {
     }
 
@@ -104,8 +108,6 @@ template <typename GraphT> class DeltaStep
                  QueueT &queue,
                  uint32_t src_node,
                  uint32_t dst_node,
-                 uint32_t delta,
-                 uint32_t batch_size = 64,
                  DeltaStepTracer *tracer = nullptr)
     {
         if (tracer)
@@ -207,7 +209,7 @@ template <typename GraphT> class DeltaStep
             while (!converged)
             {
 
-                for (uint32_t batch_iter = 0; batch_iter < batch_size; ++batch_iter)
+                for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
                 {
 
                     cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute,
@@ -364,6 +366,8 @@ template <typename GraphT> class DeltaStep
     ComputePipeline prepare_dispatch_pipeline;
 
     vk::Device &device;
+    uint32_t delta;
+    uint32_t relax_batch_size;
     uint32_t workgroup_size;
 };
 

@@ -566,7 +566,7 @@ static std::jthread start_sssp_thread(SharedContext &ctx,
                 graph, device, mem_props, cmd_pool, queue);
             gpu::Statistics statistics(device, mem_props);
             gpu::DeltaStep<common::WeightedGraph<uint32_t>> deltastep(
-                graph_buffers, deltastep_buffers, device, statistics);
+                graph_buffers, deltastep_buffers, device, statistics, ctx.delta, 1);
             deltastep.initialize();
 
             initialization_latch.count_down();
@@ -594,8 +594,7 @@ static std::jthread start_sssp_thread(SharedContext &ctx,
                 common::log() << "SSSP thread: Running delta-stepping from node " << src_node
                               << '\n';
 
-                uint32_t result =
-                    deltastep.run(cmd_pool, queue, src_node, dst_node, delta, 1, &ctx.tracer);
+                uint32_t result = deltastep.run(cmd_pool, queue, src_node, dst_node, &ctx.tracer);
 
                 {
                     std::scoped_lock lock(ctx.sssp_mutex);

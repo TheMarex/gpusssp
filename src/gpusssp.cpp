@@ -180,7 +180,7 @@ int main(int argc, char **argv)
         gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
 
-        gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics);
+        gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics, delta);
         deltastep.initialize();
 
         gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device, gpu_statistics);
@@ -203,7 +203,7 @@ int main(int argc, char **argv)
                 common::dijkstra(src_nodes[i], dst_nodes[i], graph, min_queue, costs, settled);
             common::do_not_optimize(expected_dist);
             auto time_2 = std::chrono::high_resolution_clock::now();
-            auto dist = deltastep.run(cmd_pool, queue, src_nodes[i], dst_nodes[i], delta);
+            auto dist = deltastep.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
             common::do_not_optimize(dist);
             auto time_3 = std::chrono::high_resolution_clock::now();
             auto bf_dist = bellmanford.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);

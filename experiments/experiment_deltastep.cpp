@@ -87,7 +87,7 @@ int main(int argc, char **argv)
             graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
 
-        gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics);
+        gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics, delta);
         deltastep.initialize();
 
         common::ProgressBar progress_bar(queries.size());
@@ -96,7 +96,7 @@ int main(int argc, char **argv)
         {
             auto start_time = std::chrono::high_resolution_clock::now();
 
-            auto dist = deltastep.run(cmd_pool, queue, query.from, query.to, delta);
+            auto dist = deltastep.run(cmd_pool, queue, query.from, query.to);
 
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration =
