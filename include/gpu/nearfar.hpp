@@ -3,7 +3,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <ostream>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_core.h>
 
@@ -142,8 +141,7 @@ template <typename GraphT> class NearFar
                  uint32_t delta,
                  uint32_t relax_batch_size = 64)
     {
-        auto init_start =
-            common::Statistics::get().start(common::StatisticsEvent::NEARFAR_INIT_DURATION);
+        auto init_start = common::Statistics::start(common::StatisticsEvent::NEARFAR_INIT_DURATION);
 
         vk::CommandBuffer cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
@@ -168,8 +166,8 @@ template <typename GraphT> class NearFar
         vk::BufferCopy far_count_copy{
             num_nodes * sizeof(uint32_t), 2 * sizeof(uint32_t), sizeof(uint32_t)};
 
-        auto record_0_start = common::Statistics::get().start(
-            common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
+        auto record_0_start =
+            common::Statistics::start(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
         cmd_buf.fillBuffer(dist_buffer, 0, num_nodes * sizeof(uint32_t), common::INF_WEIGHT);
@@ -230,14 +228,14 @@ template <typename GraphT> class NearFar
             common::Statistics::get().count(common::StatisticsEvent::NEARFAR_PHASE);
 
             auto relax_start =
-                common::Statistics::get().start(common::StatisticsEvent::NEARFAR_RELAX_DURATION);
+                common::Statistics::start(common::StatisticsEvent::NEARFAR_RELAX_DURATION);
 
             while (*gpu_num_near > 0)
             {
                 common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
                 common::log_debug() << phase << " " << *gpu_num_near << " best distance "
                                     << *gpu_best_distance << '\n';
-                auto record_1_start = common::Statistics::get().start(
+                auto record_1_start = common::Statistics::start(
                     common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
                 cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
@@ -350,7 +348,7 @@ template <typename GraphT> class NearFar
             phase++;
 
             auto compact_start =
-                common::Statistics::get().start(common::StatisticsEvent::NEARFAR_COMPACT_DURATION);
+                common::Statistics::start(common::StatisticsEvent::NEARFAR_COMPACT_DURATION);
 
             if (*gpu_num_far == 0)
             {
@@ -360,8 +358,8 @@ template <typename GraphT> class NearFar
             common::log_debug() << phase << " far " << *gpu_num_far << " best distance "
                                 << *gpu_best_distance << '\n';
 
-            auto record_2_start = common::Statistics::get().start(
-                common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
+            auto record_2_start =
+                common::Statistics::start(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
             cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
             auto compact_desc_set = compact_pipeline.descriptor_sets[current_far_buffer_idx];

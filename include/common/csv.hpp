@@ -3,12 +3,18 @@
 
 #include "common/string_util.hpp"
 
+#include <cstddef>
 #include <fstream>
 #include <optional>
+#include <ostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <vector>
+
+// NOLINTBEGIN(readability-identifier-naming)
 
 namespace gpusssp::common
 {
@@ -57,7 +63,7 @@ template <typename T> using optional_inner_type_t = typename optional_inner_type
 template <std::size_t Column, class... Types>
 void parse_column(std::vector<std::string> &columns, std::tuple<Types...> &tuple)
 {
-    using column_type = typename std::tuple_element<Column, std::tuple<Types...>>::type;
+    using column_type = std::tuple_element_t<Column, std::tuple<Types...>>;
     using inner_type = optional_inner_type_t<column_type>;
 
     // Check if we have enough columns
@@ -81,9 +87,7 @@ void parse_column(std::vector<std::string> &columns, std::tuple<Types...> &tuple
             // Parse into the optional type
             if constexpr(std::is_same_v<double, inner_type>) {
                 std::get<Column>(tuple) = std::stof(columns[Column]);
-            } else if constexpr(std::is_same_v<int, inner_type>) {
-                std::get<Column>(tuple) = std::stoi(columns[Column]);
-            } else if constexpr(std::is_same_v<unsigned, inner_type>) {
+            } else if constexpr(std::is_same_v<int, inner_type> || std::is_same_v<unsigned, inner_type>) {
                 std::get<Column>(tuple) = std::stoi(columns[Column]);
             } else if constexpr(std::is_same_v<unsigned char, inner_type>) {
                 std::get<Column>(tuple) = static_cast<unsigned char>(std::stoi(columns[Column]));
@@ -96,9 +100,7 @@ void parse_column(std::vector<std::string> &columns, std::tuple<Types...> &tuple
             }
         } else if constexpr(std::is_same_v<double, column_type>) {
             std::get<Column>(tuple) = std::stof(columns[Column]);
-        } else if constexpr(std::is_same_v<int, column_type>) {
-            std::get<Column>(tuple) = std::stoi(columns[Column]);
-        } else if constexpr(std::is_same_v<unsigned, column_type>) {
+        } else if constexpr(std::is_same_v<int, column_type> || std::is_same_v<unsigned, column_type>) {
             std::get<Column>(tuple) = std::stoi(columns[Column]);
         } else if constexpr(std::is_same_v<unsigned char, inner_type>) {
             std::get<Column>(tuple) = static_cast<unsigned char>(std::stoi(columns[Column]));
@@ -113,7 +115,7 @@ void parse_column(std::vector<std::string> &columns, std::tuple<Types...> &tuple
     }
 
     // clang-format off
-    if constexpr(Column + 1 < std::tuple_size<std::tuple<Types...>>::value) {
+    if constexpr(Column + 1 < std::tuple_size_v<std::tuple<Types...>>) {
         parse_column<Column + 1>(columns, tuple);
     }
     // clang-format on
@@ -197,7 +199,7 @@ template <> struct stream_printer<unsigned char>
 {
     friend auto &operator<<(std::ostream &ss, const stream_printer &other)
     {
-        ss << (unsigned)other.value;
+        ss << static_cast<unsigned>(other.value);
         return ss;
     }
 
@@ -225,7 +227,7 @@ template <> struct stream_printer<csv::skip>
 
 template <typename T> auto to_csv_column(const T &value)
 {
-    return stream_printer<typename std::remove_reference<T>::type>{value};
+    return stream_printer<std::remove_reference_t<T>>{value};
 }
 
 template <std::size_t Column, class... Types>
@@ -240,7 +242,7 @@ void append_column(std::stringstream &ss, const std::tuple<Types...> &tuple, con
     ss << to_csv_column(std::get<Column>(tuple));
 
     // clang-format off
-    if constexpr(Column + 1 < std::tuple_size<std::tuple<Types...>>::value) {
+    if constexpr(Column + 1 < std::tuple_size_v<std::tuple<Types...>>) {
         append_column<Column + 1>(ss, tuple, delimiter);
     }
     // clang-format on
@@ -262,7 +264,7 @@ template <class... Types> class CSVReader
   public:
     using output_t = std::tuple<Types...>;
 
-    CSVReader(const std::string &path, const char *delimiter = ",")
+    explicit CSVReader(const std::string &path, const char *delimiter = ",")
         : stream(path), delimiter(delimiter)
     {
         stream.exceptions(std::ifstream::badbit);
@@ -289,12 +291,12 @@ template <class... Types> class CSVReader
             detail::split(tokens, line, delimiter);
 
             // ignore empty lines
-            if (tokens.size() == 0)
+            if (tokens.empty())
                 return true;
 
             constexpr std::size_t required_columns =
                 detail::count_required_columns<Types...>::value;
-            constexpr std::size_t total_columns = std::tuple_size<output_t>::value;
+            constexpr std::size_t total_columns = std::tuple_size_v<output_t>;
 
             // Check if we have too few columns (less than required)
             if (tokens.size() < required_columns)
@@ -331,7 +333,7 @@ template <class... Types> class CSVWriter
   public:
     using input_t = std::tuple<Types...>;
 
-    CSVWriter(const std::string &path, const char *delimiter = ",")
+    explicit CSVWriter(const std::string &path, const char *delimiter = ",")
         : stream(path), delimiter(delimiter)
     {
         stream.exceptions(std::ifstream::badbit);
@@ -339,7 +341,7 @@ template <class... Types> class CSVWriter
 
     void write_header(const std::vector<std::string> &header)
     {
-        stream << detail::join(header, delimiter) << std::endl;
+        stream << detail::join(header, delimiter) << '\n';
         ;
     }
 
@@ -353,5 +355,7 @@ template <class... Types> class CSVWriter
     std::ofstream stream;
 };
 } // namespace gpusssp::common
+
+// NOLINTEND(readability-identifier-naming)
 
 #endif

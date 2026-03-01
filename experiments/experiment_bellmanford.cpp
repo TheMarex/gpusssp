@@ -2,7 +2,6 @@
 #include "common/files.hpp"
 #include "common/logger.hpp"
 #include "common/progress_bar.hpp"
-#include "common/statistics.hpp"
 #include "common/weighted_graph.hpp"
 #include "experiment_util.hpp"
 #include "queries.hpp"
@@ -14,6 +13,10 @@
 #include "gpu/vulkan_context.hpp"
 
 #include <chrono>
+#include <cstdint>
+#include <optional>
+#include <ostream>
+#include <string>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
@@ -24,7 +27,7 @@ int main(int argc, char **argv)
     if (argc < 3)
     {
         common::log_error() << "Usage: " << argv[0] << " <graph_base_path> <xp_base_path> [xp_name]"
-                            << std::endl;
+                            << '\n';
         return 1;
     }
 
@@ -37,13 +40,13 @@ int main(int argc, char **argv)
         xp_name = argv[3];
     }
 
-    common::log() << "Loading graph from: " << graph_base_path << std::endl;
+    common::log() << "Loading graph from: " << graph_base_path << '\n';
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_base_path);
-    common::log() << "Graph loaded: " << graph.num_nodes() << " nodes." << std::endl;
+    common::log() << "Graph loaded: " << graph.num_nodes() << " nodes." << '\n';
 
-    common::log() << "Loading queries from: " << graph_base_path << "/queries.csv" << std::endl;
+    common::log() << "Loading queries from: " << graph_base_path << "/queries.csv" << '\n';
     auto queries = experiments::read_queries(graph_base_path);
-    common::log() << "Loaded " << queries.size() << " queries." << std::endl;
+    common::log() << "Loaded " << queries.size() << " queries." << '\n';
 
     gpu::VulkanContext vk_ctx("BellmanFordExperiment", gpu::detail::select_device());
     uint64_t timestamp = experiments::get_unix_timestamp();
@@ -56,20 +59,20 @@ int main(int argc, char **argv)
         xp_base_path, xp_name, graph_name, query_hash, device_id);
     std::string output_filename = experiments::generate_experiment_filename(
         xp_base_path, xp_name, graph_name, query_hash, device_id, timestamp, variant);
-    common::log() << "Output file: " << output_filename << std::endl;
+    common::log() << "Output file: " << output_filename << '\n';
 
     auto device = vk_ctx.device();
     auto queue = vk_ctx.queue();
-    auto cmdPool = vk_ctx.command_pool();
+    auto cmd_pool = vk_ctx.command_pool();
 
     common::CSVWriter<uint32_t, uint32_t, std::optional<uint8_t>, uint32_t, uint64_t> writer(
         output_filename);
     writer.write_header({"from_node_id", "to_node_id", "rank", "distance", "time"});
 
-    common::log() << "Running queries..." << std::endl;
+    common::log() << "Running queries..." << '\n';
 
     {
-        gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmdPool, queue);
+        gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmd_pool, queue);
         gpu::BellmanFordBuffers bellmanford_buffers(
             graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
@@ -83,7 +86,7 @@ int main(int argc, char **argv)
         {
             auto start_time = std::chrono::high_resolution_clock::now();
 
-            auto dist = bellmanford.run(cmdPool, queue, query.from, query.to);
+            auto dist = bellmanford.run(cmd_pool, queue, query.from, query.to);
 
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration =
@@ -96,9 +99,9 @@ int main(int argc, char **argv)
             progress_bar.increment();
         }
 
-        common::log() << "Done." << std::endl;
+        common::log() << "Done." << '\n';
         common::log() << "Processed " << queries.size() << " queries in "
-                      << (total_duration / queries.size()) << "us/req (average)" << std::endl;
+                      << (total_duration / queries.size()) << "us/req (average)" << '\n';
 
 #ifdef ENABLE_STATISTICS
         common::log() << "Statistics: " << std::endl
