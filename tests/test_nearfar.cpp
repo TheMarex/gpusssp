@@ -27,7 +27,7 @@ TEST_CASE("NearFar computes correct shortest paths", "[nearfar]")
     gpusssp::gpu::Statistics statistics(device, mem_props);
     const uint32_t delta = 3600;
     gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta);
-    nearfar.initialize();
+    nearfar.initialize(cmd_pool);
 
     for (uint32_t src_node = 0; src_node < graph.num_nodes(); ++src_node)
     {
@@ -60,7 +60,7 @@ TEST_CASE("NearFar statistics are collected", "[nearfar][statistics]")
     gpusssp::gpu::Statistics statistics(device, mem_props);
     const uint32_t delta = 3600;
     gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta);
-    nearfar.initialize();
+    nearfar.initialize(cmd_pool);
 
     const uint32_t src_node = 0;
     const uint32_t dst_node = 3;

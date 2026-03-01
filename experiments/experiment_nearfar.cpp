@@ -86,7 +86,7 @@ int main(int argc, char **argv)
         gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::Statistics statistics(device, vk_ctx.memory_properties());
         gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta);
-        nearfar.initialize();
+        nearfar.initialize(cmd_pool);
 
         common::ProgressBar progress_bar(queries.size());
         uint64_t total_duration = 0;
