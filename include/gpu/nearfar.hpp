@@ -113,6 +113,177 @@ template <typename GraphT> class NearFar
             {workgroup_size});
     }
 
+    void record_relax_batch_commands(vk::CommandBuffer &cmd_buf,
+                                     uint32_t src_node,
+                                     uint32_t dst_node,
+                                     uint32_t delta,
+                                     uint32_t num_nodes,
+                                     uint32_t phase,
+                                     uint32_t relax_batch_size,
+                                     vk::Buffer near_0_buffer,
+                                     vk::Buffer near_1_buffer,
+                                     vk::Buffer far_0_buffer,
+                                     vk::Buffer dist_buffer,
+                                     vk::Buffer results_buffer,
+                                     vk::Buffer dispatch_relax_buffer,
+                                     const vk::BufferCopy &results_copy,
+                                     const vk::BufferCopy &near_count_copy,
+                                     const vk::BufferCopy &far_count_copy)
+    {
+        auto record_start =
+            common::Statistics::start(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
+
+        cmd_buf.begin({vk::CommandBufferUsageFlagBits::eSimultaneousUse});
+
+        for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
+        {
+            uint32_t current_near_buffer_idx = batch_iter % 2;
+            auto relax_desc_set = relax_pipeline.descriptor_sets[current_near_buffer_idx];
+
+            auto next_near_buffer = current_near_buffer_idx == 0 ? near_1_buffer : near_0_buffer;
+
+            // clear size of next_near
+            cmd_buf.fillBuffer(next_near_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
+            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                    vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::DependencyFlags{},
+                                    vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                      vk::AccessFlagBits::eShaderRead |
+                                                          vk::AccessFlagBits::eShaderWrite},
+                                    {},
+                                    {});
+
+            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute,
+                                 prepare_dispatch_pipeline.pipeline);
+            cmd_buf.bindDescriptorSets(
+                vk::PipelineBindPoint::eCompute,
+                prepare_dispatch_pipeline.layout,
+                0,
+                prepare_dispatch_pipeline.descriptor_sets[current_near_buffer_idx],
+                {});
+            cmd_buf.pushConstants(prepare_dispatch_pipeline.layout,
+                                  vk::ShaderStageFlagBits::eCompute,
+                                  0,
+                                  4,
+                                  &num_nodes);
+            cmd_buf.dispatch(1, 1, 1);
+
+            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::DependencyFlags{},
+                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                      vk::AccessFlagBits::eShaderRead |
+                                                          vk::AccessFlagBits::eIndirectCommandRead},
+                                    {},
+                                    {});
+
+            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, relax_pipeline.pipeline);
+            cmd_buf.bindDescriptorSets(
+                vk::PipelineBindPoint::eCompute, relax_pipeline.layout, 0, relax_desc_set, {});
+
+            PushConsts pc{src_node, dst_node, num_nodes, phase, delta};
+            cmd_buf.pushConstants(
+                relax_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+            cmd_buf.dispatchIndirect(dispatch_relax_buffer, 0);
+
+            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::PipelineStageFlagBits::eTransfer,
+                                    vk::DependencyFlags{},
+                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
+                                                      vk::AccessFlagBits::eTransferRead},
+                                    {},
+                                    {});
+
+            cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
+            cmd_buf.copyBuffer(next_near_buffer, results_buffer, 1, &near_count_copy);
+            cmd_buf.copyBuffer(far_0_buffer, results_buffer, 1, &far_count_copy);
+
+            cmd_buf.pipelineBarrier(
+                vk::PipelineStageFlagBits::eTransfer,
+                vk::PipelineStageFlagBits::eHost | vk::PipelineStageFlagBits::eComputeShader,
+                vk::DependencyFlags{},
+                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                  vk::AccessFlagBits::eHostRead | vk::AccessFlagBits::eShaderRead},
+                {},
+                {});
+        }
+
+        cmd_buf.end();
+
+        common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION,
+                                       record_start);
+    }
+
+    void record_compact_commands(vk::CommandBuffer &cmd_buf,
+                                 uint32_t src_node,
+                                 uint32_t dst_node,
+                                 uint32_t delta,
+                                 uint32_t num_nodes,
+                                 uint32_t phase,
+                                 uint32_t num_far,
+                                 vk::Buffer near_0_buffer,
+                                 vk::Buffer far_1_buffer,
+                                 vk::Buffer dist_buffer,
+                                 vk::Buffer results_buffer,
+                                 vk::Buffer processed_buffer,
+                                 const vk::BufferCopy &results_copy,
+                                 const vk::BufferCopy &near_count_copy,
+                                 const vk::BufferCopy &far_count_copy)
+    {
+        auto record_start =
+            common::Statistics::start(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
+
+        cmd_buf.begin({vk::CommandBufferUsageFlagBits::eSimultaneousUse});
+
+        auto compact_desc_set = compact_pipeline.descriptor_sets[0];
+
+        cmd_buf.fillBuffer(near_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
+        cmd_buf.fillBuffer(far_1_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
+        cmd_buf.fillBuffer(processed_buffer, 0, VK_WHOLE_SIZE, 0);
+        cmd_buf.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eComputeShader,
+            vk::DependencyFlags{},
+            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                              vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
+            {},
+            {});
+
+        cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, compact_pipeline.pipeline);
+        cmd_buf.bindDescriptorSets(
+            vk::PipelineBindPoint::eCompute, compact_pipeline.layout, 0, compact_desc_set, {});
+
+        PushConsts pc{src_node, dst_node, num_nodes, phase, delta};
+        cmd_buf.pushConstants(
+            compact_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
+        cmd_buf.dispatch((num_far + workgroup_size - 1) / workgroup_size, 1, 1);
+
+        cmd_buf.pipelineBarrier(
+            vk::PipelineStageFlagBits::eComputeShader,
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::DependencyFlags{},
+            vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eTransferRead},
+            {},
+            {});
+
+        cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
+        cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);
+        cmd_buf.copyBuffer(far_1_buffer, results_buffer, 1, &far_count_copy);
+
+        cmd_buf.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eHost,
+            vk::DependencyFlags{},
+            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead},
+            {},
+            {});
+
+        cmd_buf.end();
+
+        common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION,
+                                       record_start);
+    }
+
     template <typename QueueT>
     uint32_t run(vk::CommandPool &cmd_pool,
                  QueueT &queue,
@@ -123,7 +294,11 @@ template <typename GraphT> class NearFar
     {
         auto init_start = common::Statistics::start(common::StatisticsEvent::NEARFAR_INIT_DURATION);
 
-        vk::CommandBuffer cmd_buf =
+        vk::CommandBuffer init_cmd_buf =
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
+        vk::CommandBuffer relax_cmd_buf =
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
+        vk::CommandBuffer compact_cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
 
         uint32_t *gpu_best_distance = nearfar_buffers.best_distance();
@@ -148,28 +323,31 @@ template <typename GraphT> class NearFar
 
         auto record_0_start =
             common::Statistics::start(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
-        cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+        init_cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
-        cmd_buf.fillBuffer(dist_buffer, 0, num_nodes * sizeof(uint32_t), common::INF_WEIGHT);
-        cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                vk::PipelineStageFlagBits::eTransfer,
-                                vk::DependencyFlags{},
-                                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                  vk::AccessFlagBits::eTransferWrite},
-                                {},
-                                {});
+        init_cmd_buf.fillBuffer(dist_buffer, 0, num_nodes * sizeof(uint32_t), common::INF_WEIGHT);
+        init_cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                     vk::PipelineStageFlagBits::eTransfer,
+                                     vk::DependencyFlags{},
+                                     vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                       vk::AccessFlagBits::eTransferWrite},
+                                     {},
+                                     {});
 
         uint32_t zero = 0;
         uint32_t one = 1;
-        cmd_buf.updateBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), &zero);
+        init_cmd_buf.updateBuffer(
+            dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), &zero);
 
-        cmd_buf.updateBuffer(near_0_buffer, 0, sizeof(uint32_t), &src_node);
+        init_cmd_buf.updateBuffer(near_0_buffer, 0, sizeof(uint32_t), &src_node);
         // initialize near_0 counter with 1
-        cmd_buf.updateBuffer(near_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &one);
+        init_cmd_buf.updateBuffer(
+            near_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &one);
         // initialize far_0 counter with 0
-        cmd_buf.updateBuffer(far_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &zero);
+        init_cmd_buf.updateBuffer(
+            far_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &zero);
 
-        cmd_buf.pipelineBarrier(
+        init_cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
             vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer,
             vk::DependencyFlags{},
@@ -179,11 +357,11 @@ template <typename GraphT> class NearFar
             {},
             {});
 
-        cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
-        cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);
-        cmd_buf.copyBuffer(far_0_buffer, results_buffer, 1, &far_count_copy);
+        init_cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
+        init_cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);
+        init_cmd_buf.copyBuffer(far_0_buffer, results_buffer, 1, &far_count_copy);
 
-        cmd_buf.pipelineBarrier(
+        init_cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
             vk::PipelineStageFlagBits::eHost,
             vk::DependencyFlags{},
@@ -191,13 +369,12 @@ template <typename GraphT> class NearFar
             {},
             {});
 
-        cmd_buf.end();
+        init_cmd_buf.end();
         common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION,
                                        record_0_start);
-        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
+        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf});
         queue.waitIdle();
 
-        uint32_t current_near_buffer_idx = 0;
         uint32_t phase = 0;
 
         common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_INIT_DURATION, init_start);
@@ -209,104 +386,30 @@ template <typename GraphT> class NearFar
             auto relax_start =
                 common::Statistics::start(common::StatisticsEvent::NEARFAR_RELAX_DURATION);
 
+            record_relax_batch_commands(relax_cmd_buf,
+                                        src_node,
+                                        dst_node,
+                                        delta,
+                                        num_nodes,
+                                        phase,
+                                        relax_batch_size,
+                                        near_0_buffer,
+                                        near_1_buffer,
+                                        far_0_buffer,
+                                        dist_buffer,
+                                        results_buffer,
+                                        dispatch_relax_buffer,
+                                        results_copy,
+                                        near_count_copy,
+                                        far_count_copy);
+
             while (*gpu_num_near > 0)
             {
                 common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
                 common::log_debug() << phase << " " << *gpu_num_near << " best distance "
                                     << *gpu_best_distance << '\n';
-                auto record_1_start = common::Statistics::start(
-                    common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
-                cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
-                for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
-                {
-                    auto relax_desc_set = relax_pipeline.descriptor_sets[current_near_buffer_idx];
-
-                    auto next_near_buffer =
-                        current_near_buffer_idx == 0 ? near_1_buffer : near_0_buffer;
-
-                    // clear size of next_near
-                    cmd_buf.fillBuffer(
-                        next_near_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
-                    cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                            vk::PipelineStageFlagBits::eComputeShader,
-                                            vk::DependencyFlags{},
-                                            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                              vk::AccessFlagBits::eShaderRead |
-                                                                  vk::AccessFlagBits::eShaderWrite},
-                                            {},
-                                            {});
-
-                    cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute,
-                                         prepare_dispatch_pipeline.pipeline);
-                    cmd_buf.bindDescriptorSets(
-                        vk::PipelineBindPoint::eCompute,
-                        prepare_dispatch_pipeline.layout,
-                        0,
-                        prepare_dispatch_pipeline.descriptor_sets[current_near_buffer_idx],
-                        {});
-                    cmd_buf.pushConstants(prepare_dispatch_pipeline.layout,
-                                          vk::ShaderStageFlagBits::eCompute,
-                                          0,
-                                          4,
-                                          &num_nodes);
-                    cmd_buf.dispatch(1, 1, 1);
-
-                    cmd_buf.pipelineBarrier(
-                        vk::PipelineStageFlagBits::eComputeShader,
-                        vk::PipelineStageFlagBits::eComputeShader,
-                        vk::DependencyFlags{},
-                        vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                          vk::AccessFlagBits::eShaderRead |
-                                              vk::AccessFlagBits::eIndirectCommandRead},
-                        {},
-                        {});
-
-                    cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, relax_pipeline.pipeline);
-                    cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-                                               relax_pipeline.layout,
-                                               0,
-                                               relax_desc_set,
-                                               {});
-
-                    PushConsts pc{src_node, dst_node, num_nodes, phase, delta};
-                    cmd_buf.pushConstants(relax_pipeline.layout,
-                                          vk::ShaderStageFlagBits::eCompute,
-                                          0,
-                                          sizeof(pc),
-                                          &pc);
-                    cmd_buf.dispatchIndirect(dispatch_relax_buffer, 0);
-
-                    cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                            vk::PipelineStageFlagBits::eTransfer,
-                                            vk::DependencyFlags{},
-                                            vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                                              vk::AccessFlagBits::eTransferRead},
-                                            {},
-                                            {});
-
-                    cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
-                    cmd_buf.copyBuffer(next_near_buffer, results_buffer, 1, &near_count_copy);
-                    cmd_buf.copyBuffer(far_0_buffer, results_buffer, 1, &far_count_copy);
-
-                    cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                            vk::PipelineStageFlagBits::eHost |
-                                                vk::PipelineStageFlagBits::eComputeShader,
-                                            vk::DependencyFlags{},
-                                            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                              vk::AccessFlagBits::eHostRead |
-                                                                  vk::AccessFlagBits::eShaderRead},
-                                            {},
-                                            {});
-
-                    current_near_buffer_idx = 1 - current_near_buffer_idx;
-                }
-
-                common::Statistics::get().stop(
-                    common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION, record_1_start);
-
-                cmd_buf.end();
-                queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
+                queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &relax_cmd_buf});
                 queue.waitIdle();
             }
 
@@ -334,61 +437,24 @@ template <typename GraphT> class NearFar
             common::log_debug() << phase << " far " << *gpu_num_far << " best distance "
                                 << *gpu_best_distance << '\n';
 
-            auto record_2_start =
-                common::Statistics::start(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
-            cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+            record_compact_commands(compact_cmd_buf,
+                                    src_node,
+                                    dst_node,
+                                    delta,
+                                    num_nodes,
+                                    phase,
+                                    *gpu_num_far,
+                                    near_0_buffer,
+                                    far_1_buffer,
+                                    dist_buffer,
+                                    results_buffer,
+                                    processed_buffer,
+                                    results_copy,
+                                    near_count_copy,
+                                    far_count_copy);
 
-            auto compact_desc_set = compact_pipeline.descriptor_sets[0];
-
-            cmd_buf.fillBuffer(near_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
-            cmd_buf.fillBuffer(far_1_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
-            cmd_buf.fillBuffer(processed_buffer, 0, VK_WHOLE_SIZE, 0);
-            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                    vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                      vk::AccessFlagBits::eShaderRead |
-                                                          vk::AccessFlagBits::eShaderWrite},
-                                    {},
-                                    {});
-
-            cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute, compact_pipeline.pipeline);
-            cmd_buf.bindDescriptorSets(
-                vk::PipelineBindPoint::eCompute, compact_pipeline.layout, 0, compact_desc_set, {});
-
-            PushConsts pc{src_node, dst_node, num_nodes, phase, delta};
-            cmd_buf.pushConstants(
-                compact_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
-            cmd_buf.dispatch((*gpu_num_far + workgroup_size - 1) / workgroup_size, 1, 1);
-
-            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::PipelineStageFlagBits::eTransfer,
-                                    vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                                      vk::AccessFlagBits::eTransferRead},
-                                    {},
-                                    {});
-
-            cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
-            cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);
-            cmd_buf.copyBuffer(far_1_buffer, results_buffer, 1, &far_count_copy);
-
-            cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                    vk::PipelineStageFlagBits::eHost,
-                                    vk::DependencyFlags{},
-                                    vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                      vk::AccessFlagBits::eHostRead},
-                                    {},
-                                    {});
-
-            cmd_buf.end();
-            common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION,
-                                           record_2_start);
-
-            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &cmd_buf});
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &compact_cmd_buf});
             queue.waitIdle();
-
-            current_near_buffer_idx = 0;
 
             common::log_debug() << phase << " compacted to: far " << *gpu_num_far << " near "
                                 << *gpu_num_near << '\n';
