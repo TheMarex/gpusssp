@@ -32,7 +32,7 @@ class AdjGraph
     }
 
     template <typename EdgeT>
-    AdjGraph(std::size_t num_nodes, const std::vector<EdgeT> &sorted_edges)
+    AdjGraph(std::size_t num_nodes_, const std::vector<EdgeT> &sorted_edges) // NOLINT
     {
         assert(std::is_sorted(
             sorted_edges.begin(),
@@ -56,7 +56,7 @@ class AdjGraph
             targets.push_back(edge.target);
         }
         // fill up graps at the end
-        while (first_edges.size() < num_nodes + 1)
+        while (first_edges.size() < num_nodes_ + 1)
         {
             first_edges.push_back(targets.size());
         }
