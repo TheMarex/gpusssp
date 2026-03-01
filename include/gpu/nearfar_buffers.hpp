@@ -20,17 +20,33 @@ class NearFarBuffers
         : device(device)
     {
         buf_dist = gpu::create_exclusive_buffer<uint32_t>(
-            device, num_nodes, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferSrc);
+            device,
+            num_nodes,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferSrc);
         buf_results = gpu::create_exclusive_buffer<uint32_t>(
-            device, 3, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
+            device,
+            5,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
         buf_near_0 = gpu::create_exclusive_buffer<uint32_t>(
-            device, num_nodes + 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc);
+            device,
+            num_nodes + 1,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst |
+                vk::BufferUsageFlagBits::eTransferSrc);
         buf_near_1 = gpu::create_exclusive_buffer<uint32_t>(
-            device, num_nodes + 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc);
+            device,
+            num_nodes + 1,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst |
+                vk::BufferUsageFlagBits::eTransferSrc);
         buf_far_0 = gpu::create_exclusive_buffer<uint32_t>(
-            device, num_nodes + 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc);
+            device,
+            num_nodes + 1,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst |
+                vk::BufferUsageFlagBits::eTransferSrc);
         buf_far_1 = gpu::create_exclusive_buffer<uint32_t>(
-            device, num_nodes + 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc);
+            device,
+            num_nodes + 1,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst |
+                vk::BufferUsageFlagBits::eTransferSrc);
         buf_dispatch_relax = gpu::create_exclusive_buffer<uint32_t>(
             device,
             3,
@@ -38,6 +54,10 @@ class NearFarBuffers
         buf_processed = gpu::create_exclusive_buffer<uint32_t>(
             device,
             (num_nodes + 31) / 32,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
+        buf_phase_params = gpu::create_exclusive_buffer<uint32_t>(
+            device,
+            2,
             vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
         mem_dist = gpu::alloc_and_bind(
@@ -59,9 +79,11 @@ class NearFarBuffers
             device, mem_props, buf_dispatch_relax, vk::MemoryPropertyFlagBits::eDeviceLocal);
         mem_processed = gpu::alloc_and_bind(
             device, mem_props, buf_processed, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        mem_phase_params = gpu::alloc_and_bind(
+            device, mem_props, buf_phase_params, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
         gpu_results =
-            static_cast<uint32_t *>(device.mapMemory(mem_results, 0, 3 * sizeof(uint32_t)));
+            static_cast<uint32_t *>(device.mapMemory(mem_results, 0, 5 * sizeof(uint32_t)));
     }
 
     ~NearFarBuffers()
@@ -75,6 +97,7 @@ class NearFarBuffers
         device.destroyBuffer(buf_far_1);
         device.destroyBuffer(buf_dispatch_relax);
         device.destroyBuffer(buf_processed);
+        device.destroyBuffer(buf_phase_params);
         device.freeMemory(mem_dist);
         device.freeMemory(mem_results);
         device.freeMemory(mem_near_0);
@@ -83,6 +106,7 @@ class NearFarBuffers
         device.freeMemory(mem_far_1);
         device.freeMemory(mem_dispatch_relax);
         device.freeMemory(mem_processed);
+        device.freeMemory(mem_phase_params);
     }
 
     uint32_t *best_distance() { return gpu_results; }
@@ -90,7 +114,10 @@ class NearFarBuffers
     uint32_t *num_near() { return gpu_results + 1; }
     uint32_t *num_far() { return gpu_results + 2; }
 
-    [[nodiscard]] std::array<const vk::Buffer, 8> buffers() const
+    uint32_t *gpu_phase() { return gpu_results + 3; }
+    uint32_t *gpu_delta() { return gpu_results + 4; }
+
+    [[nodiscard]] std::array<const vk::Buffer, 9> buffers() const
     {
         return {buf_dist,
                 buf_results,
@@ -99,7 +126,8 @@ class NearFarBuffers
                 buf_far_0,
                 buf_far_1,
                 buf_dispatch_relax,
-                buf_processed};
+                buf_processed,
+                buf_phase_params};
     }
 
   private:
@@ -112,6 +140,7 @@ class NearFarBuffers
     vk::Buffer buf_counters;
     vk::Buffer buf_dispatch_relax;
     vk::Buffer buf_processed;
+    vk::Buffer buf_phase_params;
 
     vk::DeviceMemory mem_dist;
     vk::DeviceMemory mem_results;
@@ -122,6 +151,7 @@ class NearFarBuffers
     vk::DeviceMemory mem_counters;
     vk::DeviceMemory mem_dispatch_relax;
     vk::DeviceMemory mem_processed;
+    vk::DeviceMemory mem_phase_params;
 
     uint32_t *gpu_results;
     uint32_t *gpu_counters{};

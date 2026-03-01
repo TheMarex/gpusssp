@@ -25,8 +25,6 @@ template <typename GraphT> class NearFar
         uint32_t src_node;
         uint32_t dst_node;
         uint32_t n;
-        uint32_t phase;
-        uint32_t delta;
     };
 
   public:
@@ -71,7 +69,8 @@ template <typename GraphT> class NearFar
               far_0_buffer,
               far_1_buffer,
               dispatch_relax_buffer,
-              processed_buffer] = nearfar_buffers.buffers();
+              processed_buffer,
+              phase_params_buffer] = nearfar_buffers.buffers();
         auto statistics_buffer = statistics.buffer();
 
         relax_pipeline = create_compute_pipeline<PushConsts>(device,
@@ -83,6 +82,7 @@ template <typename GraphT> class NearFar
                                                                near_0_buffer,
                                                                near_1_buffer,
                                                                far_0_buffer,
+                                                               phase_params_buffer,
                                                                statistics_buffer},
                                                               {first_edges_buffer,
                                                                targets_buffer,
@@ -91,6 +91,7 @@ template <typename GraphT> class NearFar
                                                                near_1_buffer,
                                                                near_0_buffer,
                                                                far_0_buffer,
+                                                               phase_params_buffer,
                                                                statistics_buffer}},
                                                              {workgroup_size});
 
@@ -102,6 +103,7 @@ template <typename GraphT> class NearFar
                                                                     near_0_buffer,
                                                                     far_1_buffer,
                                                                     processed_buffer,
+                                                                    phase_params_buffer,
                                                                     statistics_buffer},
                                                                },
                                                                {workgroup_size});
@@ -116,9 +118,7 @@ template <typename GraphT> class NearFar
     void record_relax_batch_commands(vk::CommandBuffer &cmd_buf,
                                      uint32_t src_node,
                                      uint32_t dst_node,
-                                     uint32_t delta,
                                      uint32_t num_nodes,
-                                     uint32_t phase,
                                      uint32_t relax_batch_size,
                                      vk::Buffer near_0_buffer,
                                      vk::Buffer near_1_buffer,
@@ -181,7 +181,7 @@ template <typename GraphT> class NearFar
             cmd_buf.bindDescriptorSets(
                 vk::PipelineBindPoint::eCompute, relax_pipeline.layout, 0, relax_desc_set, {});
 
-            PushConsts pc{src_node, dst_node, num_nodes, phase, delta};
+            PushConsts pc{src_node, dst_node, num_nodes};
             cmd_buf.pushConstants(
                 relax_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
             cmd_buf.dispatchIndirect(dispatch_relax_buffer, 0);
@@ -217,18 +217,19 @@ template <typename GraphT> class NearFar
     void record_compact_commands(vk::CommandBuffer &cmd_buf,
                                  uint32_t src_node,
                                  uint32_t dst_node,
-                                 uint32_t delta,
                                  uint32_t num_nodes,
-                                 uint32_t phase,
                                  uint32_t num_far,
                                  vk::Buffer near_0_buffer,
                                  vk::Buffer far_1_buffer,
                                  vk::Buffer dist_buffer,
                                  vk::Buffer results_buffer,
                                  vk::Buffer processed_buffer,
+                                 vk::Buffer phase_params_buffer,
                                  const vk::BufferCopy &results_copy,
                                  const vk::BufferCopy &near_count_copy,
-                                 const vk::BufferCopy &far_count_copy)
+                                 const vk::BufferCopy &far_count_copy,
+                                 const vk::BufferCopy &phase_copy,
+                                 const vk::BufferCopy &delta_copy)
     {
         auto record_start =
             common::Statistics::start(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
@@ -253,7 +254,7 @@ template <typename GraphT> class NearFar
         cmd_buf.bindDescriptorSets(
             vk::PipelineBindPoint::eCompute, compact_pipeline.layout, 0, compact_desc_set, {});
 
-        PushConsts pc{src_node, dst_node, num_nodes, phase, delta};
+        PushConsts pc{src_node, dst_node, num_nodes};
         cmd_buf.pushConstants(
             compact_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
         cmd_buf.dispatch((num_far + workgroup_size - 1) / workgroup_size, 1, 1);
@@ -269,6 +270,8 @@ template <typename GraphT> class NearFar
         cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
         cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);
         cmd_buf.copyBuffer(far_1_buffer, results_buffer, 1, &far_count_copy);
+        cmd_buf.copyBuffer(phase_params_buffer, results_buffer, 1, &phase_copy);
+        cmd_buf.copyBuffer(phase_params_buffer, results_buffer, 1, &delta_copy);
 
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
@@ -304,6 +307,8 @@ template <typename GraphT> class NearFar
         uint32_t *gpu_best_distance = nearfar_buffers.best_distance();
         uint32_t *gpu_num_near = nearfar_buffers.num_near();
         uint32_t *gpu_num_far = nearfar_buffers.num_far();
+        uint32_t *gpu_phase = nearfar_buffers.gpu_phase();
+        uint32_t *gpu_delta = nearfar_buffers.gpu_delta();
         auto num_nodes = static_cast<uint32_t>(graph_buffers.num_nodes());
 
         auto [dist_buffer,
@@ -313,13 +318,16 @@ template <typename GraphT> class NearFar
               far_0_buffer,
               far_1_buffer,
               dispatch_relax_buffer,
-              processed_buffer] = nearfar_buffers.buffers();
+              processed_buffer,
+              phase_params_buffer] = nearfar_buffers.buffers();
 
         vk::BufferCopy results_copy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)};
         vk::BufferCopy near_count_copy{
             num_nodes * sizeof(uint32_t), 1 * sizeof(uint32_t), sizeof(uint32_t)};
         vk::BufferCopy far_count_copy{
             num_nodes * sizeof(uint32_t), 2 * sizeof(uint32_t), sizeof(uint32_t)};
+        vk::BufferCopy phase_copy{0, 3 * sizeof(uint32_t), sizeof(uint32_t)};
+        vk::BufferCopy delta_copy{sizeof(uint32_t), 4 * sizeof(uint32_t), sizeof(uint32_t)};
 
         auto record_0_start =
             common::Statistics::start(common::StatisticsEvent::NEARFAR_CMDBUF_RECORD_DURATION);
@@ -346,6 +354,9 @@ template <typename GraphT> class NearFar
         // initialize far_0 counter with 0
         init_cmd_buf.updateBuffer(
             far_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &zero);
+        // initialize phase_params: phase=0, delta=delta
+        init_cmd_buf.updateBuffer(phase_params_buffer, 0, sizeof(uint32_t), &zero);
+        init_cmd_buf.updateBuffer(phase_params_buffer, sizeof(uint32_t), sizeof(uint32_t), &delta);
 
         init_cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
@@ -360,6 +371,8 @@ template <typename GraphT> class NearFar
         init_cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
         init_cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);
         init_cmd_buf.copyBuffer(far_0_buffer, results_buffer, 1, &far_count_copy);
+        init_cmd_buf.copyBuffer(phase_params_buffer, results_buffer, 1, &phase_copy);
+        init_cmd_buf.copyBuffer(phase_params_buffer, results_buffer, 1, &delta_copy);
 
         init_cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
@@ -375,8 +388,6 @@ template <typename GraphT> class NearFar
         queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf});
         queue.waitIdle();
 
-        uint32_t phase = 0;
-
         common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_INIT_DURATION, init_start);
 
         while (true)
@@ -389,9 +400,7 @@ template <typename GraphT> class NearFar
             record_relax_batch_commands(relax_cmd_buf,
                                         src_node,
                                         dst_node,
-                                        delta,
                                         num_nodes,
-                                        phase,
                                         relax_batch_size,
                                         near_0_buffer,
                                         near_1_buffer,
@@ -406,7 +415,7 @@ template <typename GraphT> class NearFar
             while (*gpu_num_near > 0)
             {
                 common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
-                common::log_debug() << phase << " " << *gpu_num_near << " best distance "
+                common::log_debug() << *gpu_phase << " " << *gpu_num_near << " best distance "
                                     << *gpu_best_distance << '\n';
 
                 queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &relax_cmd_buf});
@@ -418,13 +427,11 @@ template <typename GraphT> class NearFar
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {
-                if (*gpu_best_distance < phase * delta)
+                if (*gpu_best_distance < *gpu_phase * *gpu_delta)
                 {
                     break;
                 }
             }
-
-            phase++;
 
             auto compact_start =
                 common::Statistics::start(common::StatisticsEvent::NEARFAR_COMPACT_DURATION);
@@ -434,29 +441,30 @@ template <typename GraphT> class NearFar
                 break;
             }
 
-            common::log_debug() << phase << " far " << *gpu_num_far << " best distance "
+            common::log_debug() << *gpu_phase << " far " << *gpu_num_far << " best distance "
                                 << *gpu_best_distance << '\n';
 
             record_compact_commands(compact_cmd_buf,
                                     src_node,
                                     dst_node,
-                                    delta,
                                     num_nodes,
-                                    phase,
                                     *gpu_num_far,
                                     near_0_buffer,
                                     far_1_buffer,
                                     dist_buffer,
                                     results_buffer,
                                     processed_buffer,
+                                    phase_params_buffer,
                                     results_copy,
                                     near_count_copy,
-                                    far_count_copy);
+                                    far_count_copy,
+                                    phase_copy,
+                                    delta_copy);
 
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &compact_cmd_buf});
             queue.waitIdle();
 
-            common::log_debug() << phase << " compacted to: far " << *gpu_num_far << " near "
+            common::log_debug() << *gpu_phase << " compacted to: far " << *gpu_num_far << " near "
                                 << *gpu_num_near << '\n';
 
             common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_COMPACT_DURATION,

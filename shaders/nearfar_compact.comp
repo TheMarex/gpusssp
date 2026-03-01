@@ -17,14 +17,13 @@ layout(std430, binding = 1) coherent buffer Far { uint far[]; };
 layout(std430, binding = 2) coherent buffer Near { uint near[]; };
 layout(std430, binding = 3) coherent buffer NextFar { uint next_far[]; };
 layout(std430, binding = 4) coherent buffer Processed { uint processed[]; };
-layout(std430, binding = 5) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
+layout(std430, binding = 5) coherent buffer PhaseParams { uint phase_params[]; };
+layout(std430, binding = 6) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
 
 layout(push_constant) uniform PushConsts {
     uint src_node;
     uint dst_node;
     uint n;
-    uint phase;
-    uint delta;
 } pc;
 
 void main() {
@@ -40,7 +39,9 @@ void main() {
 
             uint d = dist[node];
 
-            uint threshold = pc.delta * (pc.phase + 1);
+            uint phase = phase_params[0];
+            uint delta = phase_params[1];
+            uint threshold = delta * (phase + 1);
 
             if (d < threshold) {
                 uint idx = atomicAdd(near[pc.n], 1);
@@ -50,6 +51,10 @@ void main() {
                 next_far[idx] = node;
             }
         }
+    }
+    
+    if (tid == 0) {
+        atomicAdd(phase_params[0], 1);
     }
     
     statisticsSync(statistics_counters);
