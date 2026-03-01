@@ -25,16 +25,15 @@ TEST_CASE("NearFar computes correct shortest paths", "[nearfar]")
         graph, device, mem_props, cmd_pool, queue);
     gpusssp::gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, mem_props);
     gpusssp::gpu::Statistics statistics(device, mem_props);
-    gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics);
-    nearfar.initialize();
-
     const uint32_t delta = 3600;
+    gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta);
+    nearfar.initialize();
 
     for (uint32_t src_node = 0; src_node < graph.num_nodes(); ++src_node)
     {
         for (uint32_t dst_node = 0; dst_node < graph.num_nodes(); ++dst_node)
         {
-            uint32_t computed_dist = nearfar.run(cmd_pool, queue, src_node, dst_node, delta);
+            uint32_t computed_dist = nearfar.run(cmd_pool, queue, src_node, dst_node);
 
             INFO("Source: " << src_node << ", Destination: " << dst_node);
             auto expected = gpusssp::test::get_expected_distances(src_node, dst_node);
@@ -59,15 +58,15 @@ TEST_CASE("NearFar statistics are collected", "[nearfar][statistics]")
     gpusssp::gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, mem_props);
 
     gpusssp::gpu::Statistics statistics(device, mem_props);
-    gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics);
+    const uint32_t delta = 3600;
+    gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta);
     nearfar.initialize();
 
-    const uint32_t delta = 3600;
     const uint32_t src_node = 0;
     const uint32_t dst_node = 3;
 
     statistics.reset();
-    uint32_t computed_dist = nearfar.run(cmd_pool, queue, src_node, dst_node, delta);
+    uint32_t computed_dist = nearfar.run(cmd_pool, queue, src_node, dst_node);
 
     auto summary = statistics.summary();
     INFO("Statistics summary:\n" << summary);

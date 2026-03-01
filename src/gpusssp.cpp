@@ -186,7 +186,7 @@ int main(int argc, char **argv)
         gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device, gpu_statistics);
         bellmanford.initialize();
 
-        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, gpu_statistics);
+        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, gpu_statistics, delta);
         nearfar.initialize();
 
         std::uint32_t checksum = 0;
@@ -209,7 +209,7 @@ int main(int argc, char **argv)
             auto bf_dist = bellmanford.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
             common::do_not_optimize(bf_dist);
             auto time_4 = std::chrono::high_resolution_clock::now();
-            auto nf_dist = nearfar.run(cmd_pool, queue, src_nodes[i], dst_nodes[i], delta);
+            auto nf_dist = nearfar.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
             common::do_not_optimize(nf_dist);
             auto time_5 = std::chrono::high_resolution_clock::now();
 

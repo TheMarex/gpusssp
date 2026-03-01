@@ -20,6 +20,7 @@ namespace gpusssp::gpu
 template <typename GraphT> class NearFar
 {
     static constexpr const size_t DEFAULT_WORKGROUP_SIZE = 64u;
+    static constexpr const uint32_t DEFAULT_RELAX_BATCH_SIZE = 64u;
     struct PushConsts
     {
         uint32_t n;
@@ -30,9 +31,12 @@ template <typename GraphT> class NearFar
             NearFarBuffers &nearfar_buffers,
             vk::Device &device,
             Statistics &statistics,
+            uint32_t delta,
+            uint32_t relax_batch_size = DEFAULT_RELAX_BATCH_SIZE,
             uint32_t workgroup_size = DEFAULT_WORKGROUP_SIZE)
         : graph_buffers(graph_buffers), nearfar_buffers(nearfar_buffers), statistics(statistics),
-          device(device), workgroup_size(workgroup_size)
+          device(device), delta(delta), relax_batch_size(relax_batch_size),
+          workgroup_size(workgroup_size)
     {
     }
 
@@ -140,7 +144,6 @@ template <typename GraphT> class NearFar
 
     void record_relax_batch_commands(vk::CommandBuffer &cmd_buf,
                                      uint32_t num_nodes,
-                                     uint32_t relax_batch_size,
                                      uint32_t current_far_buffer_idx,
                                      vk::Buffer dispatch_buffer)
     {
@@ -380,12 +383,7 @@ template <typename GraphT> class NearFar
     }
 
     template <typename QueueT>
-    uint32_t run(vk::CommandPool &cmd_pool,
-                 QueueT &queue,
-                 uint32_t src_node,
-                 uint32_t dst_node,
-                 uint32_t delta,
-                 uint32_t relax_batch_size = 64)
+    uint32_t run(vk::CommandPool &cmd_pool, QueueT &queue, uint32_t src_node, uint32_t dst_node)
     {
         auto init_start = common::Statistics::start(common::StatisticsEvent::NEARFAR_INIT_DURATION);
 
@@ -406,8 +404,7 @@ template <typename GraphT> class NearFar
 
         for (auto idx = 0u; idx < 2; ++idx)
         {
-            record_relax_batch_commands(
-                relax_cmd_bufs[idx], num_nodes, relax_batch_size, idx, dispatch_buffer);
+            record_relax_batch_commands(relax_cmd_bufs[idx], num_nodes, idx, dispatch_buffer);
             record_compact_commands(compact_cmd_bufs[idx], num_nodes, idx, dispatch_buffer);
             record_sync_commands(sync_cmd_bufs[idx], dst_node, idx);
         }
@@ -492,6 +489,8 @@ template <typename GraphT> class NearFar
     ComputePipeline prepare_dispatch_pipeline;
 
     vk::Device &device;
+    uint32_t delta;
+    uint32_t relax_batch_size;
     uint32_t workgroup_size;
 };
 

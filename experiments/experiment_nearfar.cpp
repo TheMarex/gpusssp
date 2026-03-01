@@ -85,7 +85,7 @@ int main(int argc, char **argv)
         gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmd_pool, queue);
         gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::Statistics statistics(device, vk_ctx.memory_properties());
-        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics);
+        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta);
         nearfar.initialize();
 
         common::ProgressBar progress_bar(queries.size());
@@ -94,7 +94,7 @@ int main(int argc, char **argv)
         {
             auto start_time = std::chrono::high_resolution_clock::now();
 
-            auto dist = nearfar.run(cmd_pool, queue, query.from, query.to, delta);
+            auto dist = nearfar.run(cmd_pool, queue, query.from, query.to);
 
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration =
