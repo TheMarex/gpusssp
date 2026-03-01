@@ -92,6 +92,24 @@ template <typename GraphT> class NearFar
                                                                near_0_buffer,
                                                                far_0_buffer,
                                                                phase_params_buffer,
+                                                               statistics_buffer},
+                                                              {first_edges_buffer,
+                                                               targets_buffer,
+                                                               weights_buffer,
+                                                               dist_buffer,
+                                                               near_0_buffer,
+                                                               near_1_buffer,
+                                                               far_1_buffer,
+                                                               phase_params_buffer,
+                                                               statistics_buffer},
+                                                              {first_edges_buffer,
+                                                               targets_buffer,
+                                                               weights_buffer,
+                                                               dist_buffer,
+                                                               near_1_buffer,
+                                                               near_0_buffer,
+                                                               far_1_buffer,
+                                                               phase_params_buffer,
                                                                statistics_buffer}},
                                                              {workgroup_size});
 
@@ -102,6 +120,13 @@ template <typename GraphT> class NearFar
                                                                     far_0_buffer,
                                                                     near_0_buffer,
                                                                     far_1_buffer,
+                                                                    processed_buffer,
+                                                                    phase_params_buffer,
+                                                                    statistics_buffer},
+                                                                   {dist_buffer,
+                                                                    far_1_buffer,
+                                                                    near_0_buffer,
+                                                                    far_0_buffer,
                                                                     processed_buffer,
                                                                     phase_params_buffer,
                                                                     statistics_buffer},
@@ -120,9 +145,9 @@ template <typename GraphT> class NearFar
                                      uint32_t dst_node,
                                      uint32_t num_nodes,
                                      uint32_t relax_batch_size,
-                                     vk::Buffer near_0_buffer,
-                                     vk::Buffer near_1_buffer,
-                                     vk::Buffer far_0_buffer,
+                                     uint32_t current_far_buffer_idx,
+                                     std::array<vk::Buffer, 2> near_buffers,
+                                     std::array<vk::Buffer, 2> far_buffers,
                                      vk::Buffer dist_buffer,
                                      vk::Buffer results_buffer,
                                      vk::Buffer dispatch_relax_buffer,
@@ -135,12 +160,16 @@ template <typename GraphT> class NearFar
 
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eSimultaneousUse});
 
+        auto current_far_buffer = far_buffers[current_far_buffer_idx];
+
         for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
         {
             uint32_t current_near_buffer_idx = batch_iter % 2;
-            auto relax_desc_set = relax_pipeline.descriptor_sets[current_near_buffer_idx];
+            auto relax_desc_set =
+                relax_pipeline
+                    .descriptor_sets[current_near_buffer_idx + (current_far_buffer_idx * 2)];
 
-            auto next_near_buffer = current_near_buffer_idx == 0 ? near_1_buffer : near_0_buffer;
+            auto next_near_buffer = near_buffers[1 - current_near_buffer_idx];
 
             // clear size of next_near
             cmd_buf.fillBuffer(next_near_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
@@ -196,7 +225,7 @@ template <typename GraphT> class NearFar
 
             cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
             cmd_buf.copyBuffer(next_near_buffer, results_buffer, 1, &near_count_copy);
-            cmd_buf.copyBuffer(far_0_buffer, results_buffer, 1, &far_count_copy);
+            cmd_buf.copyBuffer(current_far_buffer, results_buffer, 1, &far_count_copy);
 
             cmd_buf.pipelineBarrier(
                 vk::PipelineStageFlagBits::eTransfer,
@@ -219,8 +248,9 @@ template <typename GraphT> class NearFar
                                  uint32_t dst_node,
                                  uint32_t num_nodes,
                                  uint32_t num_far,
+                                 uint32_t current_far_buffer_idx,
                                  vk::Buffer near_0_buffer,
-                                 vk::Buffer far_1_buffer,
+                                 std::array<vk::Buffer, 2> far_buffers,
                                  vk::Buffer dist_buffer,
                                  vk::Buffer results_buffer,
                                  vk::Buffer processed_buffer,
@@ -236,10 +266,12 @@ template <typename GraphT> class NearFar
 
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eSimultaneousUse});
 
-        auto compact_desc_set = compact_pipeline.descriptor_sets[0];
+        auto compact_desc_set = compact_pipeline.descriptor_sets[current_far_buffer_idx];
+
+        auto next_far_buffer = far_buffers[1 - current_far_buffer_idx];
 
         cmd_buf.fillBuffer(near_0_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
-        cmd_buf.fillBuffer(far_1_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
+        cmd_buf.fillBuffer(next_far_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), 0);
         cmd_buf.fillBuffer(processed_buffer, 0, VK_WHOLE_SIZE, 0);
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
@@ -269,7 +301,7 @@ template <typename GraphT> class NearFar
 
         cmd_buf.copyBuffer(dist_buffer, results_buffer, 1, &results_copy);
         cmd_buf.copyBuffer(near_0_buffer, results_buffer, 1, &near_count_copy);
-        cmd_buf.copyBuffer(far_1_buffer, results_buffer, 1, &far_count_copy);
+        cmd_buf.copyBuffer(next_far_buffer, results_buffer, 1, &far_count_copy);
         cmd_buf.copyBuffer(phase_params_buffer, results_buffer, 1, &phase_copy);
         cmd_buf.copyBuffer(phase_params_buffer, results_buffer, 1, &delta_copy);
 
@@ -390,6 +422,8 @@ template <typename GraphT> class NearFar
 
         common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_INIT_DURATION, init_start);
 
+        uint32_t current_far_buffer_idx = 0;
+
         while (true)
         {
             common::Statistics::get().count(common::StatisticsEvent::NEARFAR_PHASE);
@@ -402,9 +436,9 @@ template <typename GraphT> class NearFar
                                         dst_node,
                                         num_nodes,
                                         relax_batch_size,
-                                        near_0_buffer,
-                                        near_1_buffer,
-                                        far_0_buffer,
+                                        current_far_buffer_idx,
+                                        {near_0_buffer, near_1_buffer},
+                                        {far_0_buffer, far_1_buffer},
                                         dist_buffer,
                                         results_buffer,
                                         dispatch_relax_buffer,
@@ -449,8 +483,9 @@ template <typename GraphT> class NearFar
                                     dst_node,
                                     num_nodes,
                                     *gpu_num_far,
+                                    current_far_buffer_idx,
                                     near_0_buffer,
-                                    far_1_buffer,
+                                    {far_0_buffer, far_1_buffer},
                                     dist_buffer,
                                     results_buffer,
                                     processed_buffer,
@@ -460,6 +495,7 @@ template <typename GraphT> class NearFar
                                     far_count_copy,
                                     phase_copy,
                                     delta_copy);
+            current_far_buffer_idx = 1 - current_far_buffer_idx;
 
             queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &compact_cmd_buf});
             queue.waitIdle();
