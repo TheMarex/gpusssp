@@ -38,31 +38,6 @@ template <typename GraphT> class NearFar
           device(device), delta(delta), relax_batch_size(relax_batch_size),
           workgroup_size(workgroup_size)
     {
-    }
-
-    ~NearFar()
-    {
-        device.destroyShaderModule(relax_pipeline.shader);
-        device.destroyPipeline(relax_pipeline.pipeline);
-        device.destroyPipelineLayout(relax_pipeline.layout);
-        device.destroyDescriptorSetLayout(relax_pipeline.descriptor_set_layout);
-        device.destroyDescriptorPool(relax_pipeline.descriptor_pool);
-
-        device.destroyShaderModule(compact_pipeline.shader);
-        device.destroyPipeline(compact_pipeline.pipeline);
-        device.destroyPipelineLayout(compact_pipeline.layout);
-        device.destroyDescriptorSetLayout(compact_pipeline.descriptor_set_layout);
-        device.destroyDescriptorPool(compact_pipeline.descriptor_pool);
-
-        device.destroyShaderModule(prepare_dispatch_pipeline.shader);
-        device.destroyPipeline(prepare_dispatch_pipeline.pipeline);
-        device.destroyPipelineLayout(prepare_dispatch_pipeline.layout);
-        device.destroyDescriptorSetLayout(prepare_dispatch_pipeline.descriptor_set_layout);
-        device.destroyDescriptorPool(prepare_dispatch_pipeline.descriptor_pool);
-    }
-
-    void initialize()
-    {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto dist_buffer = nearfar_buffers.dist_buffer();
         auto [near_0_buffer, near_1_buffer] = nearfar_buffers.near_buffers();
@@ -140,6 +115,47 @@ template <typename GraphT> class NearFar
                                                {far_0_buffer, dispatch_buffer},
                                                {far_1_buffer, dispatch_buffer}},
                                               {workgroup_size});
+    }
+
+    ~NearFar()
+    {
+        device.destroyShaderModule(relax_pipeline.shader);
+        device.destroyPipeline(relax_pipeline.pipeline);
+        device.destroyPipelineLayout(relax_pipeline.layout);
+        device.destroyDescriptorSetLayout(relax_pipeline.descriptor_set_layout);
+        device.destroyDescriptorPool(relax_pipeline.descriptor_pool);
+
+        device.destroyShaderModule(compact_pipeline.shader);
+        device.destroyPipeline(compact_pipeline.pipeline);
+        device.destroyPipelineLayout(compact_pipeline.layout);
+        device.destroyDescriptorSetLayout(compact_pipeline.descriptor_set_layout);
+        device.destroyDescriptorPool(compact_pipeline.descriptor_pool);
+
+        device.destroyShaderModule(prepare_dispatch_pipeline.shader);
+        device.destroyPipeline(prepare_dispatch_pipeline.pipeline);
+        device.destroyPipelineLayout(prepare_dispatch_pipeline.layout);
+        device.destroyDescriptorSetLayout(prepare_dispatch_pipeline.descriptor_set_layout);
+        device.destroyDescriptorPool(prepare_dispatch_pipeline.descriptor_pool);
+    }
+
+    void initialize(vk::CommandPool &cmd_pool)
+    {
+        device.freeCommandBuffers(cmd_pool, relax_cmd_bufs);
+        device.freeCommandBuffers(cmd_pool, compact_cmd_bufs);
+
+        relax_cmd_bufs =
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 2});
+        compact_cmd_bufs =
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 2});
+
+        auto num_nodes = static_cast<uint32_t>(graph_buffers.num_nodes());
+        auto dispatch_buffer = nearfar_buffers.dispatch_buffer();
+
+        for (auto idx = 0u; idx < 2; ++idx)
+        {
+            record_relax_batch_commands(relax_cmd_bufs[idx], num_nodes, idx, dispatch_buffer);
+            record_compact_commands(compact_cmd_bufs[idx], num_nodes, idx, dispatch_buffer);
+        }
     }
 
     void record_relax_batch_commands(vk::CommandBuffer &cmd_buf,
@@ -385,30 +401,25 @@ template <typename GraphT> class NearFar
     template <typename QueueT>
     uint32_t run(vk::CommandPool &cmd_pool, QueueT &queue, uint32_t src_node, uint32_t dst_node)
     {
+        if (relax_cmd_bufs.empty() || compact_cmd_bufs.empty())
+        {
+            throw std::runtime_error("NearFar was not initialized, the command buffers are empty.");
+        }
         auto init_start = common::Statistics::start(common::StatisticsEvent::NEARFAR_INIT_DURATION);
 
         std::vector<vk::CommandBuffer> cmd_bufs =
-            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 7});
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 3});
         auto &init_cmd_buf = cmd_bufs[0];
         auto sync_cmd_bufs = std::span(cmd_bufs.data() + 1, 2);
-        auto relax_cmd_bufs = std::span(cmd_bufs.data() + 3, 2);
-        auto compact_cmd_bufs = std::span(cmd_bufs.data() + 5, 2);
 
         uint32_t *gpu_best_distance = nearfar_buffers.best_distance();
         uint32_t *gpu_num_near = nearfar_buffers.num_near();
         uint32_t *gpu_num_far = nearfar_buffers.num_far();
         uint32_t *gpu_phase = nearfar_buffers.gpu_phase();
         uint32_t *gpu_delta = nearfar_buffers.gpu_delta();
-        auto num_nodes = static_cast<uint32_t>(graph_buffers.num_nodes());
-        auto dispatch_buffer = nearfar_buffers.dispatch_buffer();
 
-        for (auto idx = 0u; idx < 2; ++idx)
-        {
-            record_relax_batch_commands(relax_cmd_bufs[idx], num_nodes, idx, dispatch_buffer);
-            record_compact_commands(compact_cmd_bufs[idx], num_nodes, idx, dispatch_buffer);
-            record_sync_commands(sync_cmd_bufs[idx], dst_node, idx);
-        }
-
+        record_sync_commands(sync_cmd_bufs[0], dst_node, 0);
+        record_sync_commands(sync_cmd_bufs[1], dst_node, 1);
         record_init_commands(init_cmd_buf, src_node, dst_node, delta);
 
         queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf});
@@ -475,6 +486,8 @@ template <typename GraphT> class NearFar
                                            compact_start);
         }
 
+        device.freeCommandBuffers(cmd_pool, cmd_bufs);
+
         return *gpu_best_distance;
     }
 
@@ -492,6 +505,8 @@ template <typename GraphT> class NearFar
     uint32_t delta;
     uint32_t relax_batch_size;
     uint32_t workgroup_size;
+    std::vector<vk::CommandBuffer> relax_cmd_bufs;
+    std::vector<vk::CommandBuffer> compact_cmd_bufs;
 };
 
 } // namespace gpusssp::gpu

@@ -187,7 +187,7 @@ int main(int argc, char **argv)
         bellmanford.initialize();
 
         gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, gpu_statistics, delta);
-        nearfar.initialize();
+        nearfar.initialize(cmd_pool);
 
         std::uint32_t checksum = 0;
         std::uint32_t dij_duration = 0;
