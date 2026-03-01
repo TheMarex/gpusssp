@@ -642,11 +642,11 @@ static std::jthread start_color_updater_thread(SharedContext &ctx,
                 uint32_t grouping_size;
             };
 
-            auto deltastep_bufs = deltastep_buffers.buffers();
+            auto [changed_buffer_0, changed_buffer_1] = deltastep_buffers.changed_buffers();
             auto node_color_pipeline = gpu::create_compute_pipeline<NodeColorPushConsts>(
                 device,
                 "node_color.spv",
-                {{deltastep_bufs[0], color_buffer, deltastep_bufs[2], deltastep_bufs[3]}});
+                {{deltastep_buffers.dist_buffer(), color_buffer, changed_buffer_0, changed_buffer_1}});
 
             initialization_latch.count_down();
 

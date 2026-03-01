@@ -74,8 +74,9 @@ template <typename GraphT> class DeltaStep
     void initialize()
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
-        auto [dist_buffer, results_buffer, changed_buffer_0, changed_buffer_1, dispatch_buffer] =
-            deltastep_buffers.buffers();
+        auto dist_buffer = deltastep_buffers.dist_buffer();
+        auto [changed_buffer_0, changed_buffer_1] = deltastep_buffers.changed_buffers();
+        auto dispatch_buffer = deltastep_buffers.dispatch_buffer();
         auto statistics_buffer = statistics.buffer();
 
         main_pipeline = create_compute_pipeline<PushConsts>(device,
@@ -120,38 +121,18 @@ template <typename GraphT> class DeltaStep
 
         uint32_t num_nodes = graph_buffers.num_nodes();
         const std::size_t max_buckets = common::INF_WEIGHT / delta;
-        const uint32_t min_max_init[] = {num_nodes, 0};
-        const uint32_t num_blocks = (num_nodes + 31) / 32;
 
         uint32_t *gpu_min_changed_id = deltastep_buffers.min_changed_id();
         uint32_t *gpu_max_changed_id = deltastep_buffers.max_changed_id();
         uint32_t *gpu_best_distance = deltastep_buffers.best_distance();
         uint32_t *gpu_max_distance = deltastep_buffers.max_distance();
 
-        auto [dist_buffer, results_buffer, changed_buffer_0, changed_buffer_1, dispatch_buffer] =
-            deltastep_buffers.buffers();
-
-        const std::array<vk::BufferCopy, 2> results_copy = {
-            vk::BufferCopy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)},
-            vk::BufferCopy{num_nodes * sizeof(uint32_t), sizeof(uint32_t), sizeof(uint32_t)}};
-        vk::BufferCopy min_max_copy{num_blocks * sizeof(uint32_t), 2 * sizeof(uint32_t), 8};
+        auto dispatch_buffer = deltastep_buffers.dispatch_buffer();
 
         auto record_start =
             common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-        cmd_buf.fillBuffer(dist_buffer, 0, (num_nodes + 1) * sizeof(uint32_t), common::INF_WEIGHT);
-        cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                vk::PipelineStageFlagBits::eTransfer,
-                                vk::DependencyFlags{},
-                                vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                  vk::AccessFlagBits::eTransferWrite},
-                                {},
-                                {});
-
-        // initialize source and max_distance with 0
-        uint32_t zero = 0;
-        cmd_buf.updateBuffer(dist_buffer, src_node * sizeof(uint32_t), sizeof(uint32_t), &zero);
-        cmd_buf.updateBuffer(dist_buffer, num_nodes * sizeof(uint32_t), sizeof(uint32_t), &zero);
+        deltastep_buffers.cmd_init_dist(cmd_buf, src_node);
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
             vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer,
@@ -173,8 +154,8 @@ template <typename GraphT> class DeltaStep
             common::Statistics::get().count(common::StatisticsEvent::DELTASTEP_BUCKET);
             PushConsts pc{src_node, dst_node, num_nodes, bucket, delta};
 
-            auto previous_changed_buffer = changed_buffer_0;
-            auto current_changed_buffer = changed_buffer_1;
+            uint32_t prev_buffer_idx = 0;
+            uint32_t curr_buffer_idx = 1;
             auto prev_dispatch_desc_set = prepare_dispatch_pipeline.descriptor_sets[0];
             auto current_dispatch_desc_set = prepare_dispatch_pipeline.descriptor_sets[1];
             auto prev_desc_set = main_pipeline.descriptor_sets[0];
@@ -190,11 +171,7 @@ template <typename GraphT> class DeltaStep
             *gpu_max_changed_id = num_nodes - 1;
             *gpu_best_distance = common::INF_WEIGHT;
 
-            uint32_t first_pass_min_max[] = {0, num_nodes - 1};
-            cmd_buf.fillBuffer(
-                previous_changed_buffer, 0, num_blocks * sizeof(uint32_t), UINT32_MAX);
-            cmd_buf.updateBuffer(
-                previous_changed_buffer, num_blocks * sizeof(uint32_t), 8, first_pass_min_max);
+            deltastep_buffers.cmd_init_changed(cmd_buf, prev_buffer_idx);
 
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                     vk::PipelineStageFlagBits::eComputeShader,
@@ -242,9 +219,7 @@ template <typename GraphT> class DeltaStep
                                                current_desc_set,
                                                {});
 
-                    cmd_buf.fillBuffer(current_changed_buffer, 0, num_blocks * sizeof(uint32_t), 0);
-                    cmd_buf.updateBuffer(
-                        current_changed_buffer, num_blocks * sizeof(uint32_t), 8, min_max_init);
+                    deltastep_buffers.cmd_clear_changed(cmd_buf, curr_buffer_idx);
                     cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                             vk::PipelineStageFlagBits::eComputeShader,
                                             vk::DependencyFlags{},
@@ -268,7 +243,7 @@ template <typename GraphT> class DeltaStep
                                             {},
                                             {});
 
-                    std::swap(previous_changed_buffer, current_changed_buffer);
+                    std::swap(prev_buffer_idx, curr_buffer_idx);
                     std::swap(prev_dispatch_desc_set, current_dispatch_desc_set);
                     std::swap(prev_desc_set, current_desc_set);
                 }
@@ -281,12 +256,8 @@ template <typename GraphT> class DeltaStep
                                         {},
                                         {});
 
-                // Copy max_distance and best_distance to host-visible buffer
-                cmd_buf.copyBuffer(dist_buffer, results_buffer, results_copy);
-
-                // Copy min/max changed ID back to host-visible buffer
-                // After the swap, previous_changed_buffer has the latest results
-                cmd_buf.copyBuffer(previous_changed_buffer, results_buffer, 1, &min_max_copy);
+                // After the swap, prev_buffer_idx has the latest results
+                deltastep_buffers.cmd_sync_results(cmd_buf, dst_node, prev_buffer_idx);
 
                 cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                                         vk::PipelineStageFlagBits::eHost,
@@ -304,11 +275,8 @@ template <typename GraphT> class DeltaStep
 
                 if (tracer)
                 {
-                    // the prev buffer is the one we want to visualize since that is where the
-                    // changed nodes are after the swap
                     tracer->signal_and_wait(
-                        {.bucket_index = bucket,
-                         .buffer_index = previous_changed_buffer == changed_buffer_0 ? 0u : 1u});
+                        {.bucket_index = bucket, .buffer_index = prev_buffer_idx});
                 }
 
                 uint32_t range_size = std::max(0L,
@@ -327,8 +295,6 @@ template <typename GraphT> class DeltaStep
                         common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
                     cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
                 }
-
-                // since we do this after the swap we need to look at prev not current
             }
 
             if (*gpu_best_distance != common::INF_WEIGHT)
