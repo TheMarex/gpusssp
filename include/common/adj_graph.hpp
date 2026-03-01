@@ -5,7 +5,6 @@
 #include "common/edge.hpp"
 #include "common/irange.hpp"
 
-#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <tuple>

@@ -60,15 +60,12 @@ template <typename GraphT> class NearFar
     void initialize()
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
-        auto [dist_buffer,
-              results_buffer,
-              near_0_buffer,
-              near_1_buffer,
-              far_0_buffer,
-              far_1_buffer,
-              dispatch_buffer,
-              processed_buffer,
-              phase_params_buffer] = nearfar_buffers.buffers();
+        auto dist_buffer = nearfar_buffers.dist_buffer();
+        auto [near_0_buffer, near_1_buffer] = nearfar_buffers.near_buffers();
+        auto [far_0_buffer, far_1_buffer] = nearfar_buffers.far_buffers();
+        auto dispatch_buffer = nearfar_buffers.dispatch_buffer();
+        auto processed_buffer = nearfar_buffers.processed_buffer();
+        auto phase_params_buffer = nearfar_buffers.phase_params_buffer();
         auto statistics_buffer = statistics.buffer();
 
         relax_pipeline = create_compute_pipeline<PushConsts>(device,
@@ -405,7 +402,7 @@ template <typename GraphT> class NearFar
         uint32_t *gpu_phase = nearfar_buffers.gpu_phase();
         uint32_t *gpu_delta = nearfar_buffers.gpu_delta();
         auto num_nodes = static_cast<uint32_t>(graph_buffers.num_nodes());
-        auto dispatch_buffer = nearfar_buffers.buffers()[6];
+        auto dispatch_buffer = nearfar_buffers.dispatch_buffer();
 
         for (auto idx = 0u; idx < 2; ++idx)
         {

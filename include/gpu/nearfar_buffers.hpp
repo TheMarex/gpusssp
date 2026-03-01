@@ -118,18 +118,12 @@ class NearFarBuffers
     uint32_t *gpu_phase() { return gpu_results + 3; }
     uint32_t *gpu_delta() { return gpu_results + 4; }
 
-    [[nodiscard]] std::array<const vk::Buffer, 9> buffers() const
-    {
-        return {buf_dist,
-                buf_results,
-                buf_near_0,
-                buf_near_1,
-                buf_far_0,
-                buf_far_1,
-                buf_dispatch_relax,
-                buf_processed,
-                buf_phase_params};
-    }
+    [[nodiscard]] vk::Buffer dist_buffer() const { return buf_dist; }
+    [[nodiscard]] std::array<vk::Buffer, 2> near_buffers() const { return {buf_near_0, buf_near_1}; }
+    [[nodiscard]] std::array<vk::Buffer, 2> far_buffers() const { return {buf_far_0, buf_far_1}; }
+    [[nodiscard]] vk::Buffer dispatch_buffer() const { return buf_dispatch_relax; }
+    [[nodiscard]] vk::Buffer processed_buffer() const { return buf_processed; }
+    [[nodiscard]] vk::Buffer phase_params_buffer() const { return buf_phase_params; }
 
     void cmd_init_dist(vk::CommandBuffer &cmd_buf, uint32_t src_node)
     {
