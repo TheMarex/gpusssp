@@ -84,7 +84,7 @@ class Statistics
 #endif
     }
 
-    [[nodiscard]] static std::string summary()
+    [[nodiscard]] std::string summary() // NOLINT
     {
 #ifdef ENABLE_STATISTICS
         std::stringstream ss;

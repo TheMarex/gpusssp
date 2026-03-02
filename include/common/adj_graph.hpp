@@ -5,6 +5,10 @@
 #include "common/edge.hpp"
 #include "common/irange.hpp"
 
+#ifndef NDEBUG
+// Only needed for is_sorted
+#include <algorithm>
+#endif
 #include <cassert>
 #include <cstdint>
 #include <tuple>
@@ -24,8 +28,8 @@ class AdjGraph
 
     AdjGraph() = default;
 
-    AdjGraph(std::vector<edge_id_t> first_edges, std::vector<node_id_t> targets)
-        : first_edges(std::move(first_edges)), targets(std::move(targets))
+    AdjGraph(std::vector<edge_id_t> first_edges_, std::vector<node_id_t> targets) // NOLINT
+        : first_edges(std::move(first_edges_)), targets(std::move(targets))
     {
         assert(first_edges.size() > 0);
     }
