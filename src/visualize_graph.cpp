@@ -4,13 +4,11 @@
 #include "common/web_mercator.hpp"
 #include "common/weighted_graph.hpp"
 #include "gpu/coordinates_buffer.hpp"
-#include "gpu/memory.hpp"
 #include "gpu/shader.hpp"
 #include "gpu/shared_queue.hpp"
 #include "gpu/vulkan_graphics_context.hpp"
 #include <cstdint>
 #include <stdexcept>
-#include <stop_token>
 #include <string>
 #include <utility>
 #include <vulkan/vulkan_core.h>
@@ -55,8 +53,7 @@ class FrameRecorder
                   vk::Format format,
                   std::string output_base_dir)
         : m_device(device), m_mem_props(mem_props), m_cmd_pool(cmd_pool), m_queue(queue),
-          m_extent(extent), m_format(format), m_output_base_dir(std::move(output_base_dir)),
-          m_staging_buffer(nullptr), m_staging_memory(nullptr)
+          m_extent(extent), m_format(format), m_output_base_dir(std::move(output_base_dir))
     {
         create_staging_buffer();
     }
@@ -290,12 +287,11 @@ struct PushConstants
 struct SharedContext
 {
     std::mutex sssp_mutex;
-    std::condition_variable_any sssp_cv;
+    std::condition_variable sssp_cv;
     bool sssp_run_requested = false;
-    std::optional<uint32_t> sssp_result;
 
     std::mutex color_mutex;
-    std::condition_variable_any color_cv;
+    std::condition_variable color_cv;
     bool color_update_requested = false;
     ColorMode current_color_mode = ColorMode::FIXED;
     uint32_t grouping_size = 64;
@@ -579,7 +575,10 @@ static std::jthread start_sssp_thread(SharedContext &ctx,
             {
                 {
                     std::unique_lock<std::mutex> lock(ctx.sssp_mutex);
-                    if (!ctx.sssp_cv.wait(lock, st, [&ctx] { return ctx.sssp_run_requested; }))
+                    ctx.sssp_cv.wait(lock, [&ctx, &st]
+                                     { return ctx.sssp_run_requested || st.stop_requested(); });
+
+                    if (st.stop_requested())
                     {
                         break;
                     }
@@ -589,17 +588,11 @@ static std::jthread start_sssp_thread(SharedContext &ctx,
 
                 uint32_t src_node = dist(gen);
                 uint32_t dst_node = dist(gen);
-                uint32_t delta = ctx.delta;
 
                 common::log() << "SSSP thread: Running delta-stepping from node " << src_node
                               << '\n';
 
                 uint32_t result = deltastep.run(cmd_pool, queue, src_node, dst_node, &ctx.tracer);
-
-                {
-                    std::scoped_lock lock(ctx.sssp_mutex);
-                    ctx.sssp_result = result;
-                }
 
                 {
                     std::scoped_lock lock(ctx.color_mutex);
@@ -723,7 +716,10 @@ static std::jthread start_color_updater_thread(SharedContext &ctx,
                 uint32_t grouping_size;
                 {
                     std::unique_lock<std::mutex> lock(ctx.color_mutex);
-                    if (!ctx.color_cv.wait(lock, st, [&ctx] { return ctx.color_update_requested; }))
+                    ctx.color_cv.wait(lock, [&ctx, &st]
+                                      { return ctx.color_update_requested || st.stop_requested(); });
+
+                    if (st.stop_requested())
                     {
                         break;
                     }
@@ -765,15 +761,7 @@ static std::jthread start_color_updater_thread(SharedContext &ctx,
                         }
                     }
                 }
-                else if (mode == ColorMode::FIXED)
-                {
-                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, grouping_size, {});
-                }
-                else if (mode == ColorMode::ORDERING)
-                {
-                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, grouping_size, {});
-                }
-                else if (mode == ColorMode::WORKGROUP)
+                else
                 {
                     dispatch_shader(static_cast<uint32_t>(mode), 0, 0, grouping_size, {});
                 }
@@ -1191,10 +1179,6 @@ int main(int argc, char **argv)
 
     common::log() << "Starting render loop..." << '\n';
 
-    g_state.zoom = 1.0;
-    g_state.pan_x = 0.0;
-    g_state.pan_y = 0.0;
-
     auto coord_buffers = coord_buffer.buffers();
 
     ColorMode previous_mode = g_state.color_mode;
@@ -1282,6 +1266,9 @@ int main(int argc, char **argv)
 
     sssp_thread.request_stop();
     color_thread.request_stop();
+
+    shared_ctx.sssp_cv.notify_all();
+    shared_ctx.color_cv.notify_all();
 
     shared_ctx.tracer.continue_to_end();
 
