@@ -35,11 +35,7 @@ template <typename GraphT> class DeltaStep
     static constexpr const uint32_t DEFAULT_RELAX_BATCH_SIZE = 64u;
     struct PushConsts
     {
-        uint32_t src_node;
-        uint32_t dst_node;
         uint32_t n;
-        uint32_t bucket_idx;
-        uint32_t delta;
     };
 
   public:
@@ -78,6 +74,7 @@ template <typename GraphT> class DeltaStep
         auto [changed_buffer_0, changed_buffer_1] = deltastep_buffers.changed_buffers();
         auto dispatch_buffer = deltastep_buffers.dispatch_buffer();
         auto statistics_buffer = statistics.buffer();
+        auto params_buffer = deltastep_buffers.params_buffer();
 
         main_pipeline = create_compute_pipeline<PushConsts>(device,
                                                             "delta_step.spv",
@@ -87,6 +84,7 @@ template <typename GraphT> class DeltaStep
                                                               dist_buffer,
                                                               changed_buffer_0,
                                                               changed_buffer_1,
+                                                              params_buffer,
                                                               statistics_buffer},
                                                              {first_edges_buffer,
                                                               targets_buffer,
@@ -94,6 +92,7 @@ template <typename GraphT> class DeltaStep
                                                               dist_buffer,
                                                               changed_buffer_1,
                                                               changed_buffer_0,
+                                                              params_buffer,
                                                               statistics_buffer}},
                                                             {workgroup_size});
 
@@ -126,14 +125,13 @@ template <typename GraphT> class DeltaStep
 
     uint32_t record_relax_batch_commands(vk::CommandBuffer &cmd_buf,
                                          uint32_t num_nodes,
-                                         uint32_t bucket,
                                          uint32_t buffer_index)
     {
         auto record_start =
             common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
-        PushConsts pc{0, 0, num_nodes, bucket, delta};
+        PushConsts pc{num_nodes};
 
         uint32_t current_buffer_idx = 1 - buffer_index;
 
@@ -276,6 +274,7 @@ template <typename GraphT> class DeltaStep
             *gpu_max_changed_id = num_nodes - 1;
             *gpu_best_distance = common::INF_WEIGHT;
 
+            deltastep_buffers.cmd_update_params(init_cmd_buf, bucket, delta);
             deltastep_buffers.cmd_init_changed(init_cmd_buf, buffer_idx);
 
             init_cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
@@ -297,7 +296,7 @@ template <typename GraphT> class DeltaStep
             while (!converged)
             {
                 buffer_idx =
-                    record_relax_batch_commands(relax_cmd_buf, num_nodes, bucket, buffer_idx);
+                    record_relax_batch_commands(relax_cmd_buf, num_nodes, buffer_idx);
                 record_sync_commands(sync_cmd_buf, dst_node, buffer_idx);
 
                 const std::array<vk::CommandBuffer, 2> batch_bufs = {relax_cmd_buf, sync_cmd_buf};

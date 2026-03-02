@@ -51,6 +51,10 @@ class DeltaStepBuffers
             device,
             3,
             vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eIndirectBuffer);
+        buf_params = gpu::create_exclusive_buffer<uint32_t>(
+            device,
+            2,
+            vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
         mem_dist = gpu::alloc_and_bind(
             device, mem_props, buf_dist, vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -65,6 +69,8 @@ class DeltaStepBuffers
             device, mem_props, buf_changed_1, vk::MemoryPropertyFlagBits::eDeviceLocal);
         mem_dispatch_deltastep = gpu::alloc_and_bind(
             device, mem_props, buf_dispatch_deltastep, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        mem_params = gpu::alloc_and_bind(
+            device, mem_props, buf_params, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
         gpu_results =
             static_cast<uint32_t *>(device.mapMemory(mem_results, 0, 4 * sizeof(uint32_t)));
@@ -78,11 +84,13 @@ class DeltaStepBuffers
         device.destroyBuffer(buf_changed_0);
         device.destroyBuffer(buf_changed_1);
         device.destroyBuffer(buf_dispatch_deltastep);
+        device.destroyBuffer(buf_params);
         device.freeMemory(mem_dist);
         device.freeMemory(mem_results);
         device.freeMemory(mem_changed_0);
         device.freeMemory(mem_changed_1);
         device.freeMemory(mem_dispatch_deltastep);
+        device.freeMemory(mem_params);
     }
 
     uint32_t *best_distance() { return gpu_results; }
@@ -97,6 +105,7 @@ class DeltaStepBuffers
     }
     [[nodiscard]] vk::Buffer dispatch_buffer() const { return buf_dispatch_deltastep; }
     [[nodiscard]] vk::Buffer results_buffer() const { return buf_results; }
+    [[nodiscard]] vk::Buffer params_buffer() const { return buf_params; }
 
     void cmd_init_dist(vk::CommandBuffer &cmd_buf, uint32_t src_node)
     {
@@ -129,6 +138,12 @@ class DeltaStepBuffers
         cmd_buf.updateBuffer(buf, num_blocks * sizeof(uint32_t), 8, min_max_init);
     }
 
+    void cmd_update_params(vk::CommandBuffer &cmd_buf, uint32_t bucket_idx, uint32_t delta)
+    {
+        cmd_buf.updateBuffer(buf_params, 0, sizeof(uint32_t), &bucket_idx);
+        cmd_buf.updateBuffer(buf_params, sizeof(uint32_t), sizeof(uint32_t), &delta);
+    }
+
     void cmd_sync_results(vk::CommandBuffer &cmd_buf, uint32_t dst_node, uint32_t source_changed_buffer_idx)
     {
         auto &changed_buf =
@@ -147,12 +162,14 @@ class DeltaStepBuffers
     vk::Buffer buf_changed_0;
     vk::Buffer buf_changed_1;
     vk::Buffer buf_dispatch_deltastep;
+    vk::Buffer buf_params;
 
     vk::DeviceMemory mem_dist;
     vk::DeviceMemory mem_results;
     vk::DeviceMemory mem_changed_0;
     vk::DeviceMemory mem_changed_1;
     vk::DeviceMemory mem_dispatch_deltastep;
+    vk::DeviceMemory mem_params;
 
     uint32_t *gpu_results;
 
