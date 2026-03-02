@@ -31,7 +31,7 @@ TEST_CASE("DeltaStep computes correct shortest paths", "[deltastep]")
     const uint32_t delta = 3600;
     gpusssp::gpu::DeltaStep deltastep(
         graph_buffers, deltastep_buffers, device, gpu_statistics, delta);
-    deltastep.initialize();
+    deltastep.initialize(cmd_pool);
 
     // Test parameters
 

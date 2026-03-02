@@ -144,16 +144,30 @@ class DeltaStepBuffers
         cmd_buf.updateBuffer(buf_params, sizeof(uint32_t), sizeof(uint32_t), &delta);
     }
 
-    void cmd_sync_results(vk::CommandBuffer &cmd_buf, uint32_t dst_node, uint32_t source_changed_buffer_idx)
+    void cmd_sync_results(vk::CommandBuffer &cmd_buf, uint32_t dst_node, uint32_t buffer_idx)
     {
-        auto &changed_buf =
-            source_changed_buffer_idx == 0 ? buf_changed_0 : buf_changed_1;
+        auto &changed_buf = buffer_idx == 0 ? buf_changed_0 : buf_changed_1;
         const std::array<vk::BufferCopy, 2> dist_copy = {
             vk::BufferCopy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)},
             vk::BufferCopy{num_nodes * sizeof(uint32_t), sizeof(uint32_t), sizeof(uint32_t)}};
         vk::BufferCopy min_max_copy{num_blocks * sizeof(uint32_t), 2 * sizeof(uint32_t), 8};
         cmd_buf.copyBuffer(buf_dist, buf_results, dist_copy);
         cmd_buf.copyBuffer(changed_buf, buf_results, 1, &min_max_copy);
+    }
+
+    void cmd_sync_changed_ids(vk::CommandBuffer &cmd_buf, uint32_t buffer_idx)
+    {
+        auto &changed_buf = buffer_idx == 0 ? buf_changed_0 : buf_changed_1;
+        vk::BufferCopy min_max_copy{num_blocks * sizeof(uint32_t), 2 * sizeof(uint32_t), 8};
+        cmd_buf.copyBuffer(changed_buf, buf_results, 1, &min_max_copy);
+    }
+
+    void cmd_sync_dist(vk::CommandBuffer &cmd_buf, uint32_t dst_node)
+    {
+        const std::array<vk::BufferCopy, 2> dist_copy = {
+            vk::BufferCopy{dst_node * sizeof(uint32_t), 0, sizeof(uint32_t)},
+            vk::BufferCopy{num_nodes * sizeof(uint32_t), sizeof(uint32_t), sizeof(uint32_t)}};
+        cmd_buf.copyBuffer(buf_dist, buf_results, dist_copy);
     }
 
   private:

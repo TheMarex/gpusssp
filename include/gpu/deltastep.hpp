@@ -5,7 +5,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <utility>
+#include <vector>
 #include <vulkan/vulkan.hpp>
 
 #include "common/constants.hpp"
@@ -67,7 +69,7 @@ template <typename GraphT> class DeltaStep
         device.destroyDescriptorPool(prepare_dispatch_pipeline.descriptor_pool);
     }
 
-    void initialize()
+    void initialize(vk::CommandPool &cmd_pool)
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto dist_buffer = deltastep_buffers.dist_buffer();
@@ -99,8 +101,23 @@ template <typename GraphT> class DeltaStep
         prepare_dispatch_pipeline = create_compute_pipeline<uint32_t>(
             device,
             "deltastep_prepare_dispatch.spv",
-            {{changed_buffer_1, dispatch_buffer}, {changed_buffer_0, dispatch_buffer}},
+            {{changed_buffer_0, dispatch_buffer}, {changed_buffer_1, dispatch_buffer}},
             {workgroup_size});
+
+        device.freeCommandBuffers(cmd_pool, relax_cmd_bufs);
+        device.freeCommandBuffers(cmd_pool, init_bucket_cmd_bufs);
+        relax_cmd_bufs =
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 2});
+        init_bucket_cmd_bufs =
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1});
+
+        auto num_nodes = static_cast<uint32_t>(graph_buffers.num_nodes());
+        for (auto idx = 0u; idx < 2; ++idx)
+        {
+            record_relax_batch_commands(relax_cmd_bufs[idx], num_nodes, idx);
+        }
+        // Note we only need one because we always start with buffer 0 for each bucket
+        record_bucket_init_commands(init_bucket_cmd_bufs[0], 0);
     }
 
     void record_init_commands(vk::CommandBuffer &cmd_buf, uint32_t src_node)
@@ -109,6 +126,7 @@ template <typename GraphT> class DeltaStep
             common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
         cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
         deltastep_buffers.cmd_init_dist(cmd_buf, src_node);
+        deltastep_buffers.cmd_update_params(cmd_buf, 0, delta);
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
             vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer,
@@ -123,16 +141,17 @@ template <typename GraphT> class DeltaStep
                                        record_start);
     }
 
-    uint32_t record_relax_batch_commands(vk::CommandBuffer &cmd_buf,
-                                         uint32_t num_nodes,
-                                         uint32_t buffer_index)
+    void record_relax_batch_commands(vk::CommandBuffer &cmd_buf,
+                                     uint32_t num_nodes,
+                                     uint32_t buffer_index)
     {
         auto record_start =
             common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
-        cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+        cmd_buf.begin({vk::CommandBufferUsageFlagBits::eSimultaneousUse});
 
         PushConsts pc{num_nodes};
 
+        uint32_t prev_buffer_idx = buffer_index;
         uint32_t current_buffer_idx = 1 - buffer_index;
 
         auto dispatch_buffer = deltastep_buffers.dispatch_buffer();
@@ -141,12 +160,11 @@ template <typename GraphT> class DeltaStep
         {
             cmd_buf.bindPipeline(vk::PipelineBindPoint::eCompute,
                                  prepare_dispatch_pipeline.pipeline);
-            cmd_buf.bindDescriptorSets(
-                vk::PipelineBindPoint::eCompute,
-                prepare_dispatch_pipeline.layout,
-                0,
-                prepare_dispatch_pipeline.descriptor_sets[current_buffer_idx],
-                {});
+            cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                       prepare_dispatch_pipeline.layout,
+                                       0,
+                                       prepare_dispatch_pipeline.descriptor_sets[prev_buffer_idx],
+                                       {});
             cmd_buf.pushConstants(prepare_dispatch_pipeline.layout,
                                   vk::ShaderStageFlagBits::eCompute,
                                   0,
@@ -166,7 +184,7 @@ template <typename GraphT> class DeltaStep
             cmd_buf.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
                                        main_pipeline.layout,
                                        0,
-                                       main_pipeline.descriptor_sets[current_buffer_idx],
+                                       main_pipeline.descriptor_sets[prev_buffer_idx],
                                        {});
 
             deltastep_buffers.cmd_clear_changed(cmd_buf, current_buffer_idx);
@@ -183,25 +201,59 @@ template <typename GraphT> class DeltaStep
                 main_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(pc), &pc);
             cmd_buf.dispatchIndirect(dispatch_buffer, 0);
             cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::PipelineStageFlagBits::eComputeShader |
+                                        vk::PipelineStageFlagBits::eTransfer,
                                     vk::DependencyFlags{},
                                     vk::MemoryBarrier{vk::AccessFlagBits::eShaderWrite,
-                                                      vk::AccessFlagBits::eShaderRead},
+                                                      vk::AccessFlagBits::eShaderRead |
+                                                          vk::AccessFlagBits::eTransferRead},
                                     {},
                                     {});
 
-            current_buffer_idx = 1 - current_buffer_idx;
+            std::swap(prev_buffer_idx, current_buffer_idx);
         }
+
+        // Since we do this _after_ the swap in the loop the last shader has actually written to the
+        // prev_buffer_idx
+        deltastep_buffers.cmd_sync_changed_ids(cmd_buf, prev_buffer_idx);
+
+        cmd_buf.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eHost,
+            vk::DependencyFlags{},
+            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead},
+            {},
+            {});
 
         cmd_buf.end();
         common::Statistics::get().stop(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION,
                                        record_start);
+    }
 
-        return 1 - current_buffer_idx;
+    void record_bucket_init_commands(vk::CommandBuffer &cmd_buf, uint32_t buffer_index)
+    {
+        auto record_start =
+            common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
+        cmd_buf.begin({vk::CommandBufferUsageFlagBits::eSimultaneousUse});
+
+        deltastep_buffers.cmd_init_changed(cmd_buf, buffer_index);
+
+        cmd_buf.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eComputeShader,
+            vk::DependencyFlags{},
+            vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                              vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite},
+            {},
+            {});
+
+        cmd_buf.end();
+        common::Statistics::get().stop(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION,
+                                       record_start);
     }
 
     void
-    record_sync_commands(vk::CommandBuffer &cmd_buf, uint32_t dst_node, uint32_t changed_buffer_idx)
+    record_sync_commands(vk::CommandBuffer &cmd_buf, uint32_t dst_node, uint32_t next_bucket_idx)
     {
         auto record_start =
             common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
@@ -215,7 +267,8 @@ template <typename GraphT> class DeltaStep
             {},
             {});
 
-        deltastep_buffers.cmd_sync_results(cmd_buf, dst_node, changed_buffer_idx);
+        deltastep_buffers.cmd_sync_dist(cmd_buf, dst_node);
+        deltastep_buffers.cmd_update_params(cmd_buf, next_bucket_idx, delta);
 
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
@@ -237,6 +290,12 @@ template <typename GraphT> class DeltaStep
                  uint32_t dst_node,
                  DeltaStepTracer *tracer = nullptr)
     {
+        if (relax_cmd_bufs.empty() || init_bucket_cmd_bufs.empty())
+        {
+            throw std::runtime_error(
+                "DeltaStep was not initialized, the command buffers are empty.");
+        }
+
         if (tracer)
         {
             tracer->start();
@@ -251,10 +310,9 @@ template <typename GraphT> class DeltaStep
         uint32_t *gpu_max_distance = deltastep_buffers.max_distance();
 
         std::vector<vk::CommandBuffer> cmd_bufs =
-            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 3});
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 2});
         auto &init_cmd_buf = cmd_bufs[0];
-        auto &relax_cmd_buf = cmd_bufs[1];
-        auto &sync_cmd_buf = cmd_bufs[2];
+        auto &sync_cmd_buf = cmd_bufs[1];
 
         record_init_commands(init_cmd_buf, src_node);
         queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf});
@@ -266,41 +324,17 @@ template <typename GraphT> class DeltaStep
 
             uint32_t buffer_idx = 0;
 
-            auto record_start = common::Statistics::start(
-                common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
-            init_cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-
             *gpu_min_changed_id = 0;
             *gpu_max_changed_id = num_nodes - 1;
             *gpu_best_distance = common::INF_WEIGHT;
 
-            deltastep_buffers.cmd_update_params(init_cmd_buf, bucket, delta);
-            deltastep_buffers.cmd_init_changed(init_cmd_buf, buffer_idx);
-
-            init_cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                         vk::PipelineStageFlagBits::eComputeShader,
-                                         vk::DependencyFlags{},
-                                         vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
-                                                           vk::AccessFlagBits::eShaderRead |
-                                                               vk::AccessFlagBits::eShaderWrite},
-                                         {},
-                                         {});
-
-            init_cmd_buf.end();
-            common::Statistics::get().stop(
-                common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION, record_start);
-            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf});
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, init_bucket_cmd_bufs.data()});
             queue.waitIdle();
 
             bool converged = false;
             while (!converged)
             {
-                buffer_idx =
-                    record_relax_batch_commands(relax_cmd_buf, num_nodes, buffer_idx);
-                record_sync_commands(sync_cmd_buf, dst_node, buffer_idx);
-
-                const std::array<vk::CommandBuffer, 2> batch_bufs = {relax_cmd_buf, sync_cmd_buf};
-                queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 2, batch_bufs.data()});
+                queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &relax_cmd_bufs[buffer_idx]});
                 queue.waitIdle();
 
                 if (tracer)
@@ -318,7 +352,18 @@ template <typename GraphT> class DeltaStep
                     << " ~ " << static_cast<double>(range_size) / num_nodes << '\n';
 
                 converged = *gpu_min_changed_id >= num_nodes;
+
+                // for uneven relax counts we need to start the loop again readin from a different
+                // buffer
+                if (relax_batch_size % 2 != 0)
+                {
+                    buffer_idx = 1 - buffer_idx;
+                }
             }
+
+            record_sync_commands(sync_cmd_buf, dst_node, bucket + 1);
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &sync_cmd_buf});
+            queue.waitIdle();
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {
@@ -360,6 +405,8 @@ template <typename GraphT> class DeltaStep
     uint32_t delta;
     uint32_t relax_batch_size;
     uint32_t workgroup_size;
+    std::vector<vk::CommandBuffer> relax_cmd_bufs;
+    std::vector<vk::CommandBuffer> init_bucket_cmd_bufs;
 };
 
 } // namespace gpusssp::gpu

@@ -15,10 +15,10 @@ layout(std430, binding = 0) readonly buffer FirstEdges { uint first_edges[]; };
 layout(std430, binding = 1) readonly buffer Targets { uint targets[]; };
 layout(std430, binding = 2) readonly buffer Weight { uint weight[]; };
 layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
-// Nodes modified by the current iteration (written to)
-layout(std430, binding = 4) coherent buffer CurrentChanged { uint current_changed[]; };
 // Nodes modified in the previous iteration (read from)
-layout(std430, binding = 5) readonly buffer PreviousChanged { uint previous_changed[]; };
+layout(std430, binding = 4) readonly buffer PreviousChanged { uint previous_changed[]; };
+// Nodes modified by the current iteration (written to)
+layout(std430, binding = 5) coherent buffer CurrentChanged { uint current_changed[]; };
 layout(std430, binding = 6) readonly buffer Params {
     uint bucket_idx;
     uint delta;

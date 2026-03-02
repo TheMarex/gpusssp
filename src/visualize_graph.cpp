@@ -567,7 +567,7 @@ static std::jthread start_sssp_thread(SharedContext &ctx,
             gpu::Statistics statistics(device, mem_props);
             gpu::DeltaStep<common::WeightedGraph<uint32_t>> deltastep(
                 graph_buffers, deltastep_buffers, device, statistics, ctx.delta, 1);
-            deltastep.initialize();
+            deltastep.initialize(cmd_pool);
 
             initialization_latch.count_down();
 

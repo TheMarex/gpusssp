@@ -88,7 +88,7 @@ int main(int argc, char **argv)
         gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
 
         gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics, delta);
-        deltastep.initialize();
+        deltastep.initialize(cmd_pool);
 
         common::ProgressBar progress_bar(queries.size());
         uint64_t total_duration = 0;
