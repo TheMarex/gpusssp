@@ -44,3 +44,8 @@ Outcome: On berlin_zorder p50 Dijkstra finished in 19 µs versus 11.7 ms for
 
 Hypothesis: batching multiple nodes per DeltaStep invocation reduces per-bucket runtime on berlin_zorder by amortizing control overhead. We will compare SPECIALIZATION_NODES_PER_INVOCATION values {1,4,8,16,32} with delta 900 on GPU 0.
 Outcome: Invalidated. berlin_zorder p50 runtimes at delta 900 worsened for 4–16 nodes/invocation (up to +10%), while 32 nodes/invocation only improved p50 from 10.8 ms to 10.7 ms and left high percentiles unchanged.
+
+## prerecorded_cmd_buf
+
+Hypothesis: Pre-recording command buffers significantly reduces CPU overhead during the main loop and yield better runtimes for deltastep and nearfar.
+Outcome: Speedup for deltastep between 1.52 and 1.74 and for nearfar between 1.27 and 1.32 on berlin -> way faster.
