@@ -155,6 +155,7 @@ template <typename PayloadT> class Tracer
     }
 
     [[nodiscard]] bool is_auto_playing() const { return auto_play_enabled; }
+    [[nodiscard]] uint32_t auto_play_interval() const { return auto_play_interval_ms; }
 
   private:
     std::mutex step_mtx;
@@ -193,6 +194,7 @@ template <typename PayloadT> struct Tracer
     void stop_auto_play() {}
     void set_auto_play_speed(uint32_t) {}
     [[nodiscard]] bool is_auto_playing() const { return false; }
+    [[nodiscard]] uint32_t auto_play_interval() const { return 500; }
 };
 
 } // namespace gpusssp::gpu

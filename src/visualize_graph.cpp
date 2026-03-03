@@ -507,16 +507,20 @@ static void key_callback(GLFWwindow *window, int key, int, int action, int)
         }
         else if (key == GLFW_KEY_LEFT_BRACKET)
         {
-            if (is_trace_mode(app->color_mode) && app->tracer.is_auto_playing())
+            if (is_trace_mode(app->color_mode))
             {
-                app->tracer.set_auto_play_speed(1000);
+                uint32_t new_interval =
+                    std::min(app->tracer.auto_play_interval() * 3 / 2, uint32_t{5000});
+                app->tracer.set_auto_play_speed(new_interval);
             }
         }
         else if (key == GLFW_KEY_RIGHT_BRACKET)
         {
-            if (is_trace_mode(app->color_mode) && app->tracer.is_auto_playing())
+            if (is_trace_mode(app->color_mode))
             {
-                app->tracer.set_auto_play_speed(200);
+                uint32_t new_interval =
+                    std::max(app->tracer.auto_play_interval() * 2 / 3, uint32_t{50});
+                app->tracer.set_auto_play_speed(new_interval);
             }
         }
         else if (key == GLFW_KEY_C)
@@ -628,8 +632,8 @@ start_sssp_thread(App &ctx,
                 common::log() << "SSSP thread: Running delta-stepping from node " << src_node
                               << '\n';
 
-                uint32_t result =
-                    deltastep.run(cmd_pool, context.queue(), src_node, dst_node, &ctx.tracer);
+                uint32_t result = deltastep.run(
+                    cmd_pool, context.shared_queue(), src_node, dst_node, &ctx.tracer);
 
                 {
                     std::scoped_lock lock(ctx.color_mutex);
@@ -743,7 +747,7 @@ static std::jthread start_color_updater_thread(App &ctx,
                 cmd.end();
 
                 vk::Fence fence = device.createFence({});
-                context.queue().submit({{0, nullptr, nullptr, 1, &cmd}}, fence);
+                context.shared_queue().submit({{0, nullptr, nullptr, 1, &cmd}}, fence);
                 (void)device.waitForFences(1, &fence, VK_TRUE, UINT64_MAX);
 
                 device.destroyFence(fence);
@@ -1316,12 +1320,12 @@ int main(int argc, char **argv)
                                                                      context.device(),
                                                                      context.memory_properties(),
                                                                      context.command_pool(),
-                                                                     context.queue());
+                                                                     context.shared_queue());
     gpu::CoordinatesBuffer coord_buffer(coordinates,
                                         context.device(),
                                         context.memory_properties(),
                                         context.command_pool(),
-                                        context.queue());
+                                        context.shared_queue());
     gpu::DeltaStepBuffers deltastep_buffers(
         graph.num_nodes(), context.device(), context.memory_properties());
     auto render_pipeline =
