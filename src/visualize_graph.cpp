@@ -45,17 +45,9 @@ using namespace gpusssp; // NOLINT
 class FrameRecorder
 {
   public:
-    FrameRecorder(vk::Device device,
-                  vk::PhysicalDeviceMemoryProperties mem_props,
-                  vk::CommandPool cmd_pool,
-                  gpu::SharedQueue &queue,
-                  vk::Extent2D extent,
-                  vk::Format format,
-                  std::string output_base_dir)
-        : m_device(device), m_mem_props(mem_props), m_cmd_pool(cmd_pool), m_queue(queue),
-          m_extent(extent), m_format(format), m_output_base_dir(std::move(output_base_dir))
+    FrameRecorder(gpu::VulkanGraphicsContext &context, std::string output_base_dir)
+        : m_context(context), m_output_base_dir(std::move(output_base_dir))
     {
-        create_staging_buffer();
     }
 
     ~FrameRecorder()
@@ -64,10 +56,14 @@ class FrameRecorder
         {
             stop_recording();
         }
-        destroy_staging_buffer();
     }
 
-    void start_recording()
+    FrameRecorder(const FrameRecorder &) = delete;
+    FrameRecorder &operator=(const FrameRecorder &) = delete;
+    FrameRecorder(FrameRecorder &&) = delete;
+    FrameRecorder &operator=(FrameRecorder &&) = delete;
+
+    void start_recording(vk::Extent2D extent)
     {
         if (m_is_recording)
         {
@@ -83,6 +79,7 @@ class FrameRecorder
 
         m_frame_number = 0;
         m_is_recording = true;
+        allocate_staging_buffer(extent);
 
         common::log() << "Recording started: " << m_current_recording_dir << '\n';
     }
@@ -95,6 +92,7 @@ class FrameRecorder
         }
 
         m_is_recording = false;
+        free_staging_buffer();
 
         common::log() << "Recording stopped. " << m_frame_number << " frames captured." << '\n';
         common::log() << "To convert to GIF, run:" << '\n';
@@ -103,27 +101,28 @@ class FrameRecorder
                       << "/output.gif" << '\n';
     }
 
-    void capture_frame(vk::Image swapchain_image)
+    void capture_frame(vk::Image swapchain_image, vk::Extent2D extent)
     {
         if (!m_is_recording)
         {
             return;
         }
 
-        copy_image_to_buffer(swapchain_image);
-        save_buffer_as_png();
+        if (extent.width * extent.height * 4 != m_buffer_size)
+        {
+            free_staging_buffer();
+            allocate_staging_buffer(extent);
+        }
+
+        copy_image_to_buffer(swapchain_image, extent);
+        save_buffer_as_png(extent);
         m_frame_number++;
     }
 
     [[nodiscard]] bool is_recording() const { return m_is_recording; }
 
   private:
-    vk::Device m_device;
-    vk::PhysicalDeviceMemoryProperties m_mem_props;
-    vk::CommandPool m_cmd_pool;
-    gpu::SharedQueue &m_queue;
-    vk::Extent2D m_extent;
-    vk::Format m_format;
+    gpu::VulkanGraphicsContext &m_context;
 
     std::string m_output_base_dir;
     std::string m_current_recording_dir;
@@ -134,38 +133,39 @@ class FrameRecorder
     vk::DeviceMemory m_staging_memory;
     size_t m_buffer_size = 0;
 
-    void create_staging_buffer()
+    void allocate_staging_buffer(vk::Extent2D extent)
     {
-        m_buffer_size = m_extent.width * m_extent.height * 4;
+        m_buffer_size = static_cast<size_t>(extent.width) * extent.height * 4;
 
         m_staging_buffer = gpu::create_exclusive_buffer<uint8_t>(
-            m_device, m_buffer_size, vk::BufferUsageFlagBits::eTransferDst);
+            m_context.device(), m_buffer_size, vk::BufferUsageFlagBits::eTransferDst);
 
-        m_staging_memory = gpu::alloc_and_bind(m_device,
-                                               m_mem_props,
+        m_staging_memory = gpu::alloc_and_bind(m_context.device(),
+                                               m_context.memory_properties(),
                                                m_staging_buffer,
                                                vk::MemoryPropertyFlagBits::eHostVisible |
                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
     }
 
-    void destroy_staging_buffer()
+    void free_staging_buffer()
     {
         if (m_staging_buffer)
         {
-            m_device.destroyBuffer(m_staging_buffer);
+            m_context.device().destroyBuffer(m_staging_buffer);
             m_staging_buffer = nullptr;
         }
         if (m_staging_memory)
         {
-            m_device.freeMemory(m_staging_memory);
+            m_context.device().freeMemory(m_staging_memory);
             m_staging_memory = nullptr;
         }
+        m_buffer_size = 0;
     }
 
-    void copy_image_to_buffer(vk::Image image)
+    void copy_image_to_buffer(vk::Image image, vk::Extent2D extent)
     {
-        vk::CommandBuffer cmd =
-            m_device.allocateCommandBuffers({m_cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
+        vk::CommandBuffer cmd = m_context.device().allocateCommandBuffers(
+            {m_context.command_pool(), vk::CommandBufferLevel::ePrimary, 1})[0];
 
         cmd.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
@@ -190,7 +190,7 @@ class FrameRecorder
                                    0,
                                    {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
                                    {0, 0, 0},
-                                   {m_extent.width, m_extent.height, 1});
+                                   {extent.width, extent.height, 1});
 
         cmd.copyImageToBuffer(
             image, vk::ImageLayout::eTransferSrcOptimal, m_staging_buffer, 1, &region);
@@ -213,24 +213,25 @@ class FrameRecorder
 
         cmd.end();
 
-        vk::Fence fence = m_device.createFence({});
-        m_queue.submit({{0, nullptr, nullptr, 1, &cmd}}, fence);
-        (void)m_device.waitForFences(1, &fence, VK_TRUE, UINT64_MAX);
+        vk::Fence fence = m_context.device().createFence({});
+        m_context.shared_queue().submit({{0, nullptr, nullptr, 1, &cmd}}, fence);
+        (void)m_context.device().waitForFences(1, &fence, VK_TRUE, UINT64_MAX);
 
-        m_device.destroyFence(fence);
-        m_device.freeCommandBuffers(m_cmd_pool, 1, &cmd);
+        m_context.device().destroyFence(fence);
+        m_context.device().freeCommandBuffers(m_context.command_pool(), 1, &cmd);
     }
 
-    void save_buffer_as_png()
+    void save_buffer_as_png(vk::Extent2D extent)
     {
         std::ostringstream filename;
         filename << m_current_recording_dir << "/frame_" << std::setw(6) << std::setfill('0')
                  << m_frame_number << ".png";
 
-        uint32_t width = m_extent.width;
-        uint32_t height = m_extent.height;
+        uint32_t width = extent.width;
+        uint32_t height = extent.height;
 
-        auto *data = static_cast<uint8_t *>(m_device.mapMemory(m_staging_memory, 0, m_buffer_size));
+        auto *data = static_cast<uint8_t *>(
+            m_context.device().mapMemory(m_staging_memory, 0, m_buffer_size));
 
         // Convert from BGRA (Vulkan) to RGBA (PNG) and write
         std::vector<uint8_t> rgba_data(width * height * 4);
@@ -242,7 +243,7 @@ class FrameRecorder
             rgba_data[(i * 4) + 3] = data[(i * 4) + 3];
         }
 
-        m_device.unmapMemory(m_staging_memory);
+        m_context.device().unmapMemory(m_staging_memory);
 
         int stride = static_cast<int>(width * 4);
         int result = stbi_write_png(filename.str().c_str(),
@@ -548,7 +549,7 @@ static void key_callback(GLFWwindow *window, int key, int, int action, int)
                 }
                 else
                 {
-                    app->recorder->start_recording();
+                    app->recorder->start_recording(app->context->swapchain_extent());
                 }
             }
             else
@@ -1206,14 +1207,7 @@ start_workers(App &app,
     if (output_dir)
     {
         common::log() << "Frame recording enabled. Press 'F' to start/stop recording." << '\n';
-        app.recorder =
-            std::make_unique<FrameRecorder>(context.device(),
-                                            context.physical_device().getMemoryProperties(),
-                                            context.command_pool(),
-                                            context.shared_queue(),
-                                            context.swapchain_extent(),
-                                            context.swapchain_format(),
-                                            *output_dir);
+        app.recorder = std::make_unique<FrameRecorder>(context, *output_dir);
     }
 
     return {std::move(sssp_thread), std::move(color_thread)};
@@ -1263,13 +1257,13 @@ static void run_render_loop(App &app,
 
         context.shared_queue().submit(1, &submit_info, frame.in_flight);
 
-        context.end_frame(frame);
-
         if (app.recorder && app.recorder->is_recording())
         {
-            context.device().waitIdle();
-            app.recorder->capture_frame(frame.image);
+            (void)context.device().waitForFences(1, &frame.in_flight, VK_TRUE, UINT64_MAX);
+            app.recorder->capture_frame(frame.image, context.swapchain_extent());
         }
+
+        context.end_frame(frame);
 
         current_frame = (current_frame + 1) % 2;
     }
