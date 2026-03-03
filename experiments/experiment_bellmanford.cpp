@@ -78,7 +78,7 @@ int main(int argc, char **argv)
         gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
 
         gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device, gpu_statistics);
-        bellmanford.initialize();
+        bellmanford.initialize(cmd_pool);
 
         common::ProgressBar progress_bar(queries.size());
         uint64_t total_duration = 0;

@@ -14,16 +14,12 @@ layout(std430, binding = 0) readonly buffer FirstEdges { uint first_edges[]; };
 layout(std430, binding = 1) readonly buffer Targets { uint targets[]; };
 layout(std430, binding = 2) readonly buffer Weight { uint weight[]; };
 layout(std430, binding = 3) coherent buffer Dist { uint dist[]; };
-// Results buffer: [0] = best_distance (dist[dst_node])
-layout(std430, binding = 4) coherent buffer Results { uint results[]; };
 // Changed flag: set to 1 if any distance was updated
-layout(std430, binding = 5) coherent buffer Changed { uint changed; };
+layout(std430, binding = 4) coherent buffer Changed { uint changed; };
 // Statistics counters
-layout(std430, binding = 6) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
+layout(std430, binding = 5) coherent buffer StatisticsCounters { uint64_t statistics_counters[]; };
 
 layout(push_constant) uniform PushConsts {
-    uint src_node;
-    uint dst_node;
     uint n;
 } pc;
 
@@ -35,10 +31,6 @@ void main() {
     uint u = gl_GlobalInvocationID.x;
 
     if (u < pc.n) {
-        if (u == pc.dst_node) {
-            atomicMin(results[0], dist[u]);
-        }
-
         uint du = dist[u];
         if (du < INF_WEIGHT) {
             uint local_changed = 0;

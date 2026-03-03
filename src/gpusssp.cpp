@@ -184,7 +184,7 @@ int main(int argc, char **argv)
         deltastep.initialize(cmd_pool);
 
         gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device, gpu_statistics);
-        bellmanford.initialize();
+        bellmanford.initialize(cmd_pool);
 
         gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, gpu_statistics, delta);
         nearfar.initialize(cmd_pool);
