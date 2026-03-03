@@ -852,10 +852,10 @@ static void project_coordinates(gpu::CoordinatesBuffer &coord_buffer,
         uint32_t num_points;
     };
 
-    float center_x = (min_point.x + max_point.x) / 2.0;
-    float center_y = (min_point.y + max_point.y) / 2.0;
-    float inv_width = 1.0 / (max_point.x - min_point.x);
-    float inv_height = 1.0 / (max_point.y - min_point.y);
+    float center_x = (min_point.x + max_point.x) / 2.0f;
+    float center_y = (min_point.y + max_point.y) / 2.0f;
+    float inv_width = 1.0f / (max_point.x - min_point.x);
+    float inv_height = 1.0f / (max_point.y - min_point.y);
 
     auto coord_buffers = coord_buffer.buffers();
 
@@ -928,7 +928,8 @@ static std::pair<vk::Pipeline, vk::PipelineLayout> create_graphics_pipeline(
     vk::PipelineShaderStageCreateInfo frag_stage_info(
         {}, vk::ShaderStageFlagBits::eFragment, frag_shader, "main");
 
-    vk::PipelineShaderStageCreateInfo shader_stages[] = {vert_stage_info, frag_stage_info};
+    std::array<vk::PipelineShaderStageCreateInfo, 2> shader_stages = {vert_stage_info,
+                                                                       frag_stage_info};
 
     std::array<vk::VertexInputBindingDescription, 2> bindings = {
         vk::VertexInputBindingDescription(0, sizeof(float) * 2, vk::VertexInputRate::eVertex),
@@ -1000,8 +1001,8 @@ static std::pair<vk::Pipeline, vk::PipelineLayout> create_graphics_pipeline(
         {}, static_cast<uint32_t>(dynamic_states.size()), dynamic_states.data());
 
     vk::GraphicsPipelineCreateInfo pipeline_info({},
-                                                 2,
-                                                 shader_stages,
+                                                 static_cast<uint32_t>(shader_stages.size()),
+                                                 shader_stages.data(),
                                                  &vertex_input_info,
                                                  &input_assembly,
                                                  nullptr,
@@ -1105,9 +1106,9 @@ static void record_render_commands(vk::CommandBuffer command_buffer,
                                  sizeof(PushConstants),
                                  &push_constants);
 
-    vk::Buffer vertex_buffers[] = {projected_coords_buffer, color_buffer};
-    vk::DeviceSize offsets[] = {0, 0};
-    command_buffer.bindVertexBuffers(0, 2, vertex_buffers, offsets);
+    std::array<vk::Buffer, 2> vertex_buffers = {projected_coords_buffer, color_buffer};
+    std::array<vk::DeviceSize, 2> offsets = {0, 0};
+    command_buffer.bindVertexBuffers(0, 2, vertex_buffers.data(), offsets.data());
 
     command_buffer.draw(vertex_count, 1, 0, 0);
 
