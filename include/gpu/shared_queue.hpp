@@ -1,6 +1,7 @@
 #ifndef GPUSSSP_GPU_SHARED_QUEUE_HPP
 #define GPUSSSP_GPU_SHARED_QUEUE_HPP
 
+#include <memory>
 #include <mutex>
 #include <vulkan/vulkan.hpp>
 
@@ -10,31 +11,33 @@ namespace gpusssp::gpu
 class SharedQueue
 {
   public:
-    SharedQueue() : m_queue(nullptr) {}
-    explicit SharedQueue(vk::Queue queue) : m_queue(queue) {}
+    SharedQueue() = default;
+    explicit SharedQueue(vk::Queue queue) : m_queue(queue), m_mutex(std::make_shared<std::mutex>())
+    {
+    }
 
     vk::Result
     submit(uint32_t submit_count, const vk::SubmitInfo *p_submits, vk::Fence fence = nullptr)
     {
-        std::scoped_lock lock(m_mutex);
+        std::scoped_lock lock(*m_mutex);
         return m_queue.submit(submit_count, p_submits, fence);
     }
 
     void submit(const vk::ArrayProxy<const vk::SubmitInfo> &submits, vk::Fence fence = nullptr)
     {
-        std::scoped_lock lock(m_mutex);
+        std::scoped_lock lock(*m_mutex);
         m_queue.submit(submits, fence);
     }
 
     vk::Result presentKHR(const vk::PresentInfoKHR &present_info) // NOLINT
     {
-        std::scoped_lock lock(m_mutex);
+        std::scoped_lock lock(*m_mutex);
         return m_queue.presentKHR(present_info);
     }
 
     void waitIdle() // NOLINT
     {
-        std::scoped_lock lock(m_mutex);
+        std::scoped_lock lock(*m_mutex);
         m_queue.waitIdle();
     }
 
@@ -42,7 +45,7 @@ class SharedQueue
 
   private:
     vk::Queue m_queue;
-    mutable std::mutex m_mutex;
+    mutable std::shared_ptr<std::mutex> m_mutex;
 };
 
 } // namespace gpusssp::gpu
