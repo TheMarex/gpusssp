@@ -16,7 +16,7 @@ class DeltaStepBuffers
 {
   public:
     DeltaStepBuffers(size_t num_nodes,
-                     vk::Device &device,
+                     vk::Device device,
                      const vk::PhysicalDeviceMemoryProperties &mem_props)
         : num_nodes(static_cast<uint32_t>(num_nodes)),
           num_blocks(static_cast<uint32_t>((num_nodes + 31) / 32)), device(device)
@@ -185,11 +185,11 @@ class DeltaStepBuffers
     vk::DeviceMemory mem_dispatch_deltastep;
     vk::DeviceMemory mem_params;
 
-    uint32_t *gpu_results;
+    uint32_t *gpu_results = nullptr;
 
-    uint32_t num_nodes;
-    uint32_t num_blocks;
-    vk::Device &device;
+    uint32_t num_nodes = 0;
+    uint32_t num_blocks = 0;
+    vk::Device device;
 };
 
 } // namespace gpusssp::gpu

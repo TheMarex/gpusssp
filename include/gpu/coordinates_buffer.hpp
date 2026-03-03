@@ -18,10 +18,10 @@ class CoordinatesBuffer
   public:
     template <typename QueueT = vk::Queue>
     CoordinatesBuffer(const std::vector<common::Coordinate> &coordinates,
-                      vk::Device &device,
+                      vk::Device device,
                       const vk::PhysicalDeviceMemoryProperties &mem_props,
                       vk::CommandPool command_pool,
-                      QueueT &queue)
+                      QueueT queue)
         : device(device), count(coordinates.size())
     {
         buf_input = gpu::create_exclusive_buffer<int32_t>(
@@ -62,7 +62,7 @@ class CoordinatesBuffer
     vk::Buffer buf_output;
     vk::DeviceMemory mem_input;
     vk::DeviceMemory mem_output;
-    vk::Device &device;
+    vk::Device device;
     size_t count;
 };
 

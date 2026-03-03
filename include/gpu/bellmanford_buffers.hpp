@@ -15,7 +15,7 @@ class BellmanFordBuffers
 {
   public:
     BellmanFordBuffers(size_t num_nodes,
-                       vk::Device &device,
+                       vk::Device device,
                        const vk::PhysicalDeviceMemoryProperties &mem_props)
         : num_nodes(num_nodes), device(device)
     {
@@ -69,11 +69,11 @@ class BellmanFordBuffers
     vk::DeviceMemory mem_results;
     vk::DeviceMemory mem_changed;
 
-    uint32_t *gpu_results;
-    uint32_t *gpu_changed;
+    uint32_t *gpu_results = nullptr;
+    uint32_t *gpu_changed = nullptr;
 
-    size_t num_nodes;
-    vk::Device &device;
+    size_t num_nodes = 0;
+    vk::Device device;
 };
 
 } // namespace gpusssp::gpu

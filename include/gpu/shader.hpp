@@ -20,7 +20,7 @@ struct DescriptorSetBundle
 };
 
 inline DescriptorSetBundle
-create_descriptor_sets(vk::Device &device, const std::vector<std::vector<vk::Buffer>> &buffer_sets)
+create_descriptor_sets(vk::Device device, const std::vector<std::vector<vk::Buffer>> &buffer_sets)
 {
     if (buffer_sets.empty())
     {
@@ -100,7 +100,7 @@ struct ComputePipeline
     vk::DescriptorSetLayout descriptor_set_layout;
     vk::DescriptorPool descriptor_pool;
 
-    void destroy(vk::Device &device)
+    void destroy(vk::Device device)
     {
         device.destroyPipeline(pipeline);
         device.destroyPipelineLayout(layout);
@@ -112,7 +112,7 @@ struct ComputePipeline
 
 template <typename PushConstantsT = void>
 inline ComputePipeline
-create_compute_pipeline(vk::Device &device,
+create_compute_pipeline(vk::Device device,
                         const std::string &shader_path,
                         const std::vector<std::vector<vk::Buffer>> &buffer_sets,
                         const std::vector<uint32_t> &specialization_constants = {})

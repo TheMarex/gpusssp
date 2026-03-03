@@ -25,20 +25,11 @@ template <typename GraphT> class BellmanFord
   public:
     BellmanFord(const GraphBuffers<GraphT> &graph_buffers,
                 BellmanFordBuffers &bellmanford_buffers,
-                vk::Device &device,
+                vk::Device device,
                 Statistics &statistics,
                 uint32_t workgroup_size = DEFAULT_WORKGROUP_SIZE)
         : graph_buffers(graph_buffers), bellmanford_buffers(bellmanford_buffers),
           statistics(statistics), device(device), workgroup_size(workgroup_size)
-    {
-    }
-
-    ~BellmanFord()
-    {
-        main_pipeline.destroy(device);
-    }
-
-    void initialize()
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto [dist_buffer, results_buffer, changed_buffer] = bellmanford_buffers.buffers();
@@ -56,8 +47,12 @@ template <typename GraphT> class BellmanFord
                                                             {workgroup_size});
     }
 
+    ~BellmanFord() { main_pipeline.destroy(device); }
+
+    void initialize(vk::CommandPool cmd_pool) { (void)cmd_pool; }
+
     template <typename QueueT>
-    uint32_t run(vk::CommandPool &cmd_pool, QueueT &queue, uint32_t src_node, uint32_t dst_node)
+    uint32_t run(vk::CommandPool cmd_pool, QueueT queue, uint32_t src_node, uint32_t dst_node)
     {
         vk::CommandBuffer cmd_buf =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
@@ -152,7 +147,7 @@ template <typename GraphT> class BellmanFord
 
     ComputePipeline main_pipeline;
 
-    vk::Device &device;
+    vk::Device device;
     uint32_t workgroup_size;
 };
 

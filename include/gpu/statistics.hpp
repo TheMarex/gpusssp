@@ -44,7 +44,7 @@ inline const char *event_to_name(StatisticsEvent event)
 class Statistics
 {
   public:
-    Statistics(vk::Device &device, const vk::PhysicalDeviceMemoryProperties &mem_props)
+    Statistics(vk::Device device, const vk::PhysicalDeviceMemoryProperties &mem_props)
         : device(device)
     {
 #ifdef ENABLE_STATISTICS
@@ -102,12 +102,12 @@ class Statistics
   private:
     static constexpr size_t NUM_COUNTERS = static_cast<size_t>(StatisticsEvent::NUM_EVENTS);
 
-    vk::Device &device;
+    vk::Device device;
 
     vk::Buffer buf_statistics;
     vk::DeviceMemory mem_statistics;
 
-    uint64_t *gpu_statistics_counters{nullptr};
+    uint64_t *gpu_statistics_counters = nullptr;
 };
 
 } // namespace gpusssp::gpu

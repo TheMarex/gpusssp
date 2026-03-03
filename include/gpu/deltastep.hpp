@@ -43,7 +43,7 @@ template <typename GraphT> class DeltaStep
   public:
     DeltaStep(const GraphBuffers<GraphT> &graph_buffers,
               DeltaStepBuffers &deltastep_buffers,
-              vk::Device &device,
+              vk::Device device,
               Statistics &statistics,
               uint32_t delta,
               uint32_t relax_batch_size = DEFAULT_RELAX_BATCH_SIZE,
@@ -60,7 +60,7 @@ template <typename GraphT> class DeltaStep
         prepare_dispatch_pipeline.destroy(device);
     }
 
-    void initialize(vk::CommandPool &cmd_pool)
+    void initialize(vk::CommandPool cmd_pool)
     {
         auto [first_edges_buffer, targets_buffer, weights_buffer] = graph_buffers.buffers();
         auto dist_buffer = deltastep_buffers.dist_buffer();
@@ -111,7 +111,7 @@ template <typename GraphT> class DeltaStep
         record_bucket_init_commands(init_bucket_cmd_bufs[0], 0);
     }
 
-    void record_init_commands(vk::CommandBuffer &cmd_buf, uint32_t src_node)
+    void record_init_commands(vk::CommandBuffer cmd_buf, uint32_t src_node)
     {
         auto record_start =
             common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
@@ -132,7 +132,7 @@ template <typename GraphT> class DeltaStep
                                        record_start);
     }
 
-    void record_relax_batch_commands(vk::CommandBuffer &cmd_buf,
+    void record_relax_batch_commands(vk::CommandBuffer cmd_buf,
                                      uint32_t num_nodes,
                                      uint32_t buffer_index)
     {
@@ -221,7 +221,7 @@ template <typename GraphT> class DeltaStep
                                        record_start);
     }
 
-    void record_bucket_init_commands(vk::CommandBuffer &cmd_buf, uint32_t buffer_index)
+    void record_bucket_init_commands(vk::CommandBuffer cmd_buf, uint32_t buffer_index)
     {
         auto record_start =
             common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
@@ -244,7 +244,7 @@ template <typename GraphT> class DeltaStep
     }
 
     void
-    record_sync_commands(vk::CommandBuffer &cmd_buf, uint32_t dst_node, uint32_t next_bucket_idx)
+    record_sync_commands(vk::CommandBuffer cmd_buf, uint32_t dst_node, uint32_t next_bucket_idx)
     {
         auto record_start =
             common::Statistics::start(common::StatisticsEvent::DELTASTEP_CMDBUF_RECORD_DURATION);
@@ -275,8 +275,8 @@ template <typename GraphT> class DeltaStep
     }
 
     template <typename QueueT>
-    uint32_t run(vk::CommandPool &cmd_pool,
-                 QueueT &queue,
+    uint32_t run(vk::CommandPool cmd_pool,
+                 QueueT queue,
                  uint32_t src_node,
                  uint32_t dst_node,
                  DeltaStepTracer *tracer = nullptr)
@@ -392,7 +392,7 @@ template <typename GraphT> class DeltaStep
     ComputePipeline main_pipeline;
     ComputePipeline prepare_dispatch_pipeline;
 
-    vk::Device &device;
+    vk::Device device;
     uint32_t delta;
     uint32_t relax_batch_size;
     uint32_t workgroup_size;

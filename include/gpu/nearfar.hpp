@@ -29,7 +29,7 @@ template <typename GraphT> class NearFar
   public:
     NearFar(const GraphBuffers<GraphT> &graph_buffers,
             NearFarBuffers &nearfar_buffers,
-            vk::Device &device,
+            vk::Device device,
             Statistics &statistics,
             uint32_t delta,
             uint32_t relax_batch_size = DEFAULT_RELAX_BATCH_SIZE,
@@ -124,7 +124,7 @@ template <typename GraphT> class NearFar
         prepare_dispatch_pipeline.destroy(device);
     }
 
-    void initialize(vk::CommandPool &cmd_pool)
+    void initialize(vk::CommandPool cmd_pool)
     {
         device.freeCommandBuffers(cmd_pool, relax_cmd_bufs);
         device.freeCommandBuffers(cmd_pool, compact_cmd_bufs);
@@ -144,7 +144,7 @@ template <typename GraphT> class NearFar
         }
     }
 
-    void record_relax_batch_commands(vk::CommandBuffer &cmd_buf,
+    void record_relax_batch_commands(vk::CommandBuffer cmd_buf,
                                      uint32_t num_nodes,
                                      uint32_t current_far_buffer_idx,
                                      vk::Buffer dispatch_buffer)
@@ -232,7 +232,7 @@ template <typename GraphT> class NearFar
                                        record_start);
     }
 
-    void record_compact_commands(vk::CommandBuffer &cmd_buf,
+    void record_compact_commands(vk::CommandBuffer cmd_buf,
                                  uint32_t num_nodes,
                                  uint32_t current_far_buffer_idx,
                                  vk::Buffer dispatch_buffer)
@@ -309,7 +309,7 @@ template <typename GraphT> class NearFar
                                        record_start);
     }
 
-    void record_sync_commands(vk::CommandBuffer &cmd_buf,
+    void record_sync_commands(vk::CommandBuffer cmd_buf,
                               uint32_t dst_node,
                               uint32_t current_far_buffer_idx)
     {
@@ -343,7 +343,7 @@ template <typename GraphT> class NearFar
                                        record_start);
     }
 
-    void record_init_commands(vk::CommandBuffer &cmd_buf,
+    void record_init_commands(vk::CommandBuffer cmd_buf,
                               uint32_t src_node,
                               uint32_t dst_node,
                               uint32_t delta)
@@ -385,7 +385,7 @@ template <typename GraphT> class NearFar
     }
 
     template <typename QueueT>
-    uint32_t run(vk::CommandPool &cmd_pool, QueueT &queue, uint32_t src_node, uint32_t dst_node)
+    uint32_t run(vk::CommandPool cmd_pool, QueueT queue, uint32_t src_node, uint32_t dst_node)
     {
         if (relax_cmd_bufs.empty() || compact_cmd_bufs.empty())
         {
@@ -487,7 +487,7 @@ template <typename GraphT> class NearFar
     ComputePipeline compact_pipeline;
     ComputePipeline prepare_dispatch_pipeline;
 
-    vk::Device &device;
+    vk::Device device;
     uint32_t delta;
     uint32_t relax_batch_size;
     uint32_t workgroup_size;
