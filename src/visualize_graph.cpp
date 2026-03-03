@@ -284,233 +284,271 @@ struct PushConstants
     float point_size;
 };
 
-struct SharedContext
+struct App
 {
-    std::mutex sssp_mutex;
-    std::condition_variable sssp_cv;
-    bool sssp_run_requested = false;
-
-    std::mutex color_mutex;
-    std::condition_variable color_cv;
-    bool color_update_requested = false;
-    ColorMode current_color_mode = ColorMode::FIXED;
-    uint32_t grouping_size = 64;
-    uint32_t delta = 3600;
-
-    gpu::DeltaStepTracer tracer;
-};
-
-struct State
-{
+    // UI state
     double pan_x = 0.0;
     double pan_y = 0.0;
     double zoom = 1.0;
     double point_size = 3.0;
-
     double last_mouse_x = 0.0;
     double last_mouse_y = 0.0;
     bool is_dragging = false;
+    bool white_background = false;
+    std::unique_ptr<FrameRecorder> recorder;
 
+    // Vulkan context pointer (for framebuffer resize callback)
+    gpu::VulkanGraphicsContext *context = nullptr;
+
+    // Shared state (protected by color_mutex)
+    std::mutex color_mutex;
+    std::condition_variable color_cv;
+    bool color_update_requested = false;
     ColorMode color_mode = ColorMode::FIXED;
     uint32_t grouping_size = 64;
-    bool restart_requested = false;
-    bool white_background = false;
+    uint32_t delta = 3600;
 
-    std::unique_ptr<FrameRecorder> recorder;
+    // SSSP thread communication
+    std::mutex sssp_mutex;
+    std::condition_variable sssp_cv;
+    bool sssp_run_requested = false;
+
+    gpu::DeltaStepTracer tracer;
 };
 
-static State g_state;
-static SharedContext *g_shared_ctx = nullptr;
-
-static void scroll_callback(GLFWwindow *, double, double yoffset)
+static void notify_color_update(App &app)
 {
+    std::scoped_lock lock(app.color_mutex);
+    app.color_update_requested = true;
+    app.color_cv.notify_one();
+}
+
+static void scroll_callback(GLFWwindow *window, double, double yoffset)
+{
+    auto *app = static_cast<App *>(glfwGetWindowUserPointer(window));
     double zoom_factor = 1.1;
     if (yoffset > 0)
     {
-        g_state.zoom *= zoom_factor;
+        app->zoom *= zoom_factor;
     }
     else if (yoffset < 0)
     {
-        g_state.zoom /= zoom_factor;
+        app->zoom /= zoom_factor;
     }
 }
 
 static void mouse_button_callback(GLFWwindow *window, int button, int action, int)
 {
+    auto *app = static_cast<App *>(glfwGetWindowUserPointer(window));
     if (button == GLFW_MOUSE_BUTTON_LEFT)
     {
         if (action == GLFW_PRESS)
         {
-            g_state.is_dragging = true;
-            glfwGetCursorPos(window, &g_state.last_mouse_x, &g_state.last_mouse_y);
+            app->is_dragging = true;
+            glfwGetCursorPos(window, &app->last_mouse_x, &app->last_mouse_y);
         }
         else if (action == GLFW_RELEASE)
         {
-            g_state.is_dragging = false;
+            app->is_dragging = false;
         }
     }
 }
 
-static void cursor_pos_callback(GLFWwindow *, double xpos, double ypos)
+static void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos)
 {
-    if (g_state.is_dragging)
+    auto *app = static_cast<App *>(glfwGetWindowUserPointer(window));
+    if (app->is_dragging)
     {
-        double dx = xpos - g_state.last_mouse_x;
-        double dy = ypos - g_state.last_mouse_y;
+        double dx = xpos - app->last_mouse_x;
+        double dy = ypos - app->last_mouse_y;
 
-        g_state.pan_x += dx / g_state.zoom;
-        g_state.pan_y -= dy / g_state.zoom;
+        app->pan_x += dx / app->zoom;
+        app->pan_y -= dy / app->zoom;
 
-        g_state.last_mouse_x = xpos;
-        g_state.last_mouse_y = ypos;
+        app->last_mouse_x = xpos;
+        app->last_mouse_y = ypos;
     }
 }
 
-static void key_callback(GLFWwindow *, int key, int, int action, int)
+static void key_callback(GLFWwindow *window, int key, int, int action, int)
 {
+    auto *app = static_cast<App *>(glfwGetWindowUserPointer(window));
     if (action == GLFW_PRESS || action == GLFW_REPEAT)
     {
         if (key == GLFW_KEY_EQUAL || key == GLFW_KEY_KP_ADD)
         {
-            g_state.point_size = std::min(g_state.point_size * 1.2, 100.0);
+            app->point_size = std::min(app->point_size * 1.2, 100.0);
         }
         else if (key == GLFW_KEY_MINUS || key == GLFW_KEY_KP_SUBTRACT)
         {
-            g_state.point_size = std::max(g_state.point_size / 1.2, 0.1);
+            app->point_size = std::max(app->point_size / 1.2, 0.1);
         }
     }
     if (action == GLFW_PRESS)
     {
         if (key == GLFW_KEY_M)
         {
-            if (g_state.color_mode == ColorMode::FIXED)
+            ColorMode new_mode;
+            uint32_t new_grouping;
             {
-                common::log() << "Coloring by node order" << '\n';
-                g_state.color_mode = ColorMode::ORDERING;
-            }
-            else if (g_state.color_mode == ColorMode::ORDERING)
-            {
-                g_state.color_mode = ColorMode::WORKGROUP;
-                g_state.grouping_size = 32;
-                common::log() << "Coloring by workgroup (32 nodes)" << '\n';
-            }
-            else if (g_state.color_mode == ColorMode::WORKGROUP)
-            {
-                if (g_state.grouping_size == 32)
+                std::scoped_lock lock(app->color_mutex);
+                new_mode = app->color_mode;
+                new_grouping = app->grouping_size;
+
+                if (new_mode == ColorMode::FIXED)
                 {
-                    g_state.grouping_size = 64;
+                    common::log() << "Coloring by node order" << '\n';
+                    new_mode = ColorMode::ORDERING;
                 }
-                else if (g_state.grouping_size == 64)
+                else if (new_mode == ColorMode::ORDERING)
                 {
-                    g_state.grouping_size = 128;
+                    new_mode = ColorMode::WORKGROUP;
+                    new_grouping = 32;
+                    common::log() << "Coloring by workgroup (32 nodes)" << '\n';
                 }
-                else if (g_state.grouping_size == 128)
+                else if (new_mode == ColorMode::WORKGROUP)
                 {
-                    g_state.grouping_size = 256;
+                    if (new_grouping == 32)
+                    {
+                        new_grouping = 64;
+                    }
+                    else if (new_grouping == 64)
+                    {
+                        new_grouping = 128;
+                    }
+                    else if (new_grouping == 128)
+                    {
+                        new_grouping = 256;
+                    }
+                    else
+                    {
+                        new_mode = ColorMode::FIXED;
+                        common::log() << "Coloring: Fixed" << '\n';
+                    }
+
+                    if (new_mode == ColorMode::WORKGROUP)
+                    {
+                        common::log() << "Coloring by workgroup (" << new_grouping << " nodes)"
+                                      << '\n';
+                    }
                 }
                 else
                 {
-                    g_state.color_mode = ColorMode::FIXED;
-                    common::log() << "Coloring: Fixed" << '\n';
+                    new_mode = ColorMode::FIXED;
                 }
 
-                if (g_state.color_mode == ColorMode::WORKGROUP)
-                {
-                    common::log() << "Coloring by workgroup (" << g_state.grouping_size << " nodes)"
-                                  << '\n';
-                }
-            }
-            else
-            {
-                g_state.color_mode = ColorMode::FIXED;
+                app->color_mode = new_mode;
+                app->grouping_size = new_grouping;
+                app->color_update_requested = true;
+                app->color_cv.notify_one();
             }
         }
         else if (key == GLFW_KEY_B)
         {
-            g_state.white_background = !g_state.white_background;
+            app->white_background = !app->white_background;
         }
         else if (key == GLFW_KEY_T)
         {
-            if (g_state.color_mode == ColorMode::TRACE_DISTANCE)
+            ColorMode new_mode;
+            bool entering_trace = false;
             {
-                common::log() << "Tracing buckets" << '\n';
-                g_state.color_mode = ColorMode::TRACE_BUCKET;
+                std::scoped_lock lock(app->color_mutex);
+                ColorMode current = app->color_mode;
+                if (current == ColorMode::TRACE_DISTANCE)
+                {
+                    common::log() << "Tracing buckets" << '\n';
+                    new_mode = ColorMode::TRACE_BUCKET;
+                }
+                else if (current == ColorMode::TRACE_BUCKET)
+                {
+                    common::log() << "Tracing changed nodes" << '\n';
+                    new_mode = ColorMode::TRACE_CHANGED;
+                }
+                else
+                {
+                    common::log() << "Tracing distance" << '\n';
+                    new_mode = ColorMode::TRACE_DISTANCE;
+                    entering_trace = !is_trace_mode(current);
+                }
+                app->color_mode = new_mode;
+                app->color_update_requested = true;
+                app->color_cv.notify_one();
             }
-            else if (g_state.color_mode == ColorMode::TRACE_BUCKET)
+
+            if (entering_trace)
             {
-                common::log() << "Tracing changed nodes" << '\n';
-                g_state.color_mode = ColorMode::TRACE_CHANGED;
-            }
-            else
-            {
-                common::log() << "Tracing distance" << '\n';
-                g_state.color_mode = ColorMode::TRACE_DISTANCE;
+                common::log() << "Entering Trace mode" << '\n';
+                std::scoped_lock lock(app->sssp_mutex);
+                app->sssp_run_requested = true;
+                app->sssp_cv.notify_one();
             }
         }
         else if (key == GLFW_KEY_S)
         {
-            if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
+            if (is_trace_mode(app->color_mode))
             {
-                g_shared_ctx->tracer.step();
+                app->tracer.step();
             }
         }
         else if (key == GLFW_KEY_A)
         {
-            if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
+            if (is_trace_mode(app->color_mode))
             {
-                if (g_shared_ctx->tracer.is_auto_playing())
+                if (app->tracer.is_auto_playing())
                 {
-                    g_shared_ctx->tracer.stop_auto_play();
+                    app->tracer.stop_auto_play();
                 }
                 else
                 {
-                    g_shared_ctx->tracer.start_auto_play(500);
+                    app->tracer.start_auto_play(500);
                 }
             }
         }
         else if (key == GLFW_KEY_LEFT_BRACKET)
         {
-            if (is_trace_mode(g_state.color_mode) && g_shared_ctx &&
-                g_shared_ctx->tracer.is_auto_playing())
+            if (is_trace_mode(app->color_mode) && app->tracer.is_auto_playing())
             {
-                g_shared_ctx->tracer.set_auto_play_speed(1000);
+                app->tracer.set_auto_play_speed(1000);
             }
         }
         else if (key == GLFW_KEY_RIGHT_BRACKET)
         {
-            if (is_trace_mode(g_state.color_mode) && g_shared_ctx &&
-                g_shared_ctx->tracer.is_auto_playing())
+            if (is_trace_mode(app->color_mode) && app->tracer.is_auto_playing())
             {
-                g_shared_ctx->tracer.set_auto_play_speed(200);
+                app->tracer.set_auto_play_speed(200);
             }
         }
         else if (key == GLFW_KEY_C)
         {
-            if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
+            if (is_trace_mode(app->color_mode))
             {
-                g_shared_ctx->tracer.continue_to_end();
+                app->tracer.continue_to_end();
             }
         }
         else if (key == GLFW_KEY_R)
         {
-            if (is_trace_mode(g_state.color_mode) && g_shared_ctx)
+            if (is_trace_mode(app->color_mode))
             {
-                g_shared_ctx->tracer.continue_to_end();
+                app->tracer.continue_to_end();
 
-                g_state.restart_requested = true;
+                {
+                    std::scoped_lock lock(app->sssp_mutex);
+                    app->sssp_run_requested = true;
+                    app->sssp_cv.notify_one();
+                }
             }
         }
         else if (key == GLFW_KEY_F)
         {
-            if (g_state.recorder)
+            if (app->recorder)
             {
-                if (g_state.recorder->is_recording())
+                if (app->recorder->is_recording())
                 {
-                    g_state.recorder->stop_recording();
+                    app->recorder->stop_recording();
                 }
                 else
                 {
-                    g_state.recorder->start_recording();
+                    app->recorder->start_recording();
                 }
             }
             else
@@ -524,17 +562,16 @@ static void key_callback(GLFWwindow *, int key, int, int action, int)
 
 static void framebuffer_resize_callback(GLFWwindow *window, int, int)
 {
-    auto *context =
-        reinterpret_cast<gpu::VulkanGraphicsContext *>(glfwGetWindowUserPointer(window));
-    if (context)
+    auto *app = static_cast<App *>(glfwGetWindowUserPointer(window));
+    if (app && app->context)
     {
-        context->set_framebuffer_resized();
+        app->context->set_framebuffer_resized();
     }
 }
 
-static void setup_glfw_callbacks(GLFWwindow *window, gpu::VulkanGraphicsContext *context)
+static void setup_glfw_callbacks(GLFWwindow *window, App &app)
 {
-    glfwSetWindowUserPointer(window, context);
+    glfwSetWindowUserPointer(window, &app);
     glfwSetScrollCallback(window, scroll_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
     glfwSetCursorPosCallback(window, cursor_pos_callback);
@@ -542,7 +579,7 @@ static void setup_glfw_callbacks(GLFWwindow *window, gpu::VulkanGraphicsContext 
     glfwSetFramebufferSizeCallback(window, framebuffer_resize_callback);
 }
 
-static std::jthread start_sssp_thread(SharedContext &ctx,
+static std::jthread start_sssp_thread(App &ctx,
                                       const common::WeightedGraph<uint32_t> &graph,
                                       gpu::DeltaStepBuffers &deltastep_buffers,
                                       vk::Device device,
@@ -608,7 +645,7 @@ static std::jthread start_sssp_thread(SharedContext &ctx,
         });
 }
 
-static std::jthread start_color_updater_thread(SharedContext &ctx,
+static std::jthread start_color_updater_thread(App &ctx,
                                                gpu::DeltaStepBuffers &deltastep_buffers,
                                                vk::Device device,
                                                vk::Buffer color_buffer,
@@ -725,7 +762,7 @@ static std::jthread start_color_updater_thread(SharedContext &ctx,
                     }
 
                     ctx.color_update_requested = false;
-                    mode = ctx.current_color_mode;
+                    mode = ctx.color_mode;
                     grouping_size = ctx.grouping_size;
                 }
 
@@ -733,8 +770,11 @@ static std::jthread start_color_updater_thread(SharedContext &ctx,
                 {
                     while (!st.stop_requested())
                     {
-                        mode = ctx.current_color_mode;
-                        grouping_size = ctx.grouping_size;
+                        {
+                            std::scoped_lock lock(ctx.color_mutex);
+                            mode = ctx.color_mode;
+                            grouping_size = ctx.grouping_size;
+                        }
 
                         if (!is_trace_mode(mode))
                         {
@@ -980,7 +1020,7 @@ static std::pair<vk::Pipeline, vk::PipelineLayout> create_graphics_pipeline(
     return {graphics_pipeline, pipeline_layout};
 }
 
-static PushConstants calculate_view_transform(const State &camera,
+static PushConstants calculate_view_transform(const App &camera,
                                               vk::Extent2D swapchain_extent,
                                               double graph_width,
                                               double graph_height)
@@ -1104,9 +1144,12 @@ int main(int argc, char **argv)
 
     common::log() << "Creating Vulkan graphics context..." << '\n';
 
-    gpu::VulkanGraphicsContext context("Graph Visualizer", 1280, 720);
+    App app;
 
-    setup_glfw_callbacks(context.window(), &context);
+    gpu::VulkanGraphicsContext context("Graph Visualizer", 1280, 720);
+    app.context = &context;
+
+    setup_glfw_callbacks(context.window(), app);
 
     vk::Device device = context.device();
     vk::PhysicalDeviceMemoryProperties mem_props = context.physical_device().getMemoryProperties();
@@ -1133,90 +1176,41 @@ int main(int argc, char **argv)
     common::log() << "Creating shared DeltaStepBuffers..." << '\n';
     gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device, mem_props);
 
-    common::log() << "Creating shared context..." << '\n';
-    SharedContext shared_ctx;
-    g_shared_ctx = &shared_ctx;
-
     common::log() << "Starting worker threads..." << '\n';
     std::latch initialization_latch(2);
     auto sssp_thread = start_sssp_thread(
-        shared_ctx, graph, deltastep_buffers, device, mem_props, queue, initialization_latch);
-    auto color_thread = start_color_updater_thread(shared_ctx,
-                                                   deltastep_buffers,
-                                                   device,
-                                                   color_buffer,
-                                                   coordinates.size(),
-                                                   queue,
-                                                   initialization_latch);
+        app, graph, deltastep_buffers, device, mem_props, queue, initialization_latch);
+    auto color_thread = start_color_updater_thread(
+        app, deltastep_buffers, device, color_buffer, coordinates.size(), queue, initialization_latch);
 
     initialization_latch.wait();
 
-    {
-        std::scoped_lock lock(shared_ctx.color_mutex);
-        shared_ctx.color_update_requested = true;
-        shared_ctx.color_cv.notify_one();
-    }
+    notify_color_update(app);
 
     if (output_dir)
     {
         common::log() << "Frame recording enabled. Press 'F' to start/stop recording." << '\n';
-        g_state.recorder = std::make_unique<FrameRecorder>(device,
-                                                           mem_props,
-                                                           cmd_pool,
-                                                           queue,
-                                                           context.swapchain_extent(),
-                                                           context.swapchain_format(),
-                                                           *output_dir);
+        app.recorder = std::make_unique<FrameRecorder>(device,
+                                                       mem_props,
+                                                       cmd_pool,
+                                                       queue,
+                                                       context.swapchain_extent(),
+                                                       context.swapchain_format(),
+                                                       *output_dir);
     }
 
     common::log() << "Starting render loop..." << '\n';
 
     auto coord_buffers = coord_buffer.buffers();
-
-    ColorMode previous_mode = g_state.color_mode;
-    uint32_t previous_grouping_size = g_state.grouping_size;
     uint32_t current_frame = 0;
 
     while (!context.should_close())
     {
         context.poll_events();
 
-        if (g_state.restart_requested)
-        {
-            g_state.restart_requested = false;
-            previous_mode = ColorMode::FIXED;
-            previous_grouping_size = 0;
-            g_state.color_mode = ColorMode::TRACE_DISTANCE;
-        }
-
-        if (g_state.color_mode != previous_mode || g_state.grouping_size != previous_grouping_size)
-        {
-            if (is_trace_mode(g_state.color_mode) && !is_trace_mode(previous_mode))
-            {
-                common::log() << "Entering Trace mode" << '\n';
-
-                {
-                    std::scoped_lock lock(shared_ctx.sssp_mutex);
-                    shared_ctx.sssp_run_requested = true;
-                    shared_ctx.sssp_cv.notify_one();
-                }
-            }
-
-            {
-                std::scoped_lock lock(shared_ctx.color_mutex);
-                shared_ctx.current_color_mode = g_state.color_mode;
-                shared_ctx.grouping_size = g_state.grouping_size;
-                shared_ctx.color_update_requested = true;
-                shared_ctx.color_cv.notify_one();
-            }
-
-            previous_mode = g_state.color_mode;
-            previous_grouping_size = g_state.grouping_size;
-        }
-
         auto frame = context.begin_frame();
 
-        PushConstants push_constants = calculate_view_transform(g_state,
+        PushConstants push_constants = calculate_view_transform(app,
                                                                 context.swapchain_extent(),
                                                                 max_point.x - min_point.x,
                                                                 max_point.y - min_point.y);
@@ -1233,7 +1227,7 @@ int main(int argc, char **argv)
                                coord_buffers[1],
                                color_buffer,
                                static_cast<uint32_t>(coordinates.size()),
-                               g_state.white_background);
+                               app.white_background);
 
         vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
         vk::SubmitInfo submit_info(
@@ -1243,10 +1237,10 @@ int main(int argc, char **argv)
 
         context.end_frame(frame);
 
-        if (g_state.recorder && g_state.recorder->is_recording())
+        if (app.recorder && app.recorder->is_recording())
         {
             device.waitIdle();
-            g_state.recorder->capture_frame(frame.image);
+            app.recorder->capture_frame(frame.image);
         }
 
         current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
@@ -1259,12 +1253,10 @@ int main(int argc, char **argv)
     sssp_thread.request_stop();
     color_thread.request_stop();
 
-    shared_ctx.sssp_cv.notify_all();
-    shared_ctx.color_cv.notify_all();
+    app.sssp_cv.notify_all();
+    app.color_cv.notify_all();
 
-    shared_ctx.tracer.continue_to_end();
-
-    g_shared_ctx = nullptr;
+    app.tracer.continue_to_end();
 
     device.destroyPipeline(graphics_pipeline);
     device.destroyPipelineLayout(pipeline_layout);
