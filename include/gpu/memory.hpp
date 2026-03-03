@@ -22,7 +22,7 @@ inline auto find_memory_type_index(const vk::PhysicalDeviceMemoryProperties &mem
     throw std::runtime_error("Couldn't find matching memory");
 }
 
-inline auto alloc_and_bind(vk::Device &device,
+inline auto alloc_and_bind(vk::Device device,
                            const vk::PhysicalDeviceMemoryProperties &mem_props,
                            const vk::Buffer &buf,
                            vk::MemoryPropertyFlags flags)
@@ -35,7 +35,7 @@ inline auto alloc_and_bind(vk::Device &device,
 }
 
 template <typename T>
-auto create_exclusive_buffer(vk::Device &device, size_t size, vk::BufferUsageFlags usage)
+auto create_exclusive_buffer(vk::Device device, size_t size, vk::BufferUsageFlags usage)
 {
     return device.createBuffer({{}, sizeof(T) * size, usage, vk::SharingMode::eExclusive});
 }
@@ -48,10 +48,10 @@ struct BufferCopyInfo
 };
 
 template <typename QueueT = vk::Queue>
-inline void copy_buffers_batched(vk::Device &device,
+inline void copy_buffers_batched(vk::Device device,
                                  const vk::PhysicalDeviceMemoryProperties &mem_props,
                                  vk::CommandPool command_pool,
-                                 QueueT &queue,
+                                 QueueT queue,
                                  const std::vector<BufferCopyInfo> &copies)
 {
     if (copies.empty())
