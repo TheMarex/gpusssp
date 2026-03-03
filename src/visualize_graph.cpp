@@ -428,8 +428,8 @@ static void key_callback(GLFWwindow *window, int key, int, int action, int)
 
                     if (new_mode == ColorMode::WORKGROUP)
                     {
-                        common::log() << "Coloring by workgroup (" << new_grouping << " nodes)"
-                                      << '\n';
+                        common::log()
+                            << "Coloring by workgroup (" << new_grouping << " nodes)" << '\n';
                     }
                 }
                 else
@@ -579,40 +579,38 @@ static void setup_glfw_callbacks(GLFWwindow *window, App &app)
     glfwSetFramebufferSizeCallback(window, framebuffer_resize_callback);
 }
 
-static std::jthread start_sssp_thread(App &ctx,
-                                      const common::WeightedGraph<uint32_t> &graph,
-                                      gpu::DeltaStepBuffers &deltastep_buffers,
-                                      vk::Device device,
-                                      vk::PhysicalDeviceMemoryProperties mem_props,
-                                      gpu::SharedQueue &queue,
-                                      std::latch &initialization_latch)
+static std::jthread
+start_sssp_thread(App &ctx,
+                  gpu::VulkanGraphicsContext &context,
+                  gpu::GraphBuffers<common::WeightedGraph<uint32_t>> &graph_buffers,
+                  gpu::DeltaStepBuffers &deltastep_buffers,
+                  std::latch &initialization_latch)
 {
     return std::jthread(
-        [&ctx, &graph, &deltastep_buffers, device, mem_props, &queue, &initialization_latch](
+        [&ctx, &deltastep_buffers, &graph_buffers, &context, &initialization_latch](
             const std::stop_token &st) mutable
         {
             vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
                                                 0);
-            vk::CommandPool cmd_pool = device.createCommandPool(pool_info);
+            vk::CommandPool cmd_pool = context.device().createCommandPool(pool_info);
 
-            gpu::GraphBuffers<common::WeightedGraph<uint32_t>> graph_buffers(
-                graph, device, mem_props, cmd_pool, queue);
-            gpu::Statistics statistics(device, mem_props);
+            gpu::Statistics statistics(context.device(), context.memory_properties());
             gpu::DeltaStep<common::WeightedGraph<uint32_t>> deltastep(
-                graph_buffers, deltastep_buffers, device, statistics, ctx.delta, 1);
+                graph_buffers, deltastep_buffers, context.device(), statistics, ctx.delta, 1);
             deltastep.initialize(cmd_pool);
 
             initialization_latch.count_down();
 
             std::random_device rd;
             std::mt19937 gen(rd());
-            std::uniform_int_distribution<uint32_t> dist(0, graph.num_nodes() - 1);
+            std::uniform_int_distribution<uint32_t> dist(0, graph_buffers.num_nodes() - 1);
 
             while (!st.stop_requested())
             {
                 {
                     std::unique_lock<std::mutex> lock(ctx.sssp_mutex);
-                    ctx.sssp_cv.wait(lock, [&ctx, &st]
+                    ctx.sssp_cv.wait(lock,
+                                     [&ctx, &st]
                                      { return ctx.sssp_run_requested || st.stop_requested(); });
 
                     if (st.stop_requested())
@@ -629,7 +627,8 @@ static std::jthread start_sssp_thread(App &ctx,
                 common::log() << "SSSP thread: Running delta-stepping from node " << src_node
                               << '\n';
 
-                uint32_t result = deltastep.run(cmd_pool, queue, src_node, dst_node, &ctx.tracer);
+                uint32_t result =
+                    deltastep.run(cmd_pool, context.queue(), src_node, dst_node, &ctx.tracer);
 
                 {
                     std::scoped_lock lock(ctx.color_mutex);
@@ -640,26 +639,25 @@ static std::jthread start_sssp_thread(App &ctx,
                 common::log() << "SSSP thread: Completed with result " << result << '\n';
             }
 
-            device.destroyCommandPool(cmd_pool);
+            context.device().destroyCommandPool(cmd_pool);
             common::log() << "SSSP thread: Shutting down" << '\n';
         });
 }
 
 static std::jthread start_color_updater_thread(App &ctx,
+                                               gpu::VulkanGraphicsContext &context,
                                                gpu::DeltaStepBuffers &deltastep_buffers,
-                                               vk::Device device,
                                                vk::Buffer color_buffer,
                                                size_t num_nodes,
-                                               gpu::SharedQueue &queue,
                                                std::latch &initialization_latch)
 {
     return std::jthread(
-        [&ctx, &deltastep_buffers, device, color_buffer, num_nodes, &queue, &initialization_latch](
+        [&ctx, &deltastep_buffers, &context, color_buffer, num_nodes, &initialization_latch](
             const std::stop_token &st) mutable
         {
             vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
                                                 0);
-            vk::CommandPool cmd_pool = device.createCommandPool(pool_info);
+            vk::CommandPool cmd_pool = context.device().createCommandPool(pool_info);
 
             struct NodeColorPushConsts
             {
@@ -673,10 +671,13 @@ static std::jthread start_color_updater_thread(App &ctx,
             };
 
             auto [changed_buffer_0, changed_buffer_1] = deltastep_buffers.changed_buffers();
-            auto node_color_pipeline = gpu::create_compute_pipeline<NodeColorPushConsts>(
-                device,
-                "node_color.spv",
-                {{deltastep_buffers.dist_buffer(), color_buffer, changed_buffer_0, changed_buffer_1}});
+            auto node_color_pipeline =
+                gpu::create_compute_pipeline<NodeColorPushConsts>(context.device(),
+                                                                  "node_color.spv",
+                                                                  {{deltastep_buffers.dist_buffer(),
+                                                                    color_buffer,
+                                                                    changed_buffer_0,
+                                                                    changed_buffer_1}});
 
             initialization_latch.count_down();
 
@@ -701,6 +702,7 @@ static std::jthread start_color_updater_thread(App &ctx,
                                        .buffer_index = buffer_index,
                                        .grouping_size = grouping_size};
 
+                auto device = context.device();
                 vk::CommandBuffer cmd = device.allocateCommandBuffers(
                     {cmd_pool, vk::CommandBufferLevel::ePrimary, 1})[0];
 
@@ -740,7 +742,7 @@ static std::jthread start_color_updater_thread(App &ctx,
                 cmd.end();
 
                 vk::Fence fence = device.createFence({});
-                queue.submit({{0, nullptr, nullptr, 1, &cmd}}, fence);
+                context.queue().submit({{0, nullptr, nullptr, 1, &cmd}}, fence);
                 (void)device.waitForFences(1, &fence, VK_TRUE, UINT64_MAX);
 
                 device.destroyFence(fence);
@@ -753,8 +755,9 @@ static std::jthread start_color_updater_thread(App &ctx,
                 uint32_t grouping_size;
                 {
                     std::unique_lock<std::mutex> lock(ctx.color_mutex);
-                    ctx.color_cv.wait(lock, [&ctx, &st]
-                                      { return ctx.color_update_requested || st.stop_requested(); });
+                    ctx.color_cv.wait(
+                        lock,
+                        [&ctx, &st] { return ctx.color_update_requested || st.stop_requested(); });
 
                     if (st.stop_requested())
                     {
@@ -807,8 +810,8 @@ static std::jthread start_color_updater_thread(App &ctx,
                 }
             }
 
-            node_color_pipeline.destroy(device);
-            device.destroyCommandPool(cmd_pool);
+            node_color_pipeline.destroy(context.device());
+            context.device().destroyCommandPool(cmd_pool);
             common::log() << "Color updater thread: Shutting down" << '\n';
         });
 }
@@ -1107,6 +1110,192 @@ static void record_render_commands(vk::CommandBuffer command_buffer,
     command_buffer.end();
 }
 
+struct RenderPipeline
+{
+    vk::Buffer color_buffer;
+    vk::DeviceMemory color_buffer_memory;
+    vk::Pipeline graphics_pipeline;
+    vk::PipelineLayout pipeline_layout;
+    std::vector<vk::CommandBuffer> command_buffers;
+
+    void destroy(vk::Device device)
+    {
+        device.destroyPipeline(graphics_pipeline);
+        device.destroyPipelineLayout(pipeline_layout);
+        device.destroyBuffer(color_buffer);
+        device.freeMemory(color_buffer_memory);
+    }
+};
+
+static auto load_graph(const std::string &base_path)
+{
+    common::log() << "Loading graph from: " << base_path << '\n';
+
+    auto graph = common::files::read_weighted_graph<uint32_t>(base_path);
+    auto coordinates = common::files::read_coordinates(base_path);
+
+    if (graph.num_nodes() != coordinates.size())
+    {
+        throw std::runtime_error("Graph node count (" + std::to_string(graph.num_nodes()) +
+                                 ") does not match coordinate count (" +
+                                 std::to_string(coordinates.size()) + ")");
+    }
+
+    common::log() << "Loaded graph with " << graph.num_nodes() << " nodes and " << graph.num_edges()
+                  << " edges" << '\n';
+
+    auto bounding_box = common::bounds(coordinates);
+
+    return std::make_tuple(std::move(graph), std::move(coordinates), bounding_box);
+}
+
+static RenderPipeline setup_render_pipeline(gpu::VulkanGraphicsContext &context,
+                                            gpu::CoordinatesBuffer &coord_buffer,
+                                            const uint32_t num_nodes,
+                                            const common::BoundingBox &bounding_box)
+{
+    vk::Device device = context.device();
+    vk::PhysicalDeviceMemoryProperties mem_props = context.physical_device().getMemoryProperties();
+    vk::CommandPool cmd_pool = context.command_pool();
+    auto &queue = context.shared_queue();
+
+    auto min_point = common::to_web_mercator(bounding_box.south_east);
+    auto max_point = common::to_web_mercator(bounding_box.north_west);
+
+    auto [color_buffer, color_buffer_memory] = create_color_buffer(device, mem_props, num_nodes);
+
+    project_coordinates(coord_buffer, device, cmd_pool, queue, min_point, max_point, num_nodes);
+
+    auto [graphics_pipeline, pipeline_layout] =
+        create_graphics_pipeline(device, context.render_pass(), context.swapchain_extent());
+
+    constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+    std::vector<vk::CommandBuffer> command_buffers = device.allocateCommandBuffers(
+        {cmd_pool, vk::CommandBufferLevel::ePrimary, MAX_FRAMES_IN_FLIGHT});
+
+    return {color_buffer,
+            color_buffer_memory,
+            graphics_pipeline,
+            pipeline_layout,
+            std::move(command_buffers)};
+}
+
+static std::pair<std::jthread, std::jthread>
+start_workers(App &app,
+              gpu::VulkanGraphicsContext &context,
+              RenderPipeline &render_pipeline,
+              gpu::GraphBuffers<common::WeightedGraph<uint32_t>> &graph_buffers,
+              gpu::DeltaStepBuffers &deltastep_buffers,
+              const std::optional<std::string> &output_dir)
+{
+    common::log() << "Starting worker threads..." << '\n';
+    std::latch initialization_latch(2);
+    auto sssp_thread =
+        start_sssp_thread(app, context, graph_buffers, deltastep_buffers, initialization_latch);
+    auto color_thread = start_color_updater_thread(app,
+                                                   context,
+                                                   deltastep_buffers,
+                                                   render_pipeline.color_buffer,
+                                                   graph_buffers.num_nodes(),
+                                                   initialization_latch);
+
+    initialization_latch.wait();
+
+    notify_color_update(app);
+
+    if (output_dir)
+    {
+        common::log() << "Frame recording enabled. Press 'F' to start/stop recording." << '\n';
+        app.recorder =
+            std::make_unique<FrameRecorder>(context.device(),
+                                            context.physical_device().getMemoryProperties(),
+                                            context.command_pool(),
+                                            context.shared_queue(),
+                                            context.swapchain_extent(),
+                                            context.swapchain_format(),
+                                            *output_dir);
+    }
+
+    return {std::move(sssp_thread), std::move(color_thread)};
+}
+
+static void run_render_loop(App &app,
+                            gpu::VulkanGraphicsContext &context,
+                            RenderPipeline &graphics_pipeline,
+                            gpu::CoordinatesBuffer &coord_buffer,
+                            uint32_t num_nodes,
+                            const common::BoundingBox bounding_box)
+{
+    const auto min_point = common::to_web_mercator(bounding_box.south_east);
+    const auto max_point = common::to_web_mercator(bounding_box.north_west);
+
+    common::log() << "Starting render loop..." << '\n';
+
+    auto coord_buffers = coord_buffer.buffers();
+    uint32_t current_frame = 0;
+
+    while (!context.should_close())
+    {
+        context.poll_events();
+
+        auto frame = context.begin_frame();
+
+        PushConstants push_constants = calculate_view_transform(
+            app, context.swapchain_extent(), max_point.x - min_point.x, max_point.y - min_point.y);
+
+        vk::CommandBuffer command_buffer = graphics_pipeline.command_buffers[current_frame];
+
+        record_render_commands(command_buffer,
+                               context.render_pass(),
+                               frame.framebuffer,
+                               context.swapchain_extent(),
+                               graphics_pipeline.graphics_pipeline,
+                               graphics_pipeline.pipeline_layout,
+                               push_constants,
+                               coord_buffers[1],
+                               graphics_pipeline.color_buffer,
+                               num_nodes,
+                               app.white_background);
+
+        vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
+        vk::SubmitInfo submit_info(
+            1, &frame.image_available, wait_stages, 1, &command_buffer, 1, &frame.render_finished);
+
+        context.shared_queue().submit(1, &submit_info, frame.in_flight);
+
+        context.end_frame(frame);
+
+        if (app.recorder && app.recorder->is_recording())
+        {
+            context.device().waitIdle();
+            app.recorder->capture_frame(frame.image);
+        }
+
+        current_frame = (current_frame + 1) % 2;
+    }
+}
+
+static void shutdown(App &app,
+                     std::jthread &sssp_thread,
+                     std::jthread &color_thread,
+                     gpu::VulkanGraphicsContext &context,
+                     RenderPipeline &graphics_pipeline)
+{
+    context.device().waitIdle();
+
+    common::log() << "Shutting down worker threads..." << '\n';
+
+    sssp_thread.request_stop();
+    color_thread.request_stop();
+
+    app.sssp_cv.notify_all();
+    app.color_cv.notify_all();
+
+    app.tracer.continue_to_end();
+
+    graphics_pipeline.destroy(context.device());
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2 || argc > 3)
@@ -1122,148 +1311,34 @@ int main(int argc, char **argv)
         output_dir = argv[2];
     }
 
-    common::log() << "Loading graph from: " << base_path << '\n';
-
-    auto graph = common::files::read_weighted_graph<uint32_t>(base_path);
-    auto coordinates = common::files::read_coordinates(base_path);
-
-    if (graph.num_nodes() != coordinates.size())
-    {
-        common::log_error() << "Graph node count (" << graph.num_nodes()
-                            << ") does not match coordinate count (" << coordinates.size() << ")"
-                            << '\n';
-        return EXIT_FAILURE;
-    }
-
-    common::log() << "Loaded graph with " << graph.num_nodes() << " nodes and " << graph.num_edges()
-                  << " edges" << '\n';
-
-    auto bounding_box = common::bounds(coordinates);
-    auto min_point = common::to_web_mercator(bounding_box.south_east);
-    auto max_point = common::to_web_mercator(bounding_box.north_west);
-
-    common::log() << "Creating Vulkan graphics context..." << '\n';
+    auto [graph, coordinates, bounding_box] = load_graph(base_path);
 
     App app;
-
     gpu::VulkanGraphicsContext context("Graph Visualizer", 1280, 720);
     app.context = &context;
-
     setup_glfw_callbacks(context.window(), app);
 
-    vk::Device device = context.device();
-    vk::PhysicalDeviceMemoryProperties mem_props = context.physical_device().getMemoryProperties();
-    vk::CommandPool cmd_pool = context.command_pool();
-    gpu::SharedQueue &queue = context.shared_queue();
+    gpu::GraphBuffers<common::WeightedGraph<uint32_t>> graph_buffers(graph,
+                                                                     context.device(),
+                                                                     context.memory_properties(),
+                                                                     context.command_pool(),
+                                                                     context.queue());
+    gpu::CoordinatesBuffer coord_buffer(coordinates,
+                                        context.device(),
+                                        context.memory_properties(),
+                                        context.command_pool(),
+                                        context.queue());
+    gpu::DeltaStepBuffers deltastep_buffers(
+        graph.num_nodes(), context.device(), context.memory_properties());
+    auto render_pipeline =
+        setup_render_pipeline(context, coord_buffer, graph.num_nodes(), bounding_box);
 
-    gpu::CoordinatesBuffer coord_buffer(coordinates, device, mem_props, cmd_pool, queue);
+    auto [sssp_thread, color_thread] =
+        start_workers(app, context, render_pipeline, graph_buffers, deltastep_buffers, output_dir);
 
-    auto [color_buffer, color_buffer_memory] =
-        create_color_buffer(device, mem_props, coordinates.size());
+    run_render_loop(app, context, render_pipeline, coord_buffer, graph.num_nodes(), bounding_box);
 
-    project_coordinates(
-        coord_buffer, device, cmd_pool, queue, min_point, max_point, coordinates.size());
-
-    auto [graphics_pipeline, pipeline_layout] =
-        create_graphics_pipeline(device, context.render_pass(), context.swapchain_extent());
-
-    constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
-    vk::CommandBufferAllocateInfo alloc_info(
-        cmd_pool, vk::CommandBufferLevel::ePrimary, MAX_FRAMES_IN_FLIGHT);
-
-    std::vector<vk::CommandBuffer> command_buffers = device.allocateCommandBuffers(alloc_info);
-
-    common::log() << "Creating shared DeltaStepBuffers..." << '\n';
-    gpu::DeltaStepBuffers deltastep_buffers(graph.num_nodes(), device, mem_props);
-
-    common::log() << "Starting worker threads..." << '\n';
-    std::latch initialization_latch(2);
-    auto sssp_thread = start_sssp_thread(
-        app, graph, deltastep_buffers, device, mem_props, queue, initialization_latch);
-    auto color_thread = start_color_updater_thread(
-        app, deltastep_buffers, device, color_buffer, coordinates.size(), queue, initialization_latch);
-
-    initialization_latch.wait();
-
-    notify_color_update(app);
-
-    if (output_dir)
-    {
-        common::log() << "Frame recording enabled. Press 'F' to start/stop recording." << '\n';
-        app.recorder = std::make_unique<FrameRecorder>(device,
-                                                       mem_props,
-                                                       cmd_pool,
-                                                       queue,
-                                                       context.swapchain_extent(),
-                                                       context.swapchain_format(),
-                                                       *output_dir);
-    }
-
-    common::log() << "Starting render loop..." << '\n';
-
-    auto coord_buffers = coord_buffer.buffers();
-    uint32_t current_frame = 0;
-
-    while (!context.should_close())
-    {
-        context.poll_events();
-
-        auto frame = context.begin_frame();
-
-        PushConstants push_constants = calculate_view_transform(app,
-                                                                context.swapchain_extent(),
-                                                                max_point.x - min_point.x,
-                                                                max_point.y - min_point.y);
-
-        vk::CommandBuffer command_buffer = command_buffers[current_frame];
-
-        record_render_commands(command_buffer,
-                               context.render_pass(),
-                               frame.framebuffer,
-                               context.swapchain_extent(),
-                               graphics_pipeline,
-                               pipeline_layout,
-                               push_constants,
-                               coord_buffers[1],
-                               color_buffer,
-                               static_cast<uint32_t>(coordinates.size()),
-                               app.white_background);
-
-        vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
-        vk::SubmitInfo submit_info(
-            1, &frame.image_available, wait_stages, 1, &command_buffer, 1, &frame.render_finished);
-
-        context.shared_queue().submit(1, &submit_info, frame.in_flight);
-
-        context.end_frame(frame);
-
-        if (app.recorder && app.recorder->is_recording())
-        {
-            device.waitIdle();
-            app.recorder->capture_frame(frame.image);
-        }
-
-        current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
-    }
-
-    device.waitIdle();
-
-    common::log() << "Shutting down worker threads..." << '\n';
-
-    sssp_thread.request_stop();
-    color_thread.request_stop();
-
-    app.sssp_cv.notify_all();
-    app.color_cv.notify_all();
-
-    app.tracer.continue_to_end();
-
-    device.destroyPipeline(graphics_pipeline);
-    device.destroyPipelineLayout(pipeline_layout);
-    device.destroyBuffer(color_buffer);
-    device.freeMemory(color_buffer_memory);
-
-    common::log() << "Visualization complete." << '\n';
+    shutdown(app, sssp_thread, color_thread, context, render_pipeline);
 
     return EXIT_SUCCESS;
 }
