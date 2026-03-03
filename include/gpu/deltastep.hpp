@@ -56,17 +56,8 @@ template <typename GraphT> class DeltaStep
 
     ~DeltaStep()
     {
-        device.destroyShaderModule(main_pipeline.shader);
-        device.destroyPipeline(main_pipeline.pipeline);
-        device.destroyPipelineLayout(main_pipeline.layout);
-        device.destroyDescriptorSetLayout(main_pipeline.descriptor_set_layout);
-        device.destroyDescriptorPool(main_pipeline.descriptor_pool);
-
-        device.destroyShaderModule(prepare_dispatch_pipeline.shader);
-        device.destroyPipeline(prepare_dispatch_pipeline.pipeline);
-        device.destroyPipelineLayout(prepare_dispatch_pipeline.layout);
-        device.destroyDescriptorSetLayout(prepare_dispatch_pipeline.descriptor_set_layout);
-        device.destroyDescriptorPool(prepare_dispatch_pipeline.descriptor_pool);
+        main_pipeline.destroy(device);
+        prepare_dispatch_pipeline.destroy(device);
     }
 
     void initialize(vk::CommandPool &cmd_pool)

@@ -99,6 +99,15 @@ struct ComputePipeline
     std::vector<vk::DescriptorSet> descriptor_sets;
     vk::DescriptorSetLayout descriptor_set_layout;
     vk::DescriptorPool descriptor_pool;
+
+    void destroy(vk::Device &device)
+    {
+        device.destroyPipeline(pipeline);
+        device.destroyPipelineLayout(layout);
+        device.destroyDescriptorSetLayout(descriptor_set_layout);
+        device.destroyDescriptorPool(descriptor_pool);
+        device.destroyShaderModule(shader);
+    }
 };
 
 template <typename PushConstantsT = void>

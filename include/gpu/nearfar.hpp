@@ -119,23 +119,9 @@ template <typename GraphT> class NearFar
 
     ~NearFar()
     {
-        device.destroyShaderModule(relax_pipeline.shader);
-        device.destroyPipeline(relax_pipeline.pipeline);
-        device.destroyPipelineLayout(relax_pipeline.layout);
-        device.destroyDescriptorSetLayout(relax_pipeline.descriptor_set_layout);
-        device.destroyDescriptorPool(relax_pipeline.descriptor_pool);
-
-        device.destroyShaderModule(compact_pipeline.shader);
-        device.destroyPipeline(compact_pipeline.pipeline);
-        device.destroyPipelineLayout(compact_pipeline.layout);
-        device.destroyDescriptorSetLayout(compact_pipeline.descriptor_set_layout);
-        device.destroyDescriptorPool(compact_pipeline.descriptor_pool);
-
-        device.destroyShaderModule(prepare_dispatch_pipeline.shader);
-        device.destroyPipeline(prepare_dispatch_pipeline.pipeline);
-        device.destroyPipelineLayout(prepare_dispatch_pipeline.layout);
-        device.destroyDescriptorSetLayout(prepare_dispatch_pipeline.descriptor_set_layout);
-        device.destroyDescriptorPool(prepare_dispatch_pipeline.descriptor_pool);
+        relax_pipeline.destroy(device);
+        compact_pipeline.destroy(device);
+        prepare_dispatch_pipeline.destroy(device);
     }
 
     void initialize(vk::CommandPool &cmd_pool)

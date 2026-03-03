@@ -35,11 +35,7 @@ template <typename GraphT> class BellmanFord
 
     ~BellmanFord()
     {
-        device.destroyShaderModule(main_pipeline.shader);
-        device.destroyPipeline(main_pipeline.pipeline);
-        device.destroyPipelineLayout(main_pipeline.layout);
-        device.destroyDescriptorSetLayout(main_pipeline.descriptor_set_layout);
-        device.destroyDescriptorPool(main_pipeline.descriptor_pool);
+        main_pipeline.destroy(device);
     }
 
     void initialize()

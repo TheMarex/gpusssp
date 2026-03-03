@@ -767,11 +767,7 @@ static std::jthread start_color_updater_thread(SharedContext &ctx,
                 }
             }
 
-            device.destroyPipeline(node_color_pipeline.pipeline);
-            device.destroyPipelineLayout(node_color_pipeline.layout);
-            device.destroyDescriptorSetLayout(node_color_pipeline.descriptor_set_layout);
-            device.destroyDescriptorPool(node_color_pipeline.descriptor_pool);
-            device.destroyShaderModule(node_color_pipeline.shader);
+            node_color_pipeline.destroy(device);
             device.destroyCommandPool(cmd_pool);
             common::log() << "Color updater thread: Shutting down" << '\n';
         });
@@ -870,11 +866,7 @@ static void project_coordinates(gpu::CoordinatesBuffer &coord_buffer,
 
     device.destroyFence(compute_fence);
     device.freeCommandBuffers(cmd_pool, 1, &compute_cmd);
-    device.destroyPipeline(compute_pipeline.pipeline);
-    device.destroyPipelineLayout(compute_pipeline.layout);
-    device.destroyDescriptorSetLayout(compute_pipeline.descriptor_set_layout);
-    device.destroyDescriptorPool(compute_pipeline.descriptor_pool);
-    device.destroyShaderModule(compute_pipeline.shader);
+    compute_pipeline.destroy(device);
 }
 
 static std::pair<vk::Pipeline, vk::PipelineLayout> create_graphics_pipeline(
