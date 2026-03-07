@@ -159,10 +159,16 @@ def handle(
                 baseline_entry = devices.get("cpu")
                 baseline_dfs = baseline_entry.dfs if baseline_entry else {}
 
+                non_baseline = False
                 for device_id, entry in sorted(devices.items()):
                     if device_id == "cpu":
                         continue
+                    non_baseline = True
                     print_tables((graph, query, device_id), entry.dfs, baseline_dfs)
+
+                # If there are only CPU queries
+                if not non_baseline:
+                    print_tables((graph, query, "cpu"), baseline_dfs, {})
 
     final_output = output.getvalue()
     if verbose:
