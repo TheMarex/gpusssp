@@ -5,7 +5,6 @@
 
 #include "common/id_queue.hpp"
 #include "common/lazy_clear_vector.hpp"
-#include "common/weighted_graph.hpp"
 
 namespace gpusssp::common
 {
@@ -130,8 +129,8 @@ void route_step(MinIDQueue &queue,
     }
 }
 
-template <typename GraphT>
-void route_step(MinIDQueue &queue, CostVector<GraphT> &costs, const GraphT &graph)
+template <typename GraphT, typename QueueT>
+void route_step(QueueT &queue, CostVector<GraphT> &costs, const GraphT &graph)
 {
     auto top = queue.pop();
     auto cost_to_top = top.key;

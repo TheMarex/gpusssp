@@ -2,6 +2,7 @@
 #define ID_QUEUE_H
 
 #include "common/constants.hpp"
+#include "common/queue.hpp"
 #include "common/statistics.hpp"
 
 #include <algorithm>
@@ -10,12 +11,6 @@
 
 namespace gpusssp::common
 {
-
-struct IDKeyPair
-{
-    std::uint32_t id;
-    std::uint32_t key;
-};
 
 //! A priority queue where the elements are IDs from 0 to id_count-1 where id_count is a number that
 //! is set in the constructor.
@@ -39,8 +34,7 @@ class MinIDQueue
     //! Returns the number of elements in the queue.
     [[nodiscard]] unsigned size() const { return heap_size; }
 
-    //! Returns the id_count value passed to the constructor.
-    [[nodiscard]] unsigned id_count() const { return id_pos.size(); }
+    [[nodiscard]] auto id_count() const { return id_pos.size(); }
 
     //! Checks whether an element is in the queue.
     bool contains_id(unsigned id)

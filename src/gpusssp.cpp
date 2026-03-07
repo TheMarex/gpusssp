@@ -12,8 +12,10 @@
 #include <vulkan/vulkan.hpp>
 
 #include "common/benchmark.hpp"
+#include "common/bucket_queue.hpp"
 #include "common/constants.hpp"
 #include "common/coordinate.hpp"
+#include "common/dial.hpp"
 #include "common/dijkstra.hpp"
 #include "common/files.hpp"
 #include "common/graph_metrics.hpp"
@@ -116,6 +118,9 @@ int main(int argc, char **argv)
     }
     common::log() << "Using delta value " << delta << '\n';
 
+    const auto max_path_weight = common::estimate_max_path_weight(coordinates);
+    common::log() << "Using maximum path weight " << max_path_weight << '\n';
+
     auto num_heavy = 0u;
     for (uint32_t eid = 0u; eid < graph.num_edges(); ++eid)
     {
@@ -167,6 +172,7 @@ int main(int argc, char **argv)
     auto cmd_pool = vk_ctx.command_pool();
 
     {
+        common::BucketQueue bucket_queue(graph.num_nodes(), max_path_weight + 1);
         common::MinIDQueue min_queue(graph.num_nodes());
         common::CostVector<common::WeightedGraph<uint32_t>> costs(graph.num_nodes(),
                                                                   common::INF_WEIGHT);
@@ -191,6 +197,7 @@ int main(int argc, char **argv)
 
         std::uint32_t checksum = 0;
         std::uint32_t dij_duration = 0;
+        std::uint32_t dl_duration = 0;
         std::uint32_t ds_duration = 0;
         std::uint32_t bf_duration = 0;
         std::uint32_t nf_duration = 0;
@@ -212,6 +219,9 @@ int main(int argc, char **argv)
             auto nf_dist = nearfar.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
             common::do_not_optimize(nf_dist);
             auto time_5 = std::chrono::high_resolution_clock::now();
+            auto dl_dist = dial(src_nodes[i], dst_nodes[i], graph, bucket_queue, costs, settled);
+            common::do_not_optimize(nf_dist);
+            auto time_6 = std::chrono::high_resolution_clock::now();
 
             if (expected_dist == common::INF_WEIGHT)
             {
@@ -227,6 +237,8 @@ int main(int argc, char **argv)
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_4 - time_3).count();
             nf_duration +=
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_5 - time_4).count();
+            dl_duration +=
+                std::chrono::duration_cast<std::chrono::milliseconds>(time_6 - time_5).count();
             if (dist != expected_dist)
             {
                 common::log_error()
@@ -245,14 +257,22 @@ int main(int argc, char **argv)
                     << "Error: NearFar distance " << src_nodes[i] << "->" << dst_nodes[i]
                     << " mismatch. expected: " << expected_dist << " actual: " << nf_dist << '\n';
             }
+            if (dl_dist != expected_dist)
+            {
+                common::log_error()
+                    << "Error: Dial distance " << src_nodes[i] << "->" << dst_nodes[i]
+                    << " mismatch. expected: " << expected_dist << " actual: " << nf_dist << '\n';
+            }
             checksum += dist;
         }
         auto num_reachable = num_queries - num_unreachable;
         common::log() << "Processed " << num_reachable << " queries (" << num_unreachable
                       << " unreachable) in " << (dij_duration / num_reachable)
-                      << "ms/req (dijkstra) " << (ds_duration / num_reachable)
-                      << "ms/req (deltastep " << (dij_duration / static_cast<double>(ds_duration))
-                      << ") " << (bf_duration / num_reachable) << "ms/req (bellmanford "
+                      << "ms/req (dijkstra) " << (dl_duration / num_reachable) << "ms/req (dial "
+                      << (dij_duration / static_cast<double>(dl_duration)) << ") "
+                      << (ds_duration / num_reachable) << "ms/req (deltastep "
+                      << (dij_duration / static_cast<double>(ds_duration)) << ") "
+                      << (bf_duration / num_reachable) << "ms/req (bellmanford "
                       << (dij_duration / static_cast<double>(bf_duration)) << ") "
                       << (nf_duration / num_reachable) << "ms/req (nearfar "
                       << (dij_duration / static_cast<double>(nf_duration)) << ")" << '\n';

@@ -100,6 +100,12 @@ add_executable(experiment_dijkstra
     src/common/logger.cpp
 )
 
+# Experiment Dial
+add_executable(experiment_dial
+    experiments/experiment_dial.cpp
+    src/common/logger.cpp
+)
+
 # Experiment DeltaStep
 add_executable(experiment_deltastep
     experiments/experiment_deltastep.cpp
@@ -266,6 +272,9 @@ if(BUILD_TESTING)
         tests/test_string_util.cpp
         tests/test_graph_metrics.cpp
         tests/test_zorder.cpp
+        tests/test_bucket_queue.cpp
+        tests/test_circular_vector.cpp
+        tests/test_dial.cpp
         src/common/logger.cpp
     )
     
