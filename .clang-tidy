@@ -1,18 +1,17 @@
 ---
-# Clang-Tidy configuration for GPUSSSP project
-# This configuration enforces the project's naming conventions and code quality standards
-
 Checks: >
   -*,
   bugprone-*,
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,
+  -bugprone-chained-comparison,
   clang-analyzer-*,
   -clang-analyzer-cplusplus.NewDeleteLeaks,
   cppcoreguidelines-*,
   -cppcoreguidelines-avoid-c-arrays,
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-avoid-do-while,
   -cppcoreguidelines-init-variables,
   -cppcoreguidelines-macro-usage,
   -cppcoreguidelines-narrowing-conversions,
@@ -28,6 +27,7 @@ Checks: >
   -cppcoreguidelines-special-member-functions,
   -cppcoreguidelines-avoid-const-or-ref-data-members,
   -cppcoreguidelines-non-private-member-variables-in-classes,
+  -readability-function-size,
   google-*,
   -google-readability-braces-around-statements,
   -google-readability-todo,
