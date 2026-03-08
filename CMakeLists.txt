@@ -370,43 +370,7 @@ if(CLANG_TIDY_EXECUTABLE)
         message(STATUS "clang-tidy: ${CLANG_TIDY_EXECUTABLE}")
     endif()
     
-    # Collect all source files for manual tidy target
-    file(GLOB_RECURSE ALL_TIDY_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/experiments/*.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/experiments/*.hpp
-    )
-    list(FILTER ALL_TIDY_FILES EXCLUDE REGEX ".*\\.venv/.*")
-    
-    # Add tidy target for manual analysis
-    add_custom_target(tidy
-        COMMAND ${CLANG_TIDY_EXECUTABLE}
-        --config-file=${CMAKE_CURRENT_SOURCE_DIR}/.clang-tidy
-        -p ${CMAKE_BINARY_DIR}
-        ${ALL_TIDY_FILES}
-        COMMENT "Running clang-tidy static analysis"
-        VERBATIM
-    )
-    
-    # Add tidy-fix target to automatically apply fixes
-    add_custom_target(tidy-fix
-        COMMAND ${CLANG_TIDY_EXECUTABLE}
-        --config-file=${CMAKE_CURRENT_SOURCE_DIR}/.clang-tidy
-        -p ${CMAKE_BINARY_DIR}
-        --fix
-        --fix-errors
-        ${ALL_TIDY_FILES}
-        COMMENT "Running clang-tidy with automatic fixes"
-        VERBATIM
-    )
-    
     message(STATUS "  Run 'cmake -DENABLE_CLANG_TIDY=ON ..' to enable clang-tidy during build")
-    message(STATUS "  Run 'make tidy' or 'cmake --build . --target tidy' to run clang-tidy manually")
-    message(STATUS "  Run 'make tidy-fix' or 'cmake --build . --target tidy-fix' to apply automatic fixes")
 else()
     message(STATUS "clang-tidy: NOT FOUND (static analysis targets will not be available)")
 endif()
