@@ -32,6 +32,15 @@ find_package(Threads REQUIRED)
 find_package(BZip2 REQUIRED)
 find_package(glfw3 REQUIRED)
 
+include(FetchContent)
+FetchContent_Declare(
+    argparse
+    GIT_REPOSITORY https://github.com/p-ranav/argparse.git
+    GIT_TAG v3.2
+    SYSTEM
+)
+FetchContent_MakeAvailable(argparse)
+
 # Find glslangValidator for shader compilation
 find_program(GLSLANG_VALIDATOR glslangValidator
     HINTS $ENV{VULKAN_SDK}/bin
@@ -49,6 +58,7 @@ add_executable(gpusssp
 target_link_libraries(gpusssp
     PRIVATE
         Vulkan::Vulkan
+        argparse::argparse
 )
 
 if(ENABLE_STATISTICS)
@@ -256,7 +266,6 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
     # Fetch Catch2
-    include(FetchContent)
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git

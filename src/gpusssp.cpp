@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <argparse/argparse.hpp>
 #include <cassert>
 #include <cctype>
 #include <chrono>
@@ -72,49 +73,59 @@ static std::optional<uint32_t> string_to_node_id(const std::string &s)
 
 int main(int argc, char **argv)
 {
-    // Parse command line arguments
-    if (argc < 2 || argc > 6)
+    argparse::ArgumentParser program("gpusssp", "1.0.0");
+    program.add_description("GPU-accelerated Single-Source Shortest Path solver.");
+
+    program.add_argument("graph_path")
+        .help("path to preprocessed graph data (without extension)");
+
+    program.add_argument("-s", "--source")
+        .default_value(std::string("random"))
+        .help("source node: \"random\", node ID, or lon,lat");
+
+    program.add_argument("-t", "--target")
+        .default_value(std::string("random"))
+        .help("target node: \"random\", node ID, or lon,lat");
+
+    program.add_argument("-d", "--delta")
+        .default_value(std::string("auto"))
+        .help("delta parameter for delta-stepping: \"auto\" or integer");
+
+    program.add_argument("-n", "--num-queries")
+        .default_value(1u)
+        .scan<'u', uint32_t>()
+        .help("number of queries to run");
+
+    try
     {
-        common::log_error()
-            << "Usage: " << argv[0]
-            << " <graph_path> [SRC_LON,SRC_LAT DEST_LON,DEST_LAT] [DELTA] [NUM_QUERIES]" << '\n';
-        common::log_error() << "Example: " << argv[0]
-                            << " cache/berlin 13.3889,52.5170 13.4050,52.5200 3600 1" << '\n';
+        program.parse_args(argc, argv);
+    }
+    catch (const std::exception &err)
+    {
+        std::cerr << err.what() << '\n';
+        std::cerr << program;
         return 1;
     }
 
-    std::string graph_path = argv[1];
-    std::optional<common::Coordinate> maybe_src_coord;
-    std::optional<common::Coordinate> maybe_dst_coord;
-    if (argc > 2)
-    {
-        maybe_src_coord = string_to_coordinate(argv[2]);
-        maybe_dst_coord = string_to_coordinate(argv[3]);
-    }
-    std::optional<uint32_t> maybe_src_node_id;
-    std::optional<uint32_t> maybe_dst_node_id;
-    if (argc > 2)
-    {
-        if (!maybe_src_coord)
-            maybe_src_node_id = string_to_node_id(argv[2]);
-        if (!maybe_dst_coord)
-            maybe_dst_node_id = string_to_node_id(argv[3]);
-    }
+    std::string graph_path = program.get("graph_path");
+    auto source_str = program.get("--source");
+    auto target_str = program.get("--target");
+    auto delta_str = program.get("--delta");
+    auto num_queries = program.get<uint32_t>("--num-queries");
 
-    auto num_queries = 1u;
-    if (argc >= 6)
-    {
-        num_queries = std::stoi(argv[5]);
-    }
+    auto maybe_src_coord = string_to_coordinate(source_str);
+    auto maybe_dst_coord = string_to_coordinate(target_str);
+    auto maybe_src_node_id = maybe_src_coord ? std::nullopt : string_to_node_id(source_str);
+    auto maybe_dst_node_id = maybe_dst_coord ? std::nullopt : string_to_node_id(target_str);
 
     common::log() << "Loading graph from: " << graph_path << '\n';
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_path);
     auto coordinates = common::files::read_coordinates(graph_path);
 
     auto delta = common::compute_delta_heuristic(graph);
-    if (argc >= 5 && std::string(argv[4]) != "auto")
+    if (delta_str != "auto")
     {
-        delta = std::stoi(argv[4]);
+        delta = std::stoi(delta_str);
     }
     common::log() << "Using delta value " << delta << '\n';
 
