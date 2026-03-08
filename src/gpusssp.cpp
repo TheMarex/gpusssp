@@ -96,6 +96,10 @@ int main(int argc, char **argv)
         .scan<'u', uint32_t>()
         .help("number of queries to run");
 
+    program.add_argument("--skip")
+        .default_value(std::string("bellmanford"))
+        .help("comma-separated list of algorithms to skip: dijkstra,dial,deltastep,bellmanford,nearfar");
+
     try
     {
         program.parse_args(argc, argv);
@@ -112,6 +116,22 @@ int main(int argc, char **argv)
     auto target_str = program.get("--target");
     auto delta_str = program.get("--delta");
     auto num_queries = program.get<uint32_t>("--num-queries");
+
+    auto skip_str = program.get("--skip");
+    auto is_skipped = [&](const std::string &name)
+    {
+        std::size_t start = 0;
+        while (start < skip_str.size())
+        {
+            auto end = skip_str.find(',', start);
+            if (end == std::string::npos)
+                end = skip_str.size();
+            if (skip_str.substr(start, end - start) == name)
+                return true;
+            start = end + 1;
+        }
+        return false;
+    };
 
     auto maybe_src_coord = string_to_coordinate(source_str);
     auto maybe_dst_coord = string_to_coordinate(target_str);
@@ -206,6 +226,12 @@ int main(int argc, char **argv)
         gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, gpu_statistics, delta);
         nearfar.initialize(cmd_pool);
 
+        const bool skip_dijkstra = is_skipped("dijkstra");
+        const bool skip_dial = is_skipped("dial");
+        const bool skip_deltastep = is_skipped("deltastep");
+        const bool skip_bellmanford = is_skipped("bellmanford");
+        const bool skip_nearfar = is_skipped("nearfar");
+
         std::uint32_t checksum = 0;
         std::uint32_t dij_duration = 0;
         std::uint32_t dl_duration = 0;
@@ -216,77 +242,134 @@ int main(int argc, char **argv)
         for (auto i = 0u; i < num_queries; i++)
         {
             common::log() << "Running " << src_nodes[i] << "->" << dst_nodes[i] << '\n';
-            auto time_1 = std::chrono::high_resolution_clock::now();
-            auto expected_dist =
-                common::dijkstra(src_nodes[i], dst_nodes[i], graph, min_queue, costs, settled);
-            common::do_not_optimize(expected_dist);
-            auto time_2 = std::chrono::high_resolution_clock::now();
-            auto dist = deltastep.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
-            common::do_not_optimize(dist);
-            auto time_3 = std::chrono::high_resolution_clock::now();
-            auto bf_dist = bellmanford.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
-            common::do_not_optimize(bf_dist);
-            auto time_4 = std::chrono::high_resolution_clock::now();
-            auto nf_dist = nearfar.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
-            common::do_not_optimize(nf_dist);
-            auto time_5 = std::chrono::high_resolution_clock::now();
-            auto dl_dist = dial(src_nodes[i], dst_nodes[i], graph, bucket_queue, costs, settled);
-            common::do_not_optimize(nf_dist);
-            auto time_6 = std::chrono::high_resolution_clock::now();
 
-            if (expected_dist == common::INF_WEIGHT)
+            auto time_dij_start = std::chrono::high_resolution_clock::now();
+            auto expected_dist = common::INF_WEIGHT;
+            if (!skip_dijkstra)
+            {
+                expected_dist =
+                    common::dijkstra(src_nodes[i], dst_nodes[i], graph, min_queue, costs, settled);
+                common::do_not_optimize(expected_dist);
+            }
+            auto time_dij_end = std::chrono::high_resolution_clock::now();
+
+            auto dist = common::INF_WEIGHT;
+            if (!skip_deltastep)
+            {
+                dist = deltastep.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
+                common::do_not_optimize(dist);
+            }
+            auto time_ds_end = std::chrono::high_resolution_clock::now();
+
+            auto bf_dist = common::INF_WEIGHT;
+            if (!skip_bellmanford)
+            {
+                bf_dist = bellmanford.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
+                common::do_not_optimize(bf_dist);
+            }
+            auto time_bf_end = std::chrono::high_resolution_clock::now();
+
+            auto nf_dist = common::INF_WEIGHT;
+            if (!skip_nearfar)
+            {
+                nf_dist = nearfar.run(cmd_pool, queue, src_nodes[i], dst_nodes[i]);
+                common::do_not_optimize(nf_dist);
+            }
+            auto time_nf_end = std::chrono::high_resolution_clock::now();
+
+            auto dl_dist = common::INF_WEIGHT;
+            if (!skip_dial)
+            {
+                dl_dist = dial(src_nodes[i], dst_nodes[i], graph, bucket_queue, costs, settled);
+                common::do_not_optimize(dl_dist);
+            }
+            auto time_dl_end = std::chrono::high_resolution_clock::now();
+
+            if (expected_dist == common::INF_WEIGHT && !skip_dijkstra)
             {
                 num_unreachable++;
                 continue;
             }
 
-            dij_duration +=
-                std::chrono::duration_cast<std::chrono::milliseconds>(time_2 - time_1).count();
-            ds_duration +=
-                std::chrono::duration_cast<std::chrono::milliseconds>(time_3 - time_2).count();
-            bf_duration +=
-                std::chrono::duration_cast<std::chrono::milliseconds>(time_4 - time_3).count();
-            nf_duration +=
-                std::chrono::duration_cast<std::chrono::milliseconds>(time_5 - time_4).count();
-            dl_duration +=
-                std::chrono::duration_cast<std::chrono::milliseconds>(time_6 - time_5).count();
-            if (dist != expected_dist)
+            if (!skip_dijkstra)
+            {
+                dij_duration += std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    time_dij_end - time_dij_start)
+                                    .count();
+            }
+            if (!skip_deltastep)
+            {
+                ds_duration += std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   time_ds_end - time_dij_end)
+                                   .count();
+            }
+            if (!skip_bellmanford)
+            {
+                bf_duration += std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   time_bf_end - time_ds_end)
+                                   .count();
+            }
+            if (!skip_nearfar)
+            {
+                nf_duration += std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   time_nf_end - time_bf_end)
+                                   .count();
+            }
+            if (!skip_dial)
+            {
+                dl_duration += std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   time_dl_end - time_nf_end)
+                                   .count();
+            }
+
+            if (!skip_deltastep && dist != expected_dist)
             {
                 common::log_error()
                     << "Error: DeltaStep distance " << src_nodes[i] << "->" << dst_nodes[i]
                     << " mismatch. expected: " << expected_dist << " actual: " << dist << '\n';
             }
-            if (bf_dist != expected_dist)
+            if (!skip_bellmanford && bf_dist != expected_dist)
             {
                 common::log_error()
                     << "Error: BellmanFord distance " << src_nodes[i] << "->" << dst_nodes[i]
                     << " mismatch. expected: " << expected_dist << " actual: " << bf_dist << '\n';
             }
-            if (nf_dist != expected_dist)
+            if (!skip_nearfar && nf_dist != expected_dist)
             {
                 common::log_error()
                     << "Error: NearFar distance " << src_nodes[i] << "->" << dst_nodes[i]
                     << " mismatch. expected: " << expected_dist << " actual: " << nf_dist << '\n';
             }
-            if (dl_dist != expected_dist)
+            if (!skip_dial && dl_dist != expected_dist)
             {
                 common::log_error()
                     << "Error: Dial distance " << src_nodes[i] << "->" << dst_nodes[i]
-                    << " mismatch. expected: " << expected_dist << " actual: " << nf_dist << '\n';
+                    << " mismatch. expected: " << expected_dist << " actual: " << dl_dist << '\n';
             }
             checksum += dist;
         }
         auto num_reachable = num_queries - num_unreachable;
-        common::log() << "Processed " << num_reachable << " queries (" << num_unreachable
-                      << " unreachable) in " << (dij_duration / num_reachable)
-                      << "ms/req (dijkstra) " << (dl_duration / num_reachable) << "ms/req (dial "
-                      << (dij_duration / static_cast<double>(dl_duration)) << ") "
-                      << (ds_duration / num_reachable) << "ms/req (deltastep "
-                      << (dij_duration / static_cast<double>(ds_duration)) << ") "
-                      << (bf_duration / num_reachable) << "ms/req (bellmanford "
-                      << (dij_duration / static_cast<double>(bf_duration)) << ") "
-                      << (nf_duration / num_reachable) << "ms/req (nearfar "
-                      << (dij_duration / static_cast<double>(nf_duration)) << ")" << '\n';
+        auto &log = common::log();
+        log << "Processed " << num_reachable << " queries (" << num_unreachable << " unreachable)";
+        if (!skip_dijkstra)
+            log << " " << (dij_duration / num_reachable) << "ms/req (dijkstra)";
+        if (!skip_dial)
+            log << " " << (dl_duration / num_reachable) << "ms/req (dial"
+                << (!skip_dijkstra ? " " + std::to_string(dij_duration / static_cast<double>(dl_duration)) : "")
+                << ")";
+        if (!skip_deltastep)
+            log << " " << (ds_duration / num_reachable) << "ms/req (deltastep"
+                << (!skip_dijkstra ? " " + std::to_string(dij_duration / static_cast<double>(ds_duration)) : "")
+                << ")";
+        if (!skip_bellmanford)
+            log << " " << (bf_duration / num_reachable) << "ms/req (bellmanford"
+                << (!skip_dijkstra ? " " + std::to_string(dij_duration / static_cast<double>(bf_duration)) : "")
+                << ")";
+        if (!skip_nearfar)
+            log << " " << (nf_duration / num_reachable) << "ms/req (nearfar"
+                << (!skip_dijkstra ? " " + std::to_string(dij_duration / static_cast<double>(nf_duration)) : "")
+                << ")";
+        log << '\n';
         common::log() << "Checksum: " << (checksum / num_reachable) << '\n';
 
 #ifdef ENABLE_STATISTICS
