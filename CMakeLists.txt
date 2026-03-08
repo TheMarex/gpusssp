@@ -206,9 +206,19 @@ add_dependencies(experiment_bellmanford shaders)
 add_dependencies(experiment_nearfar shaders)
 add_dependencies(visualize_graph shaders)
 
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo;Profiling" CACHE STRING "" FORCE)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo Profiling)
+
+set(CMAKE_CXX_FLAGS_PROFILING "-Og -g3 -ggdb -fno-omit-frame-pointer -DNDEBUG" CACHE STRING
+    "Flags for Profiling build type" FORCE)
+set(CMAKE_EXE_LINKER_FLAGS_PROFILING "" CACHE STRING
+    "Linker flags for Profiling build type" FORCE)
+set(CMAKE_SHARED_LINKER_FLAGS_PROFILING "" CACHE STRING
+    "Shared linker flags for Profiling build type" FORCE)
 
 # AddressSanitizer support
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
