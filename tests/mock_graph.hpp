@@ -57,7 +57,7 @@ inline uint32_t get_expected_distances(uint32_t src_node, uint32_t dst_node)
         INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, 0,          500,        4500,
         INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, 0,          4000,
         INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, INF_WEIGHT, 0};
-    return SHORTEST_DISTANCES_MOCK[src_node * 6 + dst_node];
+    return SHORTEST_DISTANCES_MOCK[(src_node * 6) + dst_node];
 }
 
 } // namespace gpusssp::test

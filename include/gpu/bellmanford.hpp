@@ -182,7 +182,7 @@ template <typename GraphT> class BellmanFord
 
         for (uint32_t iteration = 0; iteration < num_nodes - 1; iteration += BATCH_SIZE)
         {
-            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &batch_cmd_bufs[0]});
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, batch_cmd_bufs.data()});
             queue.waitIdle();
 
             if (*gpu_changed == 0)

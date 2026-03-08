@@ -1,6 +1,11 @@
-#include <catch2/catch_approx.hpp>
+#include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
+#include <vector>
 
+#include "common/bucket_queue.hpp"
+#include "common/constants.hpp"
+#include "common/dijkstra.hpp"
 #include "mock_graph.hpp"
 
 #include "common/dial.hpp"

@@ -100,7 +100,7 @@ struct ComputePipeline
     vk::DescriptorSetLayout descriptor_set_layout;
     vk::DescriptorPool descriptor_pool;
 
-    void destroy(vk::Device device)
+    void destroy(vk::Device device) const
     {
         device.destroyPipeline(pipeline);
         device.destroyPipelineLayout(layout);

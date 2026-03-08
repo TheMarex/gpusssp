@@ -96,7 +96,7 @@ class BucketQueue
         const unsigned next_entry_index = buckets.peek(p.key);
 
         unsigned entry_index = entries.size();
-        if (free_entries.size() > 0)
+        if (!free_entries.empty())
         {
             entry_index = free_entries.back();
             free_entries.pop_back();

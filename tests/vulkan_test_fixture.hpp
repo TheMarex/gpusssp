@@ -28,12 +28,15 @@ class VulkanTestFixture
     VulkanTestFixture &operator=(VulkanTestFixture &&) = delete;
 
     // Accessors
-    vk::Instance get_instance() const { return instance; }
-    vk::PhysicalDevice get_physical_device() const { return physical_device; }
-    vk::Device get_device() const { return device; }
-    vk::Queue get_queue() const { return queue; }
-    vk::CommandPool get_command_pool() const { return command_pool; }
-    vk::PhysicalDeviceMemoryProperties get_memory_properties() const { return memory_properties; }
+    [[nodiscard]] vk::Instance get_instance() const { return instance; }
+    [[nodiscard]] vk::PhysicalDevice get_physical_device() const { return physical_device; }
+    [[nodiscard]] vk::Device get_device() const { return device; }
+    [[nodiscard]] vk::Queue get_queue() const { return queue; }
+    [[nodiscard]] vk::CommandPool get_command_pool() const { return command_pool; }
+    [[nodiscard]] vk::PhysicalDeviceMemoryProperties get_memory_properties() const
+    {
+        return memory_properties;
+    }
 
   private:
     void initialize()

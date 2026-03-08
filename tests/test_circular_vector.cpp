@@ -21,7 +21,7 @@ TEST_CASE("Test range after inserts and pops", "[circular_vector]")
     vec.pop_front();
     REQUIRE(vec.front() == 1);
     vec.pop_front();
-    REQUIRE(vec.size() == 0);
+    REQUIRE(vec.empty());
 
     vec.update(399, 1);
     vec.update(300, 2);
@@ -41,7 +41,7 @@ TEST_CASE("Full to empty to full", "[circular_vector]")
     vec.pop_front();
     vec.pop_front();
 
-    REQUIRE(vec.size() == 0);
+    REQUIRE(vec.empty());
 
     vec.update(3000, 3);
     vec.update(3099, 1);

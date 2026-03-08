@@ -1,14 +1,21 @@
+#include "common/constants.hpp"
 #include "common/dijkstra.hpp"
 #include "common/files.hpp"
+#include "common/id_queue.hpp"
 #include "common/logger.hpp"
 #include "common/progress_bar.hpp"
 #include "queries.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <exception>
 #include <numeric>
+#include <ostream>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace gpusssp;
@@ -17,8 +24,7 @@ int main(int argc, char **argv)
 {
     if (argc != 4)
     {
-        common::log_error() << "Usage: " << argv[0] << " <mode> <num_queries> <base_path>"
-                            << std::endl;
+        common::log_error() << "Usage: " << argv[0] << " <mode> <num_queries> <base_path>" << '\n';
         return 1;
     }
 
@@ -30,21 +36,21 @@ int main(int argc, char **argv)
     }
     catch (const std::exception &e)
     {
-        common::log_error() << "Invalid number of queries: " << argv[2] << std::endl;
+        common::log_error() << "Invalid number of queries: " << argv[2] << '\n';
         return 1;
     }
     std::string base_path = argv[3];
 
     if (mode != "random" && mode != "rank")
     {
-        common::log_error() << "Supported modes: 'random', 'rank'" << std::endl;
+        common::log_error() << "Supported modes: 'random', 'rank'" << '\n';
         return 1;
     }
 
-    common::log() << "Loading graph from: " << base_path << std::endl;
+    common::log() << "Loading graph from: " << base_path << '\n';
     auto graph = common::files::read_weighted_graph<uint32_t>(base_path);
 
-    common::log() << "Graph loaded: " << graph.num_nodes() << " nodes." << std::endl;
+    common::log() << "Graph loaded: " << graph.num_nodes() << " nodes." << '\n';
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -59,26 +65,25 @@ int main(int argc, char **argv)
         {
             queries.push_back({dist(gen), dist(gen), -1});
         }
-        common::log() << "Generated " << queries.size() << " random queries." << std::endl;
+        common::log() << "Generated " << queries.size() << " random queries." << '\n';
     }
     else if (mode == "rank")
     {
-        uint32_t num_targets = static_cast<uint32_t>(std::log2(graph.num_nodes()));
+        auto num_targets = static_cast<uint32_t>(std::log2(graph.num_nodes()));
         if (num_queries < num_targets)
         {
-            common::log() << "Minimum amount of queries for rank is " << num_targets << std::endl;
+            common::log() << "Minimum amount of queries for rank is " << num_targets << '\n';
             return EXIT_FAILURE;
         }
         else if (num_queries % num_targets != 0)
         {
-            common::log() << "Number of queries needs to be a multiple of " << num_targets
-                          << std::endl;
+            common::log() << "Number of queries needs to be a multiple of " << num_targets << '\n';
             return EXIT_FAILURE;
         }
-        uint32_t num_sources = static_cast<uint32_t>(num_queries / num_targets);
+        auto num_sources = (num_queries / num_targets);
 
         common::log() << "Generating rank queries with " << num_sources << " sources and "
-                      << num_targets << " targets per source." << std::endl;
+                      << num_targets << " targets per source." << '\n';
 
         common::ProgressBar progress_bar(num_sources);
         std::vector<uint32_t> sources;
@@ -104,11 +109,12 @@ int main(int argc, char **argv)
 
             common::dijkstra_to_all(source, graph, queue, costs);
 
-            std::sort(nodes.begin(),
-                      nodes.end(),
-                      [&](const auto lhs, const auto rhs) { return costs[lhs] < costs[rhs]; });
+            std::ranges::sort(nodes,
 
-            for (int rank = 0; rank < num_targets; ++rank)
+                              [&](const auto lhs, const auto rhs)
+                              { return costs[lhs] < costs[rhs]; });
+
+            for (int rank = 0; std::cmp_less(rank, num_targets); ++rank)
             {
                 auto index = (1u << rank) - 1;
                 queries.push_back({source, nodes[index], rank});
@@ -116,13 +122,13 @@ int main(int argc, char **argv)
             progress_bar.increment();
         }
 
-        common::log() << "Generated " << queries.size() << " rank queries." << std::endl;
+        common::log() << "Generated " << queries.size() << " rank queries." << '\n';
         std::shuffle(queries.begin(), queries.end(), gen);
-        common::log() << "Shuffled all rank queries." << std::endl;
+        common::log() << "Shuffled all rank queries." << '\n';
     }
 
     experiments::write_queries(base_path, queries);
-    common::log() << "Queries written to " << base_path << "/queries.csv" << std::endl;
+    common::log() << "Queries written to " << base_path << "/queries.csv" << '\n';
 
     return 0;
 }

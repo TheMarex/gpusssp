@@ -21,7 +21,7 @@ TEST_CASE("String split", "[string_util]")
         gpusssp::common::detail::split(tokens, "a,,c", ",");
         REQUIRE(tokens.size() == 3);
         CHECK(tokens[0] == "a");
-        CHECK(tokens[1] == "");
+        CHECK(tokens[1].empty());
         CHECK(tokens[2] == "c");
     }
 }
@@ -37,6 +37,6 @@ TEST_CASE("String join", "[string_util]")
     SECTION("Join empty vector")
     {
         std::vector<std::string> elements;
-        CHECK(gpusssp::common::detail::join(elements, ",") == "");
+        CHECK(gpusssp::common::detail::join(elements, ",").empty());
     }
 }

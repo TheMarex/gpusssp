@@ -2,6 +2,7 @@
 #include "common/constants.hpp"
 #include "common/csv.hpp"
 #include "common/dial.hpp"
+#include "common/dijkstra.hpp"
 #include "common/files.hpp"
 #include "common/logger.hpp"
 #include "common/progress_bar.hpp"

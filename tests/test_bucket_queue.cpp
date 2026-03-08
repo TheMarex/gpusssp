@@ -1,6 +1,7 @@
 #include "common/bucket_queue.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
 
 TEST_CASE("Test push and pop", "[bucket_queue]")
 {
@@ -88,7 +89,7 @@ TEST_CASE("Full empty full", "[bucket_queue]")
         queue.pop();
         queue.pop();
         queue.pop();
-        REQUIRE(queue.size() == 0);
+        REQUIRE(queue.empty());
 
         queue.push({.id = 5, .key = 200});
         queue.push({.id = 1, .key = 299});
@@ -96,6 +97,6 @@ TEST_CASE("Full empty full", "[bucket_queue]")
 
         queue.pop();
         queue.pop();
-        REQUIRE(queue.size() == 0);
+        REQUIRE(queue.empty());
     }
 }

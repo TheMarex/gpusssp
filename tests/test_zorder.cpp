@@ -2,6 +2,8 @@
 #include "common/zorder.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
+#include <cstdlib>
 
 TEST_CASE("z-order bit interleaving", "[zorder]")
 {
@@ -37,7 +39,7 @@ TEST_CASE("coordinate to z-order conversion", "[zorder]")
 
     SECTION("origin coordinate")
     {
-        auto coord = Coordinate{0, 0};
+        auto coord = Coordinate{.lon = 0, .lat = 0};
         auto zorder = coordinate_to_zorder(coord);
         REQUIRE(zorder > 0);
     }
