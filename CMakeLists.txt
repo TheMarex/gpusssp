@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(gpusssp
     VERSION 1.0.0
     DESCRIPTION "GPU SSSP implementation using Vulkan compute shaders"
@@ -261,6 +261,7 @@ if(BUILD_TESTING)
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
         GIT_TAG v3.5.2
+        SYSTEM
     )
     FetchContent_MakeAvailable(Catch2)
     
