@@ -16,7 +16,7 @@ Compare performance of fixed dispatch (e.g. dispatch to all nodes in the graph) 
 
 ## workgroup_size
 
-Investigate impact of workgroup size on performance.
+Hypothesis: Investigate impact of workgroup size on performance.
 Outcome: Largely irrelevant.
 
 ## delta_sweep
