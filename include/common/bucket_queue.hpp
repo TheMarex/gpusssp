@@ -66,6 +66,7 @@ class BucketQueue
         auto new_min_entry_index = min_entry.next;
         IDKeyPair p = min_entry.p;
 
+        id_entry[p.id] = INVALID_ID;
         free_entries.push_back(min_entry_index);
 
         if (new_min_entry_index == INVALID_ID)
