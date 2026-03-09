@@ -5,7 +5,7 @@ Outcome: hypothesis invalidated – berlin_zorder Dial queries slowed down by 4-
 
 ## bucket_queue_plain_id_entry
 
-Hypothesis: replacing `LazyClearVector<unsigned>` with a plain `std::vector<unsigned>` (reset via looping over `entries` and clearing `id_entry[entry.p.id] = INVALID_ID` on `clear()`) for the `id_entry` member of `BucketQueue` reduces per-access overhead because the generation check and `generations` array indirection in `LazyClearVector::operator[]` cost more than clearing all entries on each query reset.
+Hypothesis: replacing the `BucketQueue::id_entry` `LazyClearVector<unsigned>` with a plain `std::vector<unsigned>` eliminates the generation check and indirection overhead on every access. Even though `clear()` must loop over `entries` to reset `id_entry[entry.p.id] = INVALID_ID`, we expect Dial on berlin_zorder to run faster overall.
 
 ## edge_balancing
 
