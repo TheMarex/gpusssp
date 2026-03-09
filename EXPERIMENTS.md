@@ -8,20 +8,22 @@ Hypothesis: replacing `LazyClearVector<unsigned>` with a plain `std::vector<unsi
 
 ## edge_balancing
 
-Investigate balancing the number of edges processed per thread.
+Hypothesis: Balancing the number of edges processed per thread improves performance.
+Outcome: Edge balancing does not yield a significant speed-up for road networks.
 
 ## fixed_dispatch
 
-Compare performance of fixed dispatch (e.g. dispatch to all nodes in the graph) to min/max based on changed ID.
+Hypothesis: Dispatching deltastep to min/max based on changed ID vs dispatching to all nodes in the graph improves performance.
+Outcome: min/max changed ID is faster.
 
 ## workgroup_size
 
-Hypothesis: Investigate impact of workgroup size on performance.
-Outcome: Largely irrelevant.
+Hypothesis: The shader workgroup size impacts the performance of the nearfar/deltastep algorithms.
+Outcome: The workgroup size is largely irrelevant.
 
 ## delta_sweep
 
-Compare performance DeltaStep / NF with different delta values.
+Hypothesis: Performance of Deltastep / Nearfar highly depends on delta values.
 
 ## changed_nodes_compaction
 
