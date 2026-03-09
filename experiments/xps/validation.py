@@ -3,7 +3,7 @@ from typing import Dict
 
 from .errors import error_exit
 
-VALID_RUN_TARGETS = {"dijkstra", "deltastep", "bellmanford", "nearfar"}
+VALID_RUN_TARGETS = {"dijkstra", "deltastep", "bellmanford", "nearfar", "dial"}
 
 
 def validate_xp_name(xp_name: str) -> None:

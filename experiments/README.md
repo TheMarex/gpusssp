@@ -99,6 +99,7 @@ Adds an empty instrumentation commit to the current experiment branch.
 - `deltastep` - GPU Delta-Stepping
 - `bellmanford` - GPU Bellman-Ford
 - `nearfar` - GPU Near-Far (alternative name for a variant)
+- `dial` - CPU Dial benchmark (uses BucketQueue)
 
 **Parameters:** Space-separated `key=value` pairs:
 - `delta=<values>` - Delta values (comma-separated for multiple)
