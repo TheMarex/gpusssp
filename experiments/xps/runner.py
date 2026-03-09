@@ -92,7 +92,12 @@ def format_cmd(
         for delta in params["delta"]:
             cmds.append(base_cmd + [xp_name, str(delta)])
         return cmds
-    return [base_cmd + [xp_name]]
+
+    cmd = base_cmd + [xp_name]
+    if target == "dial" and "range" in params:
+        cmd.append(str(params["range"]))
+
+    return [cmd]
 
 
 def run_experiment(

@@ -105,6 +105,7 @@ Adds an empty instrumentation commit to the current experiment branch.
 - `delta=<values>` - Delta values (comma-separated for multiple)
 - `data=<name>` - Dataset name (required, e.g., `berlin`)
 - `gpu=<id>` - GPU device ID (optional, default 0)
+- `range=<value>` - Dial bucket range (optional, only for `dial` target)
 
 **Examples:**
 ```bash
