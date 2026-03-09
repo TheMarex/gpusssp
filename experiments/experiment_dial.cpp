@@ -24,7 +24,7 @@ int main(int argc, char **argv)
     if (argc < 3)
     {
         common::log_error() << "Usage: " << argv[0]
-                            << " <graph_base_path> <xp_base_path> [xp_name] [delta]" << '\n';
+                            << " <graph_base_path> <xp_base_path> [xp_name] [range]" << '\n';
         return 1;
     }
 
@@ -32,7 +32,7 @@ int main(int argc, char **argv)
     std::string xp_base_path = argv[2];
 
     std::string xp_name = "compare_algorithm";
-    uint32_t range = 10000;
+    uint32_t range = 32 * 1024;
     if (argc >= 4)
     {
         xp_name = argv[3];

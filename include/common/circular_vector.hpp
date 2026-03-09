@@ -2,6 +2,8 @@
 #define GPUSSSP_COMMON_CIRCULAR_VECTOR_HPP
 
 #include "common/lazy_clear_vector.hpp"
+#include "common/logger.hpp"
+
 #include <bit>
 #include <cassert>
 #include <limits>
@@ -16,8 +18,8 @@ namespace gpusssp::common
 template <typename T> class CircularVector
 {
   public:
-    explicit CircularVector(unsigned bound, const T &default_value) // NOLINT
-        : default_value{default_value}, data(std::bit_ceil(bound), default_value),
+    explicit CircularVector(unsigned initial_bound, const T &default_value) // NOLINT
+        : default_value{default_value}, data(std::bit_ceil(initial_bound), default_value),
           index_mask{data.size() - 1}
     {
     }
@@ -38,7 +40,11 @@ template <typename T> class CircularVector
     //! Updates a value at index, calls clear(index) and mark(index) on-demand
     void update(const std::size_t index, const T &value)
     {
-        assert(in_bounds(index));
+        if (!in_bounds(index))
+        {
+            grow_to_fit(index);
+        }
+
         data[local_index_unchecked(index)] = value;
 
         // If we "unset" a value we need to update the min/max
@@ -163,6 +169,32 @@ template <typename T> class CircularVector
         {
             max_index--;
         }
+    }
+
+    void grow_to_fit(const std::size_t index)
+    {
+        std::size_t new_size = data.size() * 2;
+        while (index >= min_index + new_size ||
+               (index < min_index && index + new_size <= max_index))
+        {
+            new_size *= 2;
+        }
+
+        const std::size_t old_mask = index_mask;
+        const std::size_t new_mask = new_size - 1;
+        LazyClearVector<T> new_data(new_size, default_value);
+
+        for (std::size_t i = min_index; i <= max_index; ++i)
+        {
+            const T value = data[old_mask & i];
+            if (value != default_value)
+            {
+                new_data[new_mask & i] = value;
+            }
+        }
+
+        data = std::move(new_data);
+        index_mask = new_mask;
     }
 
     // This function does not implement bounds checks

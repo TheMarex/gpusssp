@@ -23,8 +23,8 @@ class BucketQueue
     };
 
   public:
-    explicit BucketQueue(unsigned id_count, unsigned bound)
-        : buckets(bound, INVALID_ID), id_entry(id_count, INVALID_ID)
+    explicit BucketQueue(unsigned id_count, unsigned initial_bound)
+        : buckets(initial_bound, INVALID_ID), id_entry(id_count, INVALID_ID)
     {
     }
 
@@ -88,11 +88,6 @@ class BucketQueue
     void push(IDKeyPair p)
     {
         Statistics::get().count(StatisticsEvent::QUEUE_PUSH);
-
-        if (!buckets.in_bounds(p.key))
-        {
-            throw std::runtime_error("Key " + std::to_string(p.key) + " is out of range");
-        }
 
         const unsigned next_entry_index = buckets.peek(p.key);
 

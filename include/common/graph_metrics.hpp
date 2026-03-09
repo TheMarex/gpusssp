@@ -1,24 +1,11 @@
 #ifndef GPUSSSP_COMMON_GRAPH_METRICS_HPP
 #define GPUSSSP_COMMON_GRAPH_METRICS_HPP
 
-#include "common/constants.hpp"
-#include "common/coordinate.hpp"
 #include "common/weighted_graph.hpp"
 #include <numeric>
 
 namespace gpusssp::common
 {
-
-inline uint64_t estimate_max_path_weight(const std::vector<Coordinate> &coordinates,
-                                         double detour_factor = 1.7,
-                                         double min_speed_kmh = 30.0)
-{
-    auto bbox = bounds(coordinates);
-    auto diagonal_meters = haversine_distance(bbox.south_east, bbox.north_west);
-    auto min_speed_ms = min_speed_kmh / 3.6;
-    auto max_travel_seconds = detour_factor * diagonal_meters / min_speed_ms;
-    return static_cast<uint64_t>(max_travel_seconds * FIXED_POINT_RESOLUTION);
-}
 
 template <typename WeightT>
 uint32_t compute_delta_heuristic(const WeightedGraph<WeightT> &graph, double c = 10.0)

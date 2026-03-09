@@ -76,8 +76,7 @@ int main(int argc, char **argv)
     argparse::ArgumentParser program("gpusssp", "1.0.0");
     program.add_description("GPU-accelerated Single-Source Shortest Path solver.");
 
-    program.add_argument("graph_path")
-        .help("path to preprocessed graph data (without extension)");
+    program.add_argument("graph_path").help("path to preprocessed graph data (without extension)");
 
     program.add_argument("-s", "--source")
         .default_value(std::string("random"))
@@ -98,7 +97,8 @@ int main(int argc, char **argv)
 
     program.add_argument("--skip")
         .default_value(std::string("bellmanford"))
-        .help("comma-separated list of algorithms to skip: dijkstra,dial,deltastep,bellmanford,nearfar");
+        .help("comma-separated list of algorithms to skip: "
+              "dijkstra,dial,deltastep,bellmanford,nearfar");
 
     try
     {
@@ -148,9 +148,6 @@ int main(int argc, char **argv)
         delta = std::stoi(delta_str);
     }
     common::log() << "Using delta value " << delta << '\n';
-
-    const auto max_path_weight = common::estimate_max_path_weight(coordinates);
-    common::log() << "Using maximum path weight " << max_path_weight << '\n';
 
     auto num_heavy = 0u;
     for (uint32_t eid = 0u; eid < graph.num_edges(); ++eid)
@@ -203,7 +200,7 @@ int main(int argc, char **argv)
     auto cmd_pool = vk_ctx.command_pool();
 
     {
-        common::BucketQueue bucket_queue(graph.num_nodes(), max_path_weight + 1);
+        common::BucketQueue bucket_queue(graph.num_nodes(), 32 * 1024);
         common::MinIDQueue min_queue(graph.num_nodes());
         common::CostVector<common::WeightedGraph<uint32_t>> costs(graph.num_nodes(),
                                                                   common::INF_WEIGHT);
@@ -299,27 +296,27 @@ int main(int argc, char **argv)
             }
             if (!skip_deltastep)
             {
-                ds_duration += std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   time_ds_end - time_dij_end)
+                ds_duration += std::chrono::duration_cast<std::chrono::milliseconds>(time_ds_end -
+                                                                                     time_dij_end)
                                    .count();
             }
             if (!skip_bellmanford)
             {
-                bf_duration += std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   time_bf_end - time_ds_end)
-                                   .count();
+                bf_duration +=
+                    std::chrono::duration_cast<std::chrono::milliseconds>(time_bf_end - time_ds_end)
+                        .count();
             }
             if (!skip_nearfar)
             {
-                nf_duration += std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   time_nf_end - time_bf_end)
-                                   .count();
+                nf_duration +=
+                    std::chrono::duration_cast<std::chrono::milliseconds>(time_nf_end - time_bf_end)
+                        .count();
             }
             if (!skip_dial)
             {
-                dl_duration += std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   time_dl_end - time_nf_end)
-                                   .count();
+                dl_duration +=
+                    std::chrono::duration_cast<std::chrono::milliseconds>(time_dl_end - time_nf_end)
+                        .count();
             }
 
             if (!skip_deltastep && dist != expected_dist)
@@ -355,19 +352,27 @@ int main(int argc, char **argv)
             log << " " << (dij_duration / num_reachable) << "ms/req (dijkstra)";
         if (!skip_dial)
             log << " " << (dl_duration / num_reachable) << "ms/req (dial"
-                << (!skip_dijkstra ? " " + std::to_string(dij_duration / static_cast<double>(dl_duration)) : "")
+                << (!skip_dijkstra
+                        ? " " + std::to_string(dij_duration / static_cast<double>(dl_duration))
+                        : "")
                 << ")";
         if (!skip_deltastep)
             log << " " << (ds_duration / num_reachable) << "ms/req (deltastep"
-                << (!skip_dijkstra ? " " + std::to_string(dij_duration / static_cast<double>(ds_duration)) : "")
+                << (!skip_dijkstra
+                        ? " " + std::to_string(dij_duration / static_cast<double>(ds_duration))
+                        : "")
                 << ")";
         if (!skip_bellmanford)
             log << " " << (bf_duration / num_reachable) << "ms/req (bellmanford"
-                << (!skip_dijkstra ? " " + std::to_string(dij_duration / static_cast<double>(bf_duration)) : "")
+                << (!skip_dijkstra
+                        ? " " + std::to_string(dij_duration / static_cast<double>(bf_duration))
+                        : "")
                 << ")";
         if (!skip_nearfar)
             log << " " << (nf_duration / num_reachable) << "ms/req (nearfar"
-                << (!skip_dijkstra ? " " + std::to_string(dij_duration / static_cast<double>(nf_duration)) : "")
+                << (!skip_dijkstra
+                        ? " " + std::to_string(dij_duration / static_cast<double>(nf_duration))
+                        : "")
                 << ")";
         log << '\n';
         common::log() << "Checksum: " << (checksum / num_reachable) << '\n';
