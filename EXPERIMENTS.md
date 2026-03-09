@@ -1,12 +1,11 @@
 ## bucket_queue_no_free_list
 
 Hypothesis: removing `free_entries` from `BucketQueue` (replacing the free-list recycling of `BucketEntry` slots with a simple grow-only `entries` vector that is reset on `clear()`) reduces overhead of Dial's algorithm.
-
 Outcome: hypothesis invalidated – berlin_zorder Dial queries slowed down by 4-11% without the `free_entries` recycling.
 
 ## bucket_queue_plain_id_entry
 
-Hypothesis: replacing `LazyClearVector<unsigned>` with a plain `std::vector<unsigned>` (reset via `std::fill` on `clear()`) for the `id_entry` member of `BucketQueue` reduces per-access overhead because the generation check and `generations` array indirection in `LazyClearVector::operator[]` cost more than a linear `std::fill` over the node count on each query reset.
+Hypothesis: replacing `LazyClearVector<unsigned>` with a plain `std::vector<unsigned>` (reset via looping over `entries` and clearing `id_entry[entry.p.id] = INVALID_ID` on `clear()`) for the `id_entry` member of `BucketQueue` reduces per-access overhead because the generation check and `generations` array indirection in `LazyClearVector::operator[]` cost more than clearing all entries on each query reset.
 
 ## edge_balancing
 
