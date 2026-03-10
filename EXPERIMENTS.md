@@ -1,3 +1,8 @@
+## nearfar_subgroup_add
+
+Hypothesis: enabling the subgroup-based relax reduces NearFar contention on atomicAdd and improves runtimes.
+Outcome: Collection nodes locally first and then using subgroup operations to populate the buffer yields a speed-up of ~1.3.
+
 ## bucket_queue_no_free_list
 
 Hypothesis: removing `free_entries` from `BucketQueue` (replacing the free-list recycling of `BucketEntry` slots with a simple grow-only `entries` vector that is reset on `clear()`) reduces overhead of Dial's algorithm.
