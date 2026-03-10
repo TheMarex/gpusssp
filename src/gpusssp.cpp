@@ -156,7 +156,8 @@ int main(int argc, char **argv)
     }
 
     common::log() << "Graph loaded: " << graph.num_nodes() << " nodes, " << graph.num_edges()
-                  << " edges (" << num_heavy << " heavy)" << '\n';
+                  << " edges (" << num_heavy << " heavy), max degree " << common::max_degree(graph)
+                  << '\n';
 
     common::NearestNeighbour nn(coordinates);
 

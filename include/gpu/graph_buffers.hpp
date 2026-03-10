@@ -7,6 +7,7 @@
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
+#include "common/graph_metrics.hpp"
 #include "gpu/memory.hpp"
 
 namespace gpusssp::gpu
@@ -21,7 +22,7 @@ template <typename GraphT> class GraphBuffers
                  const vk::PhysicalDeviceMemoryProperties &mem_props,
                  vk::CommandPool command_pool,
                  QueueT queue)
-        : graph(graph), device(device)
+        : graph(graph), device(device), max_node_degree(common::max_degree(graph))
     {
         // Create device-local buffers with transfer destination flag
         buf_first_edges = gpu::create_exclusive_buffer<uint32_t>(
@@ -69,6 +70,7 @@ template <typename GraphT> class GraphBuffers
 
     [[nodiscard]] auto num_nodes() const { return graph.num_nodes(); }
     [[nodiscard]] auto num_edges() const { return graph.num_edges(); }
+    [[nodiscard]] auto max_degree() const { return max_node_degree; }
 
     [[nodiscard]] std::array<vk::Buffer, 3> buffers() const
     {
@@ -86,6 +88,7 @@ template <typename GraphT> class GraphBuffers
 
     const GraphT &graph;
     vk::Device device;
+    const uint32_t max_node_degree;
 };
 
 } // namespace gpusssp::gpu
