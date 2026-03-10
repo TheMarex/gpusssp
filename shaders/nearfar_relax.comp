@@ -2,6 +2,7 @@
 
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_arithmetic: enable
+#extension GL_KHR_shader_subgroup_ballot: enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64: enable
 #extension GL_EXT_shader_atomic_int64: enable
 
@@ -30,6 +31,11 @@ void main() {
     
     uint tid = gl_GlobalInvocationID.x;
 
+    uint near_buf[16];
+    uint near_buf_count = 0;
+    uint far_buf[16];
+    uint far_buf_count = 0;
+
     if (tid < near[pc.n]) {
         uint u = near[tid];
         uint du = dist[u];
@@ -50,14 +56,34 @@ void main() {
                 statisticsCount(STAT_NEARFAR_RELAX_IMPROVED);
                 
                 if (new_dist < threshold) {
-                    uint idx = atomicAdd(next_near[pc.n], 1);
-                    next_near[idx] = v;
+                    near_buf[near_buf_count++] = v;
                 } else {
-                    uint idx = atomicAdd(far[pc.n], 1);
-                    far[idx] = v;
+                    far_buf[far_buf_count++] = v;
                 }
             }
         }
+    }
+
+    uint near_local_offset = subgroupExclusiveAdd(near_buf_count);
+    uint near_total = subgroupAdd(near_buf_count);
+    uint near_global_base = 0;
+    if (subgroupElect() && near_total > 0) {
+        near_global_base = atomicAdd(next_near[pc.n], near_total);
+    }
+    near_global_base = subgroupBroadcastFirst(near_global_base);
+    for (uint i = 0; i < near_buf_count; ++i) {
+        next_near[near_global_base + near_local_offset + i] = near_buf[i];
+    }
+
+    uint far_local_offset = subgroupExclusiveAdd(far_buf_count);
+    uint far_total = subgroupAdd(far_buf_count);
+    uint far_global_base = 0;
+    if (subgroupElect() && far_total > 0) {
+        far_global_base = atomicAdd(far[pc.n], far_total);
+    }
+    far_global_base = subgroupBroadcastFirst(far_global_base);
+    for (uint i = 0; i < far_buf_count; ++i) {
+        far[far_global_base + far_local_offset + i] = far_buf[i];
     }
     
     statisticsSync(statistics_counters);
