@@ -1,3 +1,7 @@
+## cmd_buf_no_simultaneoususe
+
+Hypothesis: Being conservative and using `eSimultaneousUse` for all pre-recorded buffers costs us performance, since it inhibits optimization.
+
 ## nearfar_subgroup_add
 
 Hypothesis: enabling the subgroup-based relax reduces NearFar contention on atomicAdd and improves runtimes.
