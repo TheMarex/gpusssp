@@ -1,3 +1,7 @@
+## batch_size_sweep
+
+Hypothesis: The batch_size parameter affects the performance of the deltastep/nearfar algorithms and needs to be tuned.
+
 ## cmd_buf_no_simultaneoususe
 
 Hypothesis: Being conservative and using `eSimultaneousUse` for all pre-recorded buffers costs us performance, since it inhibits optimization.
