@@ -2,6 +2,7 @@
 
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_arithmetic: enable
+#extension GL_KHR_shader_subgroup_ballot: enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64: enable
 #extension GL_EXT_shader_atomic_int64: enable
 
@@ -29,8 +30,12 @@ void main() {
     
     uint tid = gl_GlobalInvocationID.x;
 
+    bool is_near = false;
+    bool is_far = false;
+    uint node = 0xFFFFFFFF;
+
     if (tid < far[pc.n]) {
-        uint node = far[tid];
+        node = far[tid];
         
         if (!bit_vector_set(processed, node)) {
             statisticsCount(STAT_NEARFAR_COMPACT_NODES);
@@ -41,15 +46,35 @@ void main() {
             uint delta = phase_params[1];
             uint threshold = delta * (phase + 1);
 
-            if (d < threshold) {
-                uint idx = atomicAdd(next_near[pc.n], 1);
-                next_near[idx] = node;
-            } else {
-                uint idx = atomicAdd(next_far[pc.n], 1);
-                next_far[idx] = node;
-            }
+            is_near = d < threshold;
+            is_far = !is_near;
         }
     }
+
+    uvec4 near_ballot = subgroupBallot(is_near);
+    uint near_total = subgroupBallotBitCount(near_ballot);
+    uint near_local_offset = subgroupBallotExclusiveBitCount(near_ballot);
+    uint near_global_base = 0;
+    if (subgroupElect() && near_total > 0) {
+        near_global_base = atomicAdd(next_near[pc.n], near_total);
+    }
+    near_global_base = subgroupBroadcastFirst(near_global_base);
+    if (is_near) {
+        next_near[near_global_base + near_local_offset] = node;
+    }
+
+    uvec4 far_ballot = subgroupBallot(is_far);
+    uint far_total = subgroupBallotBitCount(far_ballot);
+    uint far_local_offset = subgroupBallotExclusiveBitCount(far_ballot);
+    uint far_global_base = 0;
+    if (subgroupElect() && far_total > 0) {
+        far_global_base = atomicAdd(next_far[pc.n], far_total);
+    }
+    far_global_base = subgroupBroadcastFirst(far_global_base);
+    if (is_far) {
+        next_far[far_global_base + far_local_offset] = node;
+    }
+
     
     if (tid == 0) {
         atomicAdd(phase_params[0], 1);
