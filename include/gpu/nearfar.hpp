@@ -141,22 +141,32 @@ template <typename GraphT> class NearFar
         device.freeCommandBuffers(cmd_pool, compact_cmd_bufs);
 
         relax_cmd_bufs =
-            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 2});
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 4});
         compact_cmd_bufs =
             device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 2});
 
         auto num_nodes = static_cast<uint32_t>(graph_buffers.num_nodes());
         auto dispatch_buffer = nearfar_buffers.dispatch_buffer();
 
-        for (auto idx = 0u; idx < 2; ++idx)
+        for (auto far_buffer_idx = 0u; far_buffer_idx < 2; ++far_buffer_idx)
         {
-            record_relax_batch_commands(relax_cmd_bufs[idx], num_nodes, idx, dispatch_buffer);
-            record_compact_commands(compact_cmd_bufs[idx], num_nodes, idx, dispatch_buffer);
+            for (auto near_buffer_idx = 0u; near_buffer_idx < 2; ++near_buffer_idx)
+            {
+                auto idx = near_buffer_idx + (2 * far_buffer_idx);
+                record_relax_batch_commands(relax_cmd_bufs[idx],
+                                            num_nodes,
+                                            near_buffer_idx,
+                                            far_buffer_idx,
+                                            dispatch_buffer);
+            }
+            record_compact_commands(
+                compact_cmd_bufs[far_buffer_idx], num_nodes, far_buffer_idx, dispatch_buffer);
         }
     }
 
     void record_relax_batch_commands(vk::CommandBuffer cmd_buf,
                                      uint32_t num_nodes,
+                                     uint32_t current_near_buffer_idx,
                                      uint32_t current_far_buffer_idx,
                                      vk::Buffer dispatch_buffer)
     {
@@ -167,7 +177,6 @@ template <typename GraphT> class NearFar
 
         for (uint32_t batch_iter = 0; batch_iter < relax_batch_size; ++batch_iter)
         {
-            uint32_t current_near_buffer_idx = batch_iter % 2;
             auto relax_desc_set =
                 relax_pipeline
                     .descriptor_sets[current_near_buffer_idx + (current_far_buffer_idx * 2)];
@@ -224,9 +233,11 @@ template <typename GraphT> class NearFar
                                                           vk::AccessFlagBits::eShaderRead},
                                     {},
                                     {});
+
+            current_near_buffer_idx = (current_near_buffer_idx + 1) % 2;
         }
 
-        nearfar_buffers.cmd_sync_near_count(cmd_buf, relax_batch_size % 2);
+        nearfar_buffers.cmd_sync_near_count(cmd_buf, current_near_buffer_idx);
 
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
@@ -442,6 +453,7 @@ template <typename GraphT> class NearFar
             auto relax_start =
                 common::Statistics::start(common::StatisticsEvent::NEARFAR_RELAX_DURATION);
 
+            uint32_t current_near_buffer_idx = 0;
             while (*gpu_num_near > 0)
             {
                 common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
@@ -449,14 +461,19 @@ template <typename GraphT> class NearFar
                                     << *gpu_best_distance << '\n';
 
                 queue.submit(vk::SubmitInfo{
-                    0, nullptr, nullptr, 1, &relax_cmd_bufs[current_far_buffer_idx]});
+                    0,
+                    nullptr,
+                    nullptr,
+                    1,
+                    &relax_cmd_bufs[current_near_buffer_idx + (2 * current_far_buffer_idx)]});
                 queue.waitIdle();
+
+                current_near_buffer_idx = (current_near_buffer_idx + 1) % 2;
 
                 if (tracer)
                 {
-                    uint32_t near_buffer_idx = relax_batch_size % 2;
                     tracer->signal_and_wait({.phase_index = *gpu_phase,
-                                             .near_buffer_index = near_buffer_idx,
+                                             .near_buffer_index = current_near_buffer_idx,
                                              .far_buffer_index = current_far_buffer_idx});
                 }
             }
