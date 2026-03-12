@@ -37,7 +37,7 @@ class BucketQueue
     //! Checks whether an element is in the queue.
     bool contains_id(unsigned id)
     {
-        assert(id < id_key.size());
+        assert(id < id_entry.size());
         return id_entry[id] != INVALID_ID;
     }
 
