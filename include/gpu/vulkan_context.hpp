@@ -109,6 +109,12 @@ class VulkanContext
         vk::DeviceQueueCreateInfo queue_info({}, queue_family_index, 1, &queue_priority);
 
         vk::PhysicalDeviceFeatures device_features;
+
+        vk::PhysicalDeviceRobustness2FeaturesEXT robustness2_features;
+        robustness2_features.robustBufferAccess2 = VK_FALSE;
+        robustness2_features.robustImageAccess2 = VK_FALSE;
+        robustness2_features.nullDescriptor = VK_TRUE;
+
         vk::DeviceCreateInfo device_info({},
                                          1,
                                          &queue_info,
@@ -117,6 +123,7 @@ class VulkanContext
                                          device_extensions.size(),
                                          device_extensions.data(),
                                          &device_features);
+        device_info.setPNext(&robustness2_features);
 
         m_device = m_physical_device.createDevice(device_info);
         vk::Queue raw_queue = m_device.getQueue(queue_family_index, 0);

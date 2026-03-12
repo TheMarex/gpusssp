@@ -38,9 +38,47 @@
 #include "gpu/deltastep.hpp"
 #include "gpu/deltastep_buffers.hpp"
 #include "gpu/graph_buffers.hpp"
+#include "gpu/nearfar.hpp"
+#include "gpu/nearfar_buffers.hpp"
 #include "gpu/statistics.hpp"
+#include <variant>
 
 using namespace gpusssp; // NOLINT
+
+using DeltaStepPayload = gpu::DeltaStepPayload;
+using NearFarPayload = gpu::NearFarPayload;
+using DeltaStepTracer = gpu::DeltaStepTracer;
+using NearFarTracer = gpu::NearFarTracer;
+
+using VisualizationPayload = std::variant<DeltaStepPayload, NearFarPayload>;
+
+enum class AlgorithmType
+{
+    DELTA_STEP,
+    NEAR_FAR
+};
+
+struct App;
+
+class AlgorithmRunner
+{
+  public:
+    virtual ~AlgorithmRunner() = default;
+    virtual void initialize(vk::CommandPool cmd_pool) = 0;
+    virtual uint32_t run_with_trace(vk::CommandPool cmd_pool,
+                                    gpu::SharedQueue &queue,
+                                    uint32_t src_node,
+                                    uint32_t dst_node,
+                                    App &app) = 0;
+    virtual std::optional<VisualizationPayload> payload(App &app) const = 0;
+    virtual AlgorithmType type() const = 0;
+    virtual vk::Buffer dist_buffer() const = 0;
+    virtual std::array<vk::Buffer, 2> changed_buffers() const = 0;
+    virtual std::array<vk::Buffer, 2> near_buffers() const = 0;
+    virtual std::array<vk::Buffer, 2> far_buffers() const = 0;
+    virtual uint32_t max_distance() const = 0;
+    virtual uint32_t delta() const = 0;
+};
 
 class FrameRecorder
 {
@@ -268,7 +306,8 @@ enum class ColorMode : uint8_t
     TRACE = 8,
     TRACE_DISTANCE = 9,
     TRACE_BUCKET = 10,
-    TRACE_CHANGED = 11
+    TRACE_DELTASTEP = 11,
+    TRACE_NEARFAR = 12
 };
 
 static inline bool is_trace_mode(ColorMode mode)
@@ -314,7 +353,130 @@ struct App
     std::condition_variable sssp_cv;
     bool sssp_run_requested = false;
 
-    gpu::DeltaStepTracer tracer;
+    // Tracers for each algorithm (only one is actively used at runtime)
+    DeltaStepTracer deltastep_tracer;
+    NearFarTracer nearfar_tracer;
+
+    AlgorithmType algorithm_type = AlgorithmType::DELTA_STEP;
+};
+
+class DeltaStepRunner : public AlgorithmRunner
+{
+  public:
+    DeltaStepRunner(const gpu::GraphBuffers<common::WeightedGraph<uint32_t>> &graph_buffers,
+                    std::unique_ptr<gpu::DeltaStepBuffers> buffers_ptr_, // NOLINT
+                    vk::Device device,
+                    gpu::Statistics &statistics,
+                    uint32_t delta)
+        : graph_buffers(graph_buffers), buffers_ptr(std::move(buffers_ptr_)), device(device),
+          statistics(statistics), delta_value(delta),
+          algorithm(graph_buffers, *buffers_ptr, device, statistics, delta, 1)
+    {
+    }
+
+    void initialize(vk::CommandPool cmd_pool) override { algorithm.initialize(cmd_pool); }
+
+    uint32_t run_with_trace(vk::CommandPool cmd_pool,
+                            gpu::SharedQueue &queue,
+                            uint32_t src_node,
+                            uint32_t dst_node,
+                            App &app) override
+    {
+        return algorithm.run(cmd_pool, queue, src_node, dst_node, &app.deltastep_tracer);
+    }
+
+    std::optional<VisualizationPayload> payload(App &app) const override
+    {
+        auto payload = app.deltastep_tracer.payload();
+        if (payload)
+        {
+            return VisualizationPayload{*payload};
+        }
+        return std::nullopt;
+    }
+
+    AlgorithmType type() const override { return AlgorithmType::DELTA_STEP; }
+    vk::Buffer dist_buffer() const override { return buffers_ptr->dist_buffer(); }
+    std::array<vk::Buffer, 2> changed_buffers() const override
+    {
+        return buffers_ptr->changed_buffers();
+    }
+    std::array<vk::Buffer, 2> near_buffers() const override
+    {
+        return {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    }
+    std::array<vk::Buffer, 2> far_buffers() const override
+    {
+        return {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    }
+    uint32_t max_distance() const override { return *buffers_ptr->max_distance(); }
+    uint32_t delta() const override { return delta_value; }
+
+  private:
+    const gpu::GraphBuffers<common::WeightedGraph<uint32_t>> &graph_buffers;
+    std::unique_ptr<gpu::DeltaStepBuffers> buffers_ptr;
+    vk::Device device;
+    gpu::Statistics &statistics;
+    uint32_t delta_value;
+    gpu::DeltaStep<common::WeightedGraph<uint32_t>> algorithm;
+};
+
+class NearFarRunner : public AlgorithmRunner
+{
+  public:
+    NearFarRunner(const gpu::GraphBuffers<common::WeightedGraph<uint32_t>> &graph_buffers,
+                  std::unique_ptr<gpu::NearFarBuffers> buffers_ptr_, // NOLINT
+                  vk::Device device,
+                  gpu::Statistics &statistics,
+                  uint32_t delta)
+        : graph_buffers(graph_buffers), buffers_ptr(std::move(buffers_ptr_)), device(device),
+          statistics(statistics), delta_value(delta),
+          algorithm(graph_buffers, *buffers_ptr, device, statistics, delta, 1)
+    {
+    }
+
+    void initialize(vk::CommandPool cmd_pool) override { algorithm.initialize(cmd_pool); }
+
+    uint32_t run_with_trace(vk::CommandPool cmd_pool,
+                            gpu::SharedQueue &queue,
+                            uint32_t src_node,
+                            uint32_t dst_node,
+                            App &app) override
+    {
+        return algorithm.run(cmd_pool, queue, src_node, dst_node, &app.nearfar_tracer);
+    }
+
+    std::optional<VisualizationPayload> payload(App &app) const override
+    {
+        auto payload = app.nearfar_tracer.payload();
+        if (payload)
+        {
+            return VisualizationPayload{*payload};
+        }
+        return std::nullopt;
+    }
+
+    AlgorithmType type() const override { return AlgorithmType::NEAR_FAR; }
+    vk::Buffer dist_buffer() const override { return buffers_ptr->dist_buffer(); }
+    std::array<vk::Buffer, 2> changed_buffers() const override
+    {
+        return {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    }
+    std::array<vk::Buffer, 2> near_buffers() const override { return buffers_ptr->near_buffers(); }
+    std::array<vk::Buffer, 2> far_buffers() const override { return buffers_ptr->far_buffers(); }
+    uint32_t max_distance() const override
+    {
+        return *buffers_ptr->gpu_phase() * *buffers_ptr->gpu_delta();
+    }
+    uint32_t delta() const override { return delta_value; }
+
+  private:
+    const gpu::GraphBuffers<common::WeightedGraph<uint32_t>> &graph_buffers;
+    std::unique_ptr<gpu::NearFarBuffers> buffers_ptr;
+    vk::Device device;
+    gpu::Statistics &statistics;
+    uint32_t delta_value;
+    gpu::NearFar<common::WeightedGraph<uint32_t>> algorithm;
 };
 
 static void notify_color_update(App &app)
@@ -455,22 +617,46 @@ static void key_callback(GLFWwindow *window, int key, int, int action, int)
             {
                 std::scoped_lock lock(app->color_mutex);
                 ColorMode current = app->color_mode;
-                if (current == ColorMode::TRACE_DISTANCE)
+
+                if (app->algorithm_type == AlgorithmType::DELTA_STEP)
                 {
-                    common::log() << "Tracing buckets" << '\n';
-                    new_mode = ColorMode::TRACE_BUCKET;
-                }
-                else if (current == ColorMode::TRACE_BUCKET)
-                {
-                    common::log() << "Tracing changed nodes" << '\n';
-                    new_mode = ColorMode::TRACE_CHANGED;
+                    if (current == ColorMode::TRACE_DISTANCE)
+                    {
+                        common::log() << "Tracing buckets" << '\n';
+                        new_mode = ColorMode::TRACE_BUCKET;
+                    }
+                    else if (current == ColorMode::TRACE_BUCKET)
+                    {
+                        common::log() << "Tracing changed nodes" << '\n';
+                        new_mode = ColorMode::TRACE_DELTASTEP;
+                    }
+                    else
+                    {
+                        common::log() << "Tracing distance" << '\n';
+                        new_mode = ColorMode::TRACE_DISTANCE;
+                        entering_trace = !is_trace_mode(current);
+                    }
                 }
                 else
                 {
-                    common::log() << "Tracing distance" << '\n';
-                    new_mode = ColorMode::TRACE_DISTANCE;
-                    entering_trace = !is_trace_mode(current);
+                    if (current == ColorMode::TRACE_DISTANCE)
+                    {
+                        common::log() << "Tracing buckets (phases)" << '\n';
+                        new_mode = ColorMode::TRACE_BUCKET;
+                    }
+                    else if (current == ColorMode::TRACE_BUCKET)
+                    {
+                        common::log() << "Tracing near/far buckets" << '\n';
+                        new_mode = ColorMode::TRACE_NEARFAR;
+                    }
+                    else
+                    {
+                        common::log() << "Tracing distance" << '\n';
+                        new_mode = ColorMode::TRACE_DISTANCE;
+                        entering_trace = !is_trace_mode(current);
+                    }
                 }
+
                 app->color_mode = new_mode;
                 app->color_update_requested = true;
                 app->color_cv.notify_one();
@@ -488,20 +674,41 @@ static void key_callback(GLFWwindow *window, int key, int, int action, int)
         {
             if (is_trace_mode(app->color_mode))
             {
-                app->tracer.step();
+                if (app->algorithm_type == AlgorithmType::DELTA_STEP)
+                {
+                    app->deltastep_tracer.step();
+                }
+                else
+                {
+                    app->nearfar_tracer.step();
+                }
             }
         }
         else if (key == GLFW_KEY_A)
         {
             if (is_trace_mode(app->color_mode))
             {
-                if (app->tracer.is_auto_playing())
+                if (app->algorithm_type == AlgorithmType::DELTA_STEP)
                 {
-                    app->tracer.stop_auto_play();
+                    if (app->deltastep_tracer.is_auto_playing())
+                    {
+                        app->deltastep_tracer.stop_auto_play();
+                    }
+                    else
+                    {
+                        app->deltastep_tracer.start_auto_play(500);
+                    }
                 }
                 else
                 {
-                    app->tracer.start_auto_play(500);
+                    if (app->nearfar_tracer.is_auto_playing())
+                    {
+                        app->nearfar_tracer.stop_auto_play();
+                    }
+                    else
+                    {
+                        app->nearfar_tracer.start_auto_play(500);
+                    }
                 }
             }
         }
@@ -509,32 +716,64 @@ static void key_callback(GLFWwindow *window, int key, int, int action, int)
         {
             if (is_trace_mode(app->color_mode))
             {
-                uint32_t new_interval =
-                    std::min(app->tracer.auto_play_interval() * 3 / 2, uint32_t{5000});
-                app->tracer.set_auto_play_speed(new_interval);
+                if (app->algorithm_type == AlgorithmType::DELTA_STEP)
+                {
+                    uint32_t new_interval = std::min(
+                        app->deltastep_tracer.auto_play_interval() * 3 / 2, uint32_t{5000});
+                    app->deltastep_tracer.set_auto_play_speed(new_interval);
+                }
+                else
+                {
+                    uint32_t new_interval =
+                        std::min(app->nearfar_tracer.auto_play_interval() * 3 / 2, uint32_t{5000});
+                    app->nearfar_tracer.set_auto_play_speed(new_interval);
+                }
             }
         }
         else if (key == GLFW_KEY_RIGHT_BRACKET)
         {
             if (is_trace_mode(app->color_mode))
             {
-                uint32_t new_interval =
-                    std::max(app->tracer.auto_play_interval() * 2 / 3, uint32_t{50});
-                app->tracer.set_auto_play_speed(new_interval);
+                if (app->algorithm_type == AlgorithmType::DELTA_STEP)
+                {
+                    uint32_t new_interval =
+                        std::max(app->deltastep_tracer.auto_play_interval() * 2 / 3, uint32_t{50});
+                    app->deltastep_tracer.set_auto_play_speed(new_interval);
+                }
+                else
+                {
+                    uint32_t new_interval =
+                        std::max(app->nearfar_tracer.auto_play_interval() * 2 / 3, uint32_t{50});
+                    app->nearfar_tracer.set_auto_play_speed(new_interval);
+                }
             }
         }
         else if (key == GLFW_KEY_C)
         {
             if (is_trace_mode(app->color_mode))
             {
-                app->tracer.continue_to_end();
+                if (app->algorithm_type == AlgorithmType::DELTA_STEP)
+                {
+                    app->deltastep_tracer.continue_to_end();
+                }
+                else
+                {
+                    app->nearfar_tracer.continue_to_end();
+                }
             }
         }
         else if (key == GLFW_KEY_R)
         {
             if (is_trace_mode(app->color_mode))
             {
-                app->tracer.continue_to_end();
+                if (app->algorithm_type == AlgorithmType::DELTA_STEP)
+                {
+                    app->deltastep_tracer.continue_to_end();
+                }
+                else
+                {
+                    app->nearfar_tracer.continue_to_end();
+                }
 
                 {
                     std::scoped_lock lock(app->sssp_mutex);
@@ -584,31 +823,27 @@ static void setup_glfw_callbacks(GLFWwindow *window, App &app)
     glfwSetFramebufferSizeCallback(window, framebuffer_resize_callback);
 }
 
-static std::jthread
-start_sssp_thread(App &ctx,
-                  gpu::VulkanGraphicsContext &context,
-                  gpu::GraphBuffers<common::WeightedGraph<uint32_t>> &graph_buffers,
-                  gpu::DeltaStepBuffers &deltastep_buffers,
-                  std::latch &initialization_latch)
+static std::jthread start_sssp_thread(App &ctx,
+                                      gpu::VulkanGraphicsContext &context,
+                                      AlgorithmRunner &algorithm,
+                                      size_t num_nodes,
+                                      std::latch &initialization_latch)
 {
     return std::jthread(
-        [&ctx, &deltastep_buffers, &graph_buffers, &context, &initialization_latch](
+        [&ctx, &algorithm, &context, num_nodes, &initialization_latch](
             const std::stop_token &st) mutable
         {
             vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
                                                 0);
             vk::CommandPool cmd_pool = context.device().createCommandPool(pool_info);
 
-            gpu::Statistics statistics(context.device(), context.memory_properties());
-            gpu::DeltaStep<common::WeightedGraph<uint32_t>> deltastep(
-                graph_buffers, deltastep_buffers, context.device(), statistics, ctx.delta, 1);
-            deltastep.initialize(cmd_pool);
+            algorithm.initialize(cmd_pool);
 
             initialization_latch.count_down();
 
             std::random_device rd;
             std::mt19937 gen(rd());
-            std::uniform_int_distribution<uint32_t> dist(0, graph_buffers.num_nodes() - 1);
+            std::uniform_int_distribution<uint32_t> dist(0, static_cast<uint32_t>(num_nodes - 1));
 
             while (!st.stop_requested())
             {
@@ -629,11 +864,13 @@ start_sssp_thread(App &ctx,
                 uint32_t src_node = dist(gen);
                 uint32_t dst_node = dist(gen);
 
-                common::log() << "SSSP thread: Running delta-stepping from node " << src_node
-                              << '\n';
+                common::log() << "SSSP thread: Running "
+                              << (algorithm.type() == AlgorithmType::DELTA_STEP ? "delta-stepping"
+                                                                                : "near-far")
+                              << " from node " << src_node << '\n';
 
-                uint32_t result = deltastep.run(
-                    cmd_pool, context.shared_queue(), src_node, dst_node, &ctx.tracer);
+                uint32_t result = algorithm.run_with_trace(
+                    cmd_pool, context.shared_queue(), src_node, dst_node, ctx);
 
                 {
                     std::scoped_lock lock(ctx.color_mutex);
@@ -651,13 +888,13 @@ start_sssp_thread(App &ctx,
 
 static std::jthread start_color_updater_thread(App &ctx,
                                                gpu::VulkanGraphicsContext &context,
-                                               gpu::DeltaStepBuffers &deltastep_buffers,
+                                               AlgorithmRunner &algorithm,
                                                vk::Buffer color_buffer,
                                                size_t num_nodes,
                                                std::latch &initialization_latch)
 {
     return std::jthread(
-        [&ctx, &deltastep_buffers, &context, color_buffer, num_nodes, &initialization_latch](
+        [&ctx, &algorithm, &context, color_buffer, num_nodes, &initialization_latch](
             const std::stop_token &st) mutable
         {
             vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
@@ -671,41 +908,60 @@ static std::jthread start_color_updater_thread(App &ctx,
                 uint32_t color_mode;
                 uint32_t delta;
                 uint32_t bucket_index;
-                uint32_t buffer_index;
+                uint32_t changed_buffer_index;
                 uint32_t grouping_size;
+                uint32_t near_buffer_index;
+                uint32_t far_buffer_index;
             };
 
-            auto [changed_buffer_0, changed_buffer_1] = deltastep_buffers.changed_buffers();
-            auto node_color_pipeline =
-                gpu::create_compute_pipeline<NodeColorPushConsts>(context.device(),
-                                                                  "node_color.spv",
-                                                                  {{deltastep_buffers.dist_buffer(),
-                                                                    color_buffer,
-                                                                    changed_buffer_0,
-                                                                    changed_buffer_1}});
+            auto [changed_0, changed_1] = algorithm.changed_buffers();
+            auto [near_0, near_1] = algorithm.near_buffers();
+            auto [far_0, far_1] = algorithm.far_buffers();
+
+            std::vector<vk::Buffer> descriptor_buffers = {algorithm.dist_buffer(),
+                                                          color_buffer,
+                                                          changed_0,
+                                                          changed_1,
+                                                          near_0,
+                                                          near_1,
+                                                          far_0,
+                                                          far_1};
+
+            auto node_color_pipeline = gpu::create_compute_pipeline<NodeColorPushConsts>(
+                context.device(), "node_color.spv", {descriptor_buffers});
 
             initialization_latch.count_down();
 
-            auto dispatch_shader = [&](const uint32_t color_mode_value,
-                                       const uint32_t max_distance,
-                                       const uint32_t delta,
+            auto dispatch_shader = [&](const ColorMode mode_enum,
                                        const uint32_t grouping_size,
-                                       const std::optional<gpu::DeltaStepPayload> &maybe_payload)
+                                       const std::optional<VisualizationPayload> &maybe_payload)
             {
-                auto bucket_index = UINT32_MAX;
-                auto buffer_index = UINT32_MAX;
+                NodeColorPushConsts pc{.num_nodes = static_cast<uint32_t>(num_nodes),
+                                       .max_distance = algorithm.max_distance(),
+                                       .color_mode = static_cast<uint32_t>(mode_enum),
+                                       .delta = algorithm.delta(),
+                                       .bucket_index = UINT32_MAX,
+                                       .changed_buffer_index = UINT32_MAX,
+                                       .grouping_size = grouping_size,
+                                       .near_buffer_index = UINT32_MAX,
+                                       .far_buffer_index = UINT32_MAX};
+
                 if (maybe_payload)
                 {
-                    bucket_index = maybe_payload->bucket_index;
-                    buffer_index = maybe_payload->buffer_index;
+                    if (std::holds_alternative<DeltaStepPayload>(*maybe_payload))
+                    {
+                        const auto &payload = std::get<DeltaStepPayload>(*maybe_payload);
+                        pc.bucket_index = payload.bucket_index;
+                        pc.changed_buffer_index = payload.buffer_index;
+                    }
+                    else
+                    {
+                        const auto &payload = std::get<NearFarPayload>(*maybe_payload);
+                        pc.bucket_index = payload.phase_index;
+                        pc.near_buffer_index = payload.near_buffer_index;
+                        pc.far_buffer_index = payload.far_buffer_index;
+                    }
                 }
-                NodeColorPushConsts pc{.num_nodes = static_cast<uint32_t>(num_nodes),
-                                       .max_distance = max_distance,
-                                       .color_mode = color_mode_value,
-                                       .delta = delta,
-                                       .bucket_index = bucket_index,
-                                       .buffer_index = buffer_index,
-                                       .grouping_size = grouping_size};
 
                 auto device = context.device();
                 vk::CommandBuffer cmd = device.allocateCommandBuffers(
@@ -789,29 +1045,31 @@ static std::jthread start_color_updater_thread(App &ctx,
                             break;
                         }
 
-                        if (ctx.tracer.is_finished())
+                        bool is_finished = (ctx.algorithm_type == AlgorithmType::DELTA_STEP)
+                                               ? ctx.deltastep_tracer.is_finished()
+                                               : ctx.nearfar_tracer.is_finished();
+
+                        if (is_finished)
                         {
-                            dispatch_shader(static_cast<uint32_t>(mode),
-                                            *deltastep_buffers.max_distance(),
-                                            ctx.delta,
-                                            grouping_size,
-                                            ctx.tracer.payload());
+                            auto payload = algorithm.payload(ctx);
+                            dispatch_shader(mode, grouping_size, payload);
                             break;
                         }
 
-                        if (ctx.tracer.wait_for_signal(100))
+                        bool has_signal = (ctx.algorithm_type == AlgorithmType::DELTA_STEP)
+                                              ? ctx.deltastep_tracer.wait_for_signal(100)
+                                              : ctx.nearfar_tracer.wait_for_signal(100);
+
+                        if (has_signal)
                         {
-                            dispatch_shader(static_cast<uint32_t>(mode),
-                                            *deltastep_buffers.max_distance(),
-                                            ctx.delta,
-                                            grouping_size,
-                                            ctx.tracer.payload());
+                            auto payload = algorithm.payload(ctx);
+                            dispatch_shader(mode, grouping_size, payload);
                         }
                     }
                 }
                 else
                 {
-                    dispatch_shader(static_cast<uint32_t>(mode), 0, 0, grouping_size, {});
+                    dispatch_shader(mode, grouping_size, {});
                 }
             }
 
@@ -929,7 +1187,7 @@ static std::pair<vk::Pipeline, vk::PipelineLayout> create_graphics_pipeline(
         {}, vk::ShaderStageFlagBits::eFragment, frag_shader, "main");
 
     std::array<vk::PipelineShaderStageCreateInfo, 2> shader_stages = {vert_stage_info,
-                                                                       frag_stage_info};
+                                                                      frag_stage_info};
 
     std::array<vk::VertexInputBindingDescription, 2> bindings = {
         vk::VertexInputBindingDescription(0, sizeof(float) * 2, vk::VertexInputRate::eVertex),
@@ -1190,20 +1448,15 @@ static std::pair<std::jthread, std::jthread>
 start_workers(App &app,
               gpu::VulkanGraphicsContext &context,
               RenderPipeline &render_pipeline,
-              gpu::GraphBuffers<common::WeightedGraph<uint32_t>> &graph_buffers,
-              gpu::DeltaStepBuffers &deltastep_buffers,
+              AlgorithmRunner &algorithm,
+              size_t num_nodes,
               const std::optional<std::string> &output_dir)
 {
     common::log() << "Starting worker threads..." << '\n';
     std::latch initialization_latch(2);
-    auto sssp_thread =
-        start_sssp_thread(app, context, graph_buffers, deltastep_buffers, initialization_latch);
-    auto color_thread = start_color_updater_thread(app,
-                                                   context,
-                                                   deltastep_buffers,
-                                                   render_pipeline.color_buffer,
-                                                   graph_buffers.num_nodes(),
-                                                   initialization_latch);
+    auto sssp_thread = start_sssp_thread(app, context, algorithm, num_nodes, initialization_latch);
+    auto color_thread = start_color_updater_thread(
+        app, context, algorithm, render_pipeline.color_buffer, num_nodes, initialization_latch);
 
     initialization_latch.wait();
 
@@ -1290,29 +1543,54 @@ static void shutdown(App &app,
     app.sssp_cv.notify_all();
     app.color_cv.notify_all();
 
-    app.tracer.continue_to_end();
+    if (app.algorithm_type == AlgorithmType::DELTA_STEP)
+    {
+        app.deltastep_tracer.continue_to_end();
+    }
+    else
+    {
+        app.nearfar_tracer.continue_to_end();
+    }
 
     graphics_pipeline.destroy(context.device());
 }
 
 int main(int argc, char **argv)
 {
-    if (argc < 2 || argc > 3)
+    if (argc < 2 || argc > 4)
     {
-        common::log_error() << "Usage: " << argv[0] << " <graph_base_path> [output_dir]" << '\n';
+        common::log_error() << "Usage: " << argv[0] << " <graph_base_path> [output_dir] [algorithm]"
+                            << '\n';
+        common::log_error() << "  algorithm: deltastep (default) or nearfar" << '\n';
         return EXIT_FAILURE;
     }
 
     std::string base_path = argv[1];
     std::optional<std::string> output_dir;
-    if (argc == 3)
+    AlgorithmType algorithm_type = AlgorithmType::DELTA_STEP;
+
+    if (argc >= 3)
     {
         output_dir = argv[2];
+    }
+    if (argc >= 4)
+    {
+        std::string algo_str = argv[3];
+        if (algo_str == "nearfar")
+        {
+            algorithm_type = AlgorithmType::NEAR_FAR;
+        }
+        else if (algo_str != "deltastep")
+        {
+            common::log_error() << "Unknown algorithm: " << algo_str << '\n';
+            return EXIT_FAILURE;
+        }
     }
 
     auto [graph, coordinates, bounding_box] = load_graph(base_path);
 
     App app;
+    app.algorithm_type = algorithm_type;
     gpu::VulkanGraphicsContext context("Graph Visualizer", 1280, 720);
     app.context = &context;
     setup_glfw_callbacks(context.window(), app);
@@ -1327,13 +1605,36 @@ int main(int argc, char **argv)
                                         context.memory_properties(),
                                         context.command_pool(),
                                         context.shared_queue());
-    gpu::DeltaStepBuffers deltastep_buffers(
-        graph.num_nodes(), context.device(), context.memory_properties());
+
+    gpu::Statistics statistics(context.device(), context.memory_properties());
+
+    std::unique_ptr<AlgorithmRunner> algorithm_runner;
+    if (algorithm_type == AlgorithmType::DELTA_STEP)
+    {
+        algorithm_runner = std::make_unique<DeltaStepRunner>(
+            graph_buffers,
+            std::make_unique<gpu::DeltaStepBuffers>(
+                graph.num_nodes(), context.device(), context.memory_properties()),
+            context.device(),
+            statistics,
+            app.delta);
+    }
+    else
+    {
+        algorithm_runner = std::make_unique<NearFarRunner>(
+            graph_buffers,
+            std::make_unique<gpu::NearFarBuffers>(
+                graph.num_nodes(), context.device(), context.memory_properties()),
+            context.device(),
+            statistics,
+            app.delta);
+    }
+
     auto render_pipeline =
         setup_render_pipeline(context, coord_buffer, graph.num_nodes(), bounding_box);
 
-    auto [sssp_thread, color_thread] =
-        start_workers(app, context, render_pipeline, graph_buffers, deltastep_buffers, output_dir);
+    auto [sssp_thread, color_thread] = start_workers(
+        app, context, render_pipeline, *algorithm_runner, graph.num_nodes(), output_dir);
 
     run_render_loop(app, context, render_pipeline, coord_buffer, graph.num_nodes(), bounding_box);
 

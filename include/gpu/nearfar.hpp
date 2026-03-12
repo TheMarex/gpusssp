@@ -13,9 +13,19 @@
 #include "gpu/nearfar_buffers.hpp"
 #include "gpu/shader.hpp"
 #include "gpu/statistics.hpp"
+#include "gpu/tracer.hpp"
 
 namespace gpusssp::gpu
 {
+
+struct NearFarPayload
+{
+    uint32_t phase_index;
+    uint32_t near_buffer_index;
+    uint32_t far_buffer_index;
+};
+
+using NearFarTracer = Tracer<NearFarPayload>;
 
 template <typename GraphT> class NearFar
 {
@@ -386,7 +396,11 @@ template <typename GraphT> class NearFar
     }
 
     template <typename QueueT>
-    uint32_t run(vk::CommandPool cmd_pool, QueueT queue, uint32_t src_node, uint32_t dst_node)
+    uint32_t run(vk::CommandPool cmd_pool,
+                 QueueT queue,
+                 uint32_t src_node,
+                 uint32_t dst_node,
+                 NearFarTracer *tracer = nullptr)
     {
         if (relax_cmd_bufs.empty() || compact_cmd_bufs.empty())
         {
@@ -414,6 +428,11 @@ template <typename GraphT> class NearFar
 
         common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_INIT_DURATION, init_start);
 
+        if (tracer)
+        {
+            tracer->start();
+        }
+
         uint32_t current_far_buffer_idx = 0;
 
         while (true)
@@ -432,6 +451,14 @@ template <typename GraphT> class NearFar
                 queue.submit(vk::SubmitInfo{
                     0, nullptr, nullptr, 1, &relax_cmd_bufs[current_far_buffer_idx]});
                 queue.waitIdle();
+
+                if (tracer)
+                {
+                    uint32_t near_buffer_idx = relax_batch_size % 2;
+                    tracer->signal_and_wait({.phase_index = *gpu_phase,
+                                             .near_buffer_index = near_buffer_idx,
+                                             .far_buffer_index = current_far_buffer_idx});
+                }
             }
 
             common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_RELAX_DURATION,
@@ -464,6 +491,13 @@ template <typename GraphT> class NearFar
                 vk::SubmitInfo{0, nullptr, nullptr, 1, &compact_cmd_bufs[current_far_buffer_idx]});
             queue.waitIdle();
 
+            if (tracer)
+            {
+                tracer->signal_and_wait({.phase_index = *gpu_phase,
+                                         .near_buffer_index = 0,
+                                         .far_buffer_index = current_far_buffer_idx});
+            }
+
             current_far_buffer_idx = 1 - current_far_buffer_idx;
 
             common::log_debug() << *gpu_phase << " compacted to: far " << *gpu_num_far << " near "
@@ -474,6 +508,11 @@ template <typename GraphT> class NearFar
         }
 
         device.freeCommandBuffers(cmd_pool, cmd_bufs);
+
+        if (tracer)
+        {
+            tracer->finish();
+        }
 
         return *gpu_best_distance;
     }

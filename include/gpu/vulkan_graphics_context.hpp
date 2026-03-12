@@ -35,7 +35,8 @@ class VulkanGraphicsContext : public VulkanContext
         select_physical_device(0);
         find_graphics_queue_family();
 
-        std::vector<const char *> device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        std::vector<const char *> device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+                                                       VK_EXT_ROBUSTNESS_2_EXTENSION_NAME};
         create_device_and_queue(m_graphics_queue_family, device_extensions);
         create_command_pool(m_graphics_queue_family);
 

@@ -99,8 +99,8 @@ inline void create_experiment_directories(const std::string &xp_base_path,
                                           const std::string &query_hash,
                                           const std::string &device_id)
 {
-    std::filesystem::path dir_path = std::filesystem::path(xp_base_path) / xp_name / graph_name /
-                                     query_hash / device_id;
+    std::filesystem::path dir_path =
+        std::filesystem::path(xp_base_path) / xp_name / graph_name / query_hash / device_id;
     std::filesystem::create_directories(dir_path);
 }
 
@@ -112,8 +112,8 @@ inline std::string generate_experiment_filename(const std::string &xp_base_path,
                                                 uint64_t timestamp,
                                                 const std::string &variant)
 {
-    std::filesystem::path dir_path = std::filesystem::path(xp_base_path) / xp_name / graph_name /
-                                     query_hash / device_id;
+    std::filesystem::path dir_path =
+        std::filesystem::path(xp_base_path) / xp_name / graph_name / query_hash / device_id;
 
     std::string git_sha = get_git_sha();
     std::ostringstream filename;
