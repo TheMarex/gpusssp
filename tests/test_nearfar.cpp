@@ -44,6 +44,37 @@ TEST_CASE("NearFar computes correct shortest paths", "[nearfar]")
     }
 }
 
+TEST_CASE("NearFar computes correct shortest paths with batch size", "[nearfar]")
+{
+    auto graph = gpusssp::test::create_mock_graph();
+    gpusssp::test::VulkanTestFixture vk_fixture;
+
+    auto device = vk_fixture.get_device();
+    auto queue = vk_fixture.get_queue();
+    auto cmd_pool = vk_fixture.get_command_pool();
+    auto mem_props = vk_fixture.get_memory_properties();
+
+    gpusssp::gpu::GraphBuffers<gpusssp::common::WeightedGraph<uint32_t>> graph_buffers(
+        graph, device, mem_props, cmd_pool, queue);
+    gpusssp::gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, mem_props);
+    gpusssp::gpu::Statistics statistics(device, mem_props);
+    const uint32_t delta = 3600;
+    gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta, 1);
+    nearfar.initialize(cmd_pool);
+
+    for (uint32_t src_node = 0; src_node < graph.num_nodes(); ++src_node)
+    {
+        for (uint32_t dst_node = 0; dst_node < graph.num_nodes(); ++dst_node)
+        {
+            uint32_t computed_dist = nearfar.run(cmd_pool, queue, src_node, dst_node);
+
+            INFO("Source: " << src_node << ", Destination: " << dst_node);
+            auto expected = gpusssp::test::get_expected_distances(src_node, dst_node);
+            REQUIRE(computed_dist == expected);
+        }
+    }
+}
+
 #ifdef ENABLE_STATISTICS
 TEST_CASE("NearFar statistics are collected", "[nearfar][statistics]")
 {
