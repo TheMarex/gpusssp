@@ -28,7 +28,8 @@ int main(int argc, char **argv)
     if (argc < 3)
     {
         common::log_error() << "Usage: " << argv[0]
-                            << " <graph_base_path> <xp_base_path> [xp_name] [delta]" << '\n';
+                            << " <graph_base_path> <xp_base_path> [xp_name] [delta] [batch_size]"
+                            << '\n';
         return 1;
     }
 
@@ -47,6 +48,12 @@ int main(int argc, char **argv)
         delta = std::stoi(argv[4]);
     }
 
+    uint32_t batch_size = 64u;
+    if (argc >= 6)
+    {
+        batch_size = std::stoi(argv[5]);
+    }
+
     common::log() << "Loading graph from: " << graph_base_path << '\n';
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_base_path);
     common::log() << "Graph loaded: " << graph.num_nodes() << " nodes." << '\n';
@@ -62,7 +69,7 @@ int main(int argc, char **argv)
     std::string graph_name = experiments::extract_graph_name(graph_base_path);
 
     std::ostringstream variant_stream;
-    variant_stream << "nearfar_delta" << delta;
+    variant_stream << "nearfar_delta" << delta << "_batch" << batch_size;
     std::string variant = variant_stream.str();
 
     experiments::create_experiment_directories(
@@ -79,13 +86,14 @@ int main(int argc, char **argv)
         output_filename);
     writer.write_header({"from_node_id", "to_node_id", "rank", "distance", "time"});
 
-    common::log() << "Running queries with delta = " << delta << "..." << '\n';
+    common::log() << "Running queries with delta = " << delta << " batch_size = " << batch_size
+                  << "..." << '\n';
 
     {
         gpu::GraphBuffers graph_buffers(graph, device, vk_ctx.memory_properties(), cmd_pool, queue);
         gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::Statistics statistics(device, vk_ctx.memory_properties());
-        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta);
+        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta, batch_size);
         nearfar.initialize(cmd_pool);
 
         common::ProgressBar progress_bar(queries.size());

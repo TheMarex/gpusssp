@@ -50,6 +50,8 @@ def parse_commit_message(message: str, xp_name: str) -> Optional[ExperimentConfi
 
         if param_name == "delta":
             params["delta"] = [int(d) for d in param_value.split(",")]
+        elif param_name == "batch_size":
+            params["batch_size"] = int(param_value)
         elif param_name == "gpu":
             params["gpu"] = int(param_value)
         else:
@@ -90,7 +92,10 @@ def format_cmd(
     if target in ["deltastep", "nearfar"] and "delta" in params:
         cmds = []
         for delta in params["delta"]:
-            cmds.append(base_cmd + [xp_name, str(delta)])
+            cmd = base_cmd + [xp_name, str(delta)]
+            if "batch_size" in params:
+                cmd.append(str(params["batch_size"]))
+            cmds.append(cmd)
         return cmds
 
     cmd = base_cmd + [xp_name]
