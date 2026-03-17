@@ -75,10 +75,5 @@ void main() {
         next_far[far_global_base + far_local_offset] = node;
     }
 
-    
-    if (tid == 0) {
-        atomicAdd(phase_params[0], 1);
-    }
-    
     statisticsSync(statistics_counters);
 }

@@ -451,6 +451,7 @@ class NearFarRunner : public AlgorithmRunner
         auto payload = app.nearfar_tracer.payload();
         if (payload)
         {
+            phase = payload->phase_index;
             return VisualizationPayload{*payload};
         }
         return std::nullopt;
@@ -464,10 +465,7 @@ class NearFarRunner : public AlgorithmRunner
     }
     std::array<vk::Buffer, 2> near_buffers() const override { return buffers_ptr->near_buffers(); }
     std::array<vk::Buffer, 2> far_buffers() const override { return buffers_ptr->far_buffers(); }
-    uint32_t max_distance() const override
-    {
-        return *buffers_ptr->gpu_phase() * *buffers_ptr->gpu_delta();
-    }
+    uint32_t max_distance() const override { return (phase + 1) * delta_value; }
     uint32_t delta() const override { return delta_value; }
 
   private:
@@ -476,6 +474,7 @@ class NearFarRunner : public AlgorithmRunner
     vk::Device device;
     gpu::Statistics &statistics;
     uint32_t delta_value;
+    mutable uint32_t phase = 0;
     gpu::NearFar<common::WeightedGraph<uint32_t>> algorithm;
 };
 

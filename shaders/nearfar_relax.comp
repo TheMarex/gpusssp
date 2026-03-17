@@ -43,7 +43,7 @@ void main() {
 
         uint phase = phase_params[0];
         uint delta = phase_params[1];
-        uint threshold = delta * (phase + 1);
+        uint threshold = delta * phase;
 
         for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
             statisticsCount(STAT_NEARFAR_RELAX_EDGES);

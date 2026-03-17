@@ -26,7 +26,7 @@ class NearFarBuffers
             vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferSrc);
         buf_results = gpu::create_exclusive_buffer<uint32_t>(
             device,
-            5,
+            3,
             vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
         buf_near_0 = gpu::create_exclusive_buffer<uint32_t>(
             device,
@@ -84,7 +84,7 @@ class NearFarBuffers
             device, mem_props, buf_phase_params, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
         gpu_results =
-            static_cast<uint32_t *>(device.mapMemory(mem_results, 0, 5 * sizeof(uint32_t)));
+            static_cast<uint32_t *>(device.mapMemory(mem_results, 0, 3 * sizeof(uint32_t)));
     }
 
     ~NearFarBuffers()
@@ -114,9 +114,6 @@ class NearFarBuffers
 
     uint32_t *num_near() { return gpu_results + 1; }
     uint32_t *num_far() { return gpu_results + 2; }
-
-    uint32_t *gpu_phase() { return gpu_results + 3; }
-    uint32_t *gpu_delta() { return gpu_results + 4; }
 
     [[nodiscard]] vk::Buffer dist_buffer() const { return buf_dist; }
     [[nodiscard]] std::array<vk::Buffer, 2> near_buffers() const
@@ -153,8 +150,8 @@ class NearFarBuffers
 
     void cmd_init_phase_params(vk::CommandBuffer cmd_buf, uint32_t delta)
     {
-        uint32_t zero = 0;
-        cmd_buf.updateBuffer(buf_phase_params, 0, sizeof(uint32_t), &zero);
+        uint32_t one = 1;
+        cmd_buf.updateBuffer(buf_phase_params, 0, sizeof(uint32_t), &one);
         cmd_buf.updateBuffer(buf_phase_params, sizeof(uint32_t), sizeof(uint32_t), &delta);
     }
 
@@ -192,12 +189,9 @@ class NearFarBuffers
         cmd_buf.copyBuffer(buf, buf_results, 1, &copy);
     }
 
-    void cmd_sync_phase_params(vk::CommandBuffer cmd_buf)
+    void cmd_update_phase(vk::CommandBuffer cmd_buf, uint32_t phase)
     {
-        vk::BufferCopy phase_copy{0, 3 * sizeof(uint32_t), sizeof(uint32_t)};
-        vk::BufferCopy delta_copy{sizeof(uint32_t), 4 * sizeof(uint32_t), sizeof(uint32_t)};
-        cmd_buf.copyBuffer(buf_phase_params, buf_results, 1, &phase_copy);
-        cmd_buf.copyBuffer(buf_phase_params, buf_results, 1, &delta_copy);
+        cmd_buf.updateBuffer(buf_phase_params, 0, sizeof(uint32_t), &phase);
     }
 
   private:
@@ -224,7 +218,6 @@ class NearFarBuffers
     vk::DeviceMemory mem_phase_params;
 
     uint32_t *gpu_results = nullptr;
-    uint32_t *gpu_counters = nullptr;
 
     uint32_t num_nodes = 0;
     vk::Device device;

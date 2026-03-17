@@ -315,7 +315,6 @@ template <typename GraphT> class NearFar
 
         nearfar_buffers.cmd_sync_near_count(cmd_buf, 0);
         nearfar_buffers.cmd_sync_far_count(cmd_buf, 1 - current_far_buffer_idx);
-        nearfar_buffers.cmd_sync_phase_params(cmd_buf);
 
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
@@ -391,7 +390,6 @@ template <typename GraphT> class NearFar
         nearfar_buffers.cmd_sync_dist(cmd_buf, dst_node);
         nearfar_buffers.cmd_sync_near_count(cmd_buf, 0);
         nearfar_buffers.cmd_sync_far_count(cmd_buf, 0);
-        nearfar_buffers.cmd_sync_phase_params(cmd_buf);
 
         cmd_buf.pipelineBarrier(
             vk::PipelineStageFlagBits::eTransfer,
@@ -420,15 +418,14 @@ template <typename GraphT> class NearFar
         auto init_start = common::Statistics::start(common::StatisticsEvent::NEARFAR_INIT_DURATION);
 
         std::vector<vk::CommandBuffer> cmd_bufs =
-            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 3});
+            device.allocateCommandBuffers({cmd_pool, vk::CommandBufferLevel::ePrimary, 4});
         auto &init_cmd_buf = cmd_bufs[0];
         auto sync_cmd_bufs = std::span(cmd_bufs.data() + 1, 2);
+        auto &phase_cmd_buf = cmd_bufs[3];
 
         uint32_t *gpu_best_distance = nearfar_buffers.best_distance();
         uint32_t *gpu_num_near = nearfar_buffers.num_near();
         uint32_t *gpu_num_far = nearfar_buffers.num_far();
-        uint32_t *gpu_phase = nearfar_buffers.gpu_phase();
-        uint32_t *gpu_delta = nearfar_buffers.gpu_delta();
 
         record_sync_commands(sync_cmd_bufs[0], dst_node, 0);
         record_sync_commands(sync_cmd_bufs[1], dst_node, 1);
@@ -445,6 +442,7 @@ template <typename GraphT> class NearFar
         }
 
         uint32_t current_far_buffer_idx = 0;
+        uint32_t phase = 1;
 
         while (true)
         {
@@ -457,7 +455,7 @@ template <typename GraphT> class NearFar
             while (*gpu_num_near > 0)
             {
                 common::Statistics::get().count(common::StatisticsEvent::NEARFAR_RELAX);
-                common::log_debug() << *gpu_phase << " " << *gpu_num_near << " best distance "
+                common::log_debug() << phase << " near " << *gpu_num_near << " best distance "
                                     << *gpu_best_distance << '\n';
 
                 queue.submit(vk::SubmitInfo{
@@ -472,7 +470,7 @@ template <typename GraphT> class NearFar
 
                 if (tracer)
                 {
-                    tracer->signal_and_wait({.phase_index = *gpu_phase,
+                    tracer->signal_and_wait({.phase_index = phase,
                                              .near_buffer_index = current_near_buffer_idx,
                                              .far_buffer_index = current_far_buffer_idx});
                 }
@@ -487,8 +485,10 @@ template <typename GraphT> class NearFar
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {
-                if (*gpu_best_distance < *gpu_phase * *gpu_delta)
+                if (*gpu_best_distance < phase * delta)
                 {
+                    common::log_debug()
+                        << "done " << (*gpu_best_distance) << " < " << (phase * delta) << '\n';
                     break;
                 }
             }
@@ -501,23 +501,37 @@ template <typename GraphT> class NearFar
                 break;
             }
 
-            common::log_debug() << *gpu_phase << " far " << *gpu_num_far << " best distance "
+            common::log_debug() << phase << " far " << *gpu_num_far << " best distance "
                                 << *gpu_best_distance << '\n';
 
             queue.submit(
                 vk::SubmitInfo{0, nullptr, nullptr, 1, &compact_cmd_bufs[current_far_buffer_idx]});
             queue.waitIdle();
 
+            phase++;
+            phase_cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+            nearfar_buffers.cmd_update_phase(phase_cmd_buf, phase);
+            phase_cmd_buf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                          vk::PipelineStageFlagBits::eComputeShader,
+                                          vk::DependencyFlags{},
+                                          vk::MemoryBarrier{vk::AccessFlagBits::eTransferWrite,
+                                                            vk::AccessFlagBits::eShaderRead},
+                                          {},
+                                          {});
+            phase_cmd_buf.end();
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &phase_cmd_buf});
+            queue.waitIdle();
+
             if (tracer)
             {
-                tracer->signal_and_wait({.phase_index = *gpu_phase,
+                tracer->signal_and_wait({.phase_index = phase,
                                          .near_buffer_index = 0,
                                          .far_buffer_index = current_far_buffer_idx});
             }
 
             current_far_buffer_idx = 1 - current_far_buffer_idx;
 
-            common::log_debug() << *gpu_phase << " compacted to: far " << *gpu_num_far << " near "
+            common::log_debug() << phase << " compacted to: far " << *gpu_num_far << " near "
                                 << *gpu_num_near << '\n';
 
             common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_COMPACT_DURATION,
