@@ -127,9 +127,9 @@ TEST_CASE("NearFar regression test - minimal subgraph bug", "[nearfar][regressio
     gpusssp::gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, mem_props);
     gpusssp::gpu::Statistics statistics(device, mem_props);
 
-    const uint32_t source = 4588;
-    const uint32_t target = 2150;
-    const uint32_t delta = 941;
+    const uint32_t source = 1148;
+    const uint32_t target = 193;
+    const uint32_t delta = 7200;
 
     gpusssp::common::MinIDQueue min_queue(graph.num_nodes());
     gpusssp::common::CostVector<gpusssp::common::WeightedGraph<uint32_t>> costs(
