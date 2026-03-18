@@ -466,7 +466,7 @@ template <typename GraphT> class NearFar
                     &relax_cmd_bufs[current_near_buffer_idx + (2 * current_far_buffer_idx)]});
                 queue.waitIdle();
 
-                current_near_buffer_idx = (current_near_buffer_idx + 1) % 2;
+                current_near_buffer_idx = (current_near_buffer_idx + relax_batch_size) % 2;
 
                 if (tracer)
                 {
@@ -498,6 +498,7 @@ template <typename GraphT> class NearFar
 
             if (*gpu_num_far == 0)
             {
+                common::log_debug() << "done far 0 best distance " << (*gpu_best_distance) << '\n';
                 break;
             }
 
