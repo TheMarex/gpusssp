@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <vulkan/vulkan.hpp>
 
+#include "common/dijkstra.hpp"
+#include "common/files.hpp"
+#include "common/id_queue.hpp"
 #include "common/weighted_graph.hpp"
 #include "gpu/statistics.hpp"
 #include "mock_graph.hpp"
@@ -108,3 +111,40 @@ TEST_CASE("NearFar statistics are collected", "[nearfar][statistics]")
     REQUIRE_FALSE(summary.empty());
 }
 #endif
+
+TEST_CASE("NearFar regression test - minimal subgraph bug", "[nearfar][regression]")
+{
+    auto graph = gpusssp::common::files::read_weighted_graph<uint32_t>("../cache/test");
+    gpusssp::test::VulkanTestFixture vk_fixture;
+
+    auto device = vk_fixture.get_device();
+    auto queue = vk_fixture.get_queue();
+    auto cmd_pool = vk_fixture.get_command_pool();
+    auto mem_props = vk_fixture.get_memory_properties();
+
+    gpusssp::gpu::GraphBuffers<gpusssp::common::WeightedGraph<uint32_t>> graph_buffers(
+        graph, device, mem_props, cmd_pool, queue);
+    gpusssp::gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, mem_props);
+    gpusssp::gpu::Statistics statistics(device, mem_props);
+
+    const uint32_t source = 4588;
+    const uint32_t target = 2150;
+    const uint32_t delta = 941;
+
+    gpusssp::common::MinIDQueue min_queue(graph.num_nodes());
+    gpusssp::common::CostVector<gpusssp::common::WeightedGraph<uint32_t>> costs(
+        graph.num_nodes(), gpusssp::common::INF_WEIGHT);
+    std::vector<bool> settled(graph.num_nodes(), false);
+
+    auto expected_dist =
+        gpusssp::common::dijkstra(source, target, graph, min_queue, costs, settled);
+
+    gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta);
+    nearfar.initialize(cmd_pool);
+
+    uint32_t computed_dist = nearfar.run(cmd_pool, queue, source, target);
+
+    INFO("Source: " << source << ", Target: " << target << ", Delta: " << delta);
+    INFO("Expected (Dijkstra): " << expected_dist << ", Computed (NearFar): " << computed_dist);
+    REQUIRE(computed_dist == expected_dist);
+}

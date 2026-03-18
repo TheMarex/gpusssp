@@ -98,6 +98,20 @@ target_link_libraries(visualize_graph
 
 target_compile_definitions(visualize_graph PRIVATE ENABLE_TRACING)
 
+# Extract minimal graph executable
+add_executable(extract_minimal_graph
+    src/extract_minimal_graph.cpp
+    src/common/logger.cpp
+)
+
+target_link_libraries(extract_minimal_graph
+    PRIVATE
+        Vulkan::Vulkan
+        argparse::argparse
+)
+
+add_dependencies(extract_minimal_graph shaders)
+
 # Generate queries executable
 add_executable(generate_queries
     experiments/generate_queries.cpp
