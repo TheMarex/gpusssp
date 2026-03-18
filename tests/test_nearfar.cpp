@@ -4,11 +4,9 @@
 #include <cstdint>
 #include <vulkan/vulkan.hpp>
 
-#include "common/dijkstra.hpp"
-#include "common/files.hpp"
-#include "common/id_queue.hpp"
 #include "common/weighted_graph.hpp"
 #include "gpu/statistics.hpp"
+#include "grid_graph.hpp"
 #include "mock_graph.hpp"
 #include "vulkan_test_fixture.hpp"
 
@@ -41,7 +39,7 @@ TEST_CASE("NearFar computes correct shortest paths", "[nearfar]")
             uint32_t computed_dist = nearfar.run(cmd_pool, queue, src_node, dst_node);
 
             INFO("Source: " << src_node << ", Destination: " << dst_node);
-            auto expected = gpusssp::test::get_expected_distances(src_node, dst_node);
+            auto expected = gpusssp::test::get_expected_distance(src_node, dst_node);
             REQUIRE(computed_dist == expected);
         }
     }
@@ -72,7 +70,7 @@ TEST_CASE("NearFar computes correct shortest paths with batch size", "[nearfar]"
             uint32_t computed_dist = nearfar.run(cmd_pool, queue, src_node, dst_node);
 
             INFO("Source: " << src_node << ", Destination: " << dst_node);
-            auto expected = gpusssp::test::get_expected_distances(src_node, dst_node);
+            auto expected = gpusssp::test::get_expected_distance(src_node, dst_node);
             REQUIRE(computed_dist == expected);
         }
     }
@@ -112,9 +110,10 @@ TEST_CASE("NearFar statistics are collected", "[nearfar][statistics]")
 }
 #endif
 
-TEST_CASE("NearFar regression test - minimal subgraph bug", "[nearfar][regression]")
+TEST_CASE("NearFar regression test - buffer cycling", "[nearfar][regression]")
 {
-    auto graph = gpusssp::common::files::read_weighted_graph<uint32_t>("../cache/test");
+    constexpr auto WIDHT = 10;
+    auto graph = gpusssp::test::create_grid_graph(WIDHT, WIDHT);
     gpusssp::test::VulkanTestFixture vk_fixture;
 
     auto device = vk_fixture.get_device();
@@ -127,24 +126,13 @@ TEST_CASE("NearFar regression test - minimal subgraph bug", "[nearfar][regressio
     gpusssp::gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, mem_props);
     gpusssp::gpu::Statistics statistics(device, mem_props);
 
-    const uint32_t source = 1148;
-    const uint32_t target = 193;
-    const uint32_t delta = 7200;
-
-    gpusssp::common::MinIDQueue min_queue(graph.num_nodes());
-    gpusssp::common::CostVector<gpusssp::common::WeightedGraph<uint32_t>> costs(
-        graph.num_nodes(), gpusssp::common::INF_WEIGHT);
-    std::vector<bool> settled(graph.num_nodes(), false);
-
-    auto expected_dist =
-        gpusssp::common::dijkstra(source, target, graph, min_queue, costs, settled);
-
-    gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta);
+    auto delta = 7200;
+    gpusssp::gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, statistics, delta, 2);
     nearfar.initialize(cmd_pool);
 
+    auto source = 0;
+    auto target = graph.num_nodes() - 1;
     uint32_t computed_dist = nearfar.run(cmd_pool, queue, source, target);
-
-    INFO("Source: " << source << ", Target: " << target << ", Delta: " << delta);
-    INFO("Expected (Dijkstra): " << expected_dist << ", Computed (NearFar): " << computed_dist);
+    uint32_t expected_dist = gpusssp::test::get_expected_distance(source, target, WIDHT);
     REQUIRE(computed_dist == expected_dist);
 }

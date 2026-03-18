@@ -45,7 +45,7 @@ inline common::WeightedGraph<uint32_t> create_mock_graph()
     return common::WeightedGraph<uint32_t>(num_nodes, edges);
 }
 
-inline uint32_t get_expected_distances(uint32_t src_node, uint32_t dst_node)
+inline uint32_t get_expected_distance(uint32_t src_node, uint32_t dst_node)
 {
     using common::INF_WEIGHT;
 

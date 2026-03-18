@@ -29,7 +29,7 @@ TEST_CASE("Dial computes correct shortest paths", "[dial]")
                 gpusssp::common::dial(src_node, dst_node, graph, queue, costs, settled);
 
             INFO("Source: " << src_node << ", Destination: " << dst_node);
-            auto expected = gpusssp::test::get_expected_distances(src_node, dst_node);
+            auto expected = gpusssp::test::get_expected_distance(src_node, dst_node);
             REQUIRE(computed_dist == expected);
         }
     }

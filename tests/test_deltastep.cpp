@@ -45,7 +45,7 @@ TEST_CASE("DeltaStep computes correct shortest paths", "[deltastep]")
             uint32_t computed_dist = deltastep.run(cmd_pool, queue, src_node, dst_node);
 
             INFO("Source: " << src_node << ", Destination: " << dst_node);
-            auto expected = gpusssp::test::get_expected_distances(src_node, dst_node);
+            auto expected = gpusssp::test::get_expected_distance(src_node, dst_node);
             REQUIRE(computed_dist == expected);
         }
     }
