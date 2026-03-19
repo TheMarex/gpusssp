@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import click
 import pandas as pd
@@ -34,10 +34,13 @@ def collect_timing_data(
     variant_dfs: Dict[str, pd.DataFrame],
     param1: str,
     param2: str,
+    metric: str,
 ) -> Dict[Tuple[str, str], Dict[int, float]]:
     timing_data: Dict[Tuple[str, str], Dict[int, float]] = {}
 
     for variant, df in variant_dfs.items():
+        if metric not in df.columns:
+            continue
         val1, val2 = parse_variant_params(variant, param1, param2)
         if val1 is None or val2 is None:
             continue
@@ -46,7 +49,7 @@ def collect_timing_data(
         if key not in timing_data:
             timing_data[key] = {}
 
-        rank_avg = df.groupby("rank")["time"].mean()
+        rank_avg = df.groupby("rank")[metric].mean()
         for rank, avg_time in rank_avg.items():
             timing_data[key][int(rank)] = avg_time
 
@@ -192,18 +195,20 @@ def print_grids(
     param1: str,
     param2: str,
     show: str,
+    metric: str,
 ) -> None:
     graph_name, query_hash, device_id = exp_key
 
-    timing_data = collect_timing_data(variant_dfs, param1, param2)
+    timing_data = collect_timing_data(variant_dfs, param1, param2, metric)
     if not timing_data:
         click.echo(
             f"No matching variants found for {graph_name}/{query_hash}/{device_id} "
-            f"with params {param1}, {param2}"
+            f"with params {param1}, {param2} and metric {metric}"
         )
         return
 
     click.echo(f"\nGraph: {graph_name}, Query: {query_hash}, Device: {device_id}")
+    click.echo(f"Metric: {metric}")
 
     grid1 = build_best_param2_grid(timing_data, param1, param2)
     if grid1 is not None and not grid1.empty:
@@ -233,7 +238,11 @@ def handle(
     param1: str = "delta",
     param2: str = "batch",
     show: str = "winners",
+    metrics: List[str] | None = None,
 ) -> None:
+    if metrics is None:
+        metrics = ["time"]
+
     workspace_root = get_workspace_root()
     results_base = workspace_root / "experiments" / "results"
 
@@ -255,4 +264,12 @@ def handle(
             for device_id, entry in sorted(devices.items()):
                 if device_id == "cpu":
                     continue
-                print_grids((graph, query, device_id), entry.dfs, param1, param2, show)
+                for metric in metrics:
+                    print_grids(
+                        (graph, query, device_id),
+                        entry.dfs,
+                        param1,
+                        param2,
+                        show,
+                        metric,
+                    )

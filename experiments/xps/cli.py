@@ -94,6 +94,11 @@ def plot(
     default="winners",
     help="Which combos to show in Grid 2: winners, top3, or all.",
 )
+@click.option(
+    "--metrics",
+    default="time",
+    help="Comma-separated metrics to compare (default: time).",
+)
 def grid(
     xp_name: str | None,
     device: str | None,
@@ -101,9 +106,11 @@ def grid(
     primary_param: str,
     secondary_param: str,
     show: str,
+    metrics: str,
 ) -> None:
     """Show grids: best secondary-param per primary-param/rank, and speedup for combos."""
 
+    metrics_list = [m.strip() for m in metrics.split(",") if m.strip()]
     grid_cmd.handle(
         xp_name,
         device=device,
@@ -111,6 +118,7 @@ def grid(
         param1=primary_param,
         param2=secondary_param,
         show=show,
+        metrics=metrics_list,
     )
 
 
