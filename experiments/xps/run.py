@@ -78,7 +78,7 @@ def handle() -> None:
         click.echo(f"Checking out {config.commit_sha[:9]}...")
         run_command(["git", "checkout", config.commit_sha])
 
-        ensure_release_build(build_dir, workspace_root)
+        ensure_release_build(build_dir, workspace_root, config.metrics)
 
         for target in config.run_targets:
             build_experiment_binary(target, build_dir)

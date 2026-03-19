@@ -1,6 +1,6 @@
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -17,10 +17,11 @@ class ExperimentConfig:
     commit_sha: str
     run_targets: List[str]
     params: Dict[str, Any]
+    metrics: List[str] = field(default_factory=lambda: ["time"])
 
 
 def build_commit_message(
-    xp_name: str, run_targets: List[str], params: Dict[str, Any]
+    xp_name: str, run_targets: List[str], params: Dict[str, Any], metrics: List[str]
 ) -> str:
     parts = [f"xp:{xp_name}"]
 
@@ -29,6 +30,9 @@ def build_commit_message(
 
     for key, value in params.items():
         parts.append(f"param:{key}={value}")
+
+    for metric in metrics:
+        parts.append(f"metric:{metric}")
 
     return " ".join(parts)
 
@@ -40,6 +44,7 @@ def parse_commit_message(message: str, xp_name: str) -> Optional[ExperimentConfi
 
     run_targets: List[str] = []
     params: Dict[str, Any] = {}
+    metrics: List[str] = []
 
     for match in re.finditer(r"run:(\w+)", message):
         run_targets.append(match.group(1))
@@ -57,17 +62,34 @@ def parse_commit_message(message: str, xp_name: str) -> Optional[ExperimentConfi
         else:
             params[param_name] = param_value
 
+    for match in re.finditer(r"metric:(\w+)", message):
+        metrics.append(match.group(1))
+
     if not run_targets:
         error_exit(f"No run targets specified in commit message: {message}")
     if "data" not in params:
         error_exit(f"No param:data specified in commit message: {message}")
+
+    if not metrics:
+        metrics = ["time"]
+
+    validate_metrics_in_commit(metrics, message)
 
     return ExperimentConfig(
         name=xp_name,
         commit_sha="",
         run_targets=run_targets,
         params=params,
+        metrics=metrics,
     )
+
+
+def validate_metrics_in_commit(metrics: List[str], message: str) -> None:
+    if "time" in metrics and len(metrics) > 1:
+        error_exit(
+            f"Cannot mix 'time' metric with other metrics in commit: {message}\n"
+            "'time' requires ENABLE_STATISTICS=OFF, other metrics require ENABLE_STATISTICS=ON"
+        )
 
 
 def build_experiment_binary(target: str, build_dir: Path) -> None:
@@ -85,9 +107,12 @@ def format_cmd(
     xp_base_path: Path,
     xp_name: str,
     params: Dict[str, Any],
+    metrics: List[str],
 ) -> List[List[str]]:
     binary = build_dir / f"experiment_{target}"
     cmd = [str(binary), str(cache_path), str(xp_base_path), "-n", xp_name]
+
+    cmd.extend(["--metrics", ",".join(metrics)])
 
     if target == "dial" and "range" in params:
         cmd.extend(["--range", str(params["range"])])
@@ -125,6 +150,7 @@ def run_experiment(
         xp_base_path,
         config.name,
         config.params,
+        config.metrics,
     )
 
     for cmd in cmds:
@@ -133,10 +159,21 @@ def run_experiment(
         run_command(cmd, cwd=build_dir, env=env, capture=False)
 
 
-def ensure_release_build(build_dir: Path, workspace_root: Path) -> None:
-    click.echo("Configuring build for Release mode...")
+def ensure_release_build(
+    build_dir: Path, workspace_root: Path, metrics: List[str]
+) -> None:
+    enable_statistics = "time" not in metrics
+    click.echo(
+        f"Configuring build for Release mode (ENABLE_STATISTICS={'ON' if enable_statistics else 'OFF'})..."
+    )
     run_command(
-        ["cmake", "-B", str(build_dir), "-DCMAKE_BUILD_TYPE=Release"],
+        [
+            "cmake",
+            "-B",
+            str(build_dir),
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DENABLE_STATISTICS={'ON' if enable_statistics else 'OFF'}",
+        ],
         cwd=workspace_root,
     )
 

@@ -3,10 +3,16 @@ import click
 from .errors import error_exit
 from .gitops import extract_xp_name, get_current_branch, run_command
 from .runner import build_commit_message
-from .validation import parse_params, validate_params, validate_run_targets
+from .validation import (
+    parse_metrics,
+    parse_params,
+    validate_metrics,
+    validate_params,
+    validate_run_targets,
+)
 
 
-def handle(run_targets: str, params_str: str) -> None:
+def handle(run_targets: str, params_str: str, metrics_str: str = "") -> None:
     current_branch = get_current_branch()
 
     if not current_branch.startswith("experiment/"):
@@ -19,11 +25,13 @@ def handle(run_targets: str, params_str: str) -> None:
 
     targets = [t.strip() for t in run_targets.split(",")]
     params = parse_params(params_str)
+    metrics = parse_metrics(metrics_str)
 
     validate_run_targets(targets)
     validate_params(params)
+    validate_metrics(metrics)
 
-    xp_commit_msg = build_commit_message(xp_name, targets, params)
+    xp_commit_msg = build_commit_message(xp_name, targets, params, metrics)
 
     click.echo(f"Adding instrumentation commit to branch: {current_branch}")
     click.echo(f"Commit message: {xp_commit_msg}")
@@ -37,8 +45,9 @@ def handle(run_targets: str, params_str: str) -> None:
     click.echo(f"Experiment: {xp_name}")
     click.echo(f"Run targets: {', '.join(targets)}")
     click.echo(f"Parameters: {' '.join(f'{k}={v}' for k, v in params.items())}")
+    click.echo(f"Metrics: {', '.join(metrics)}")
     click.echo()
     click.echo("Next steps:")
-    click.echo('  - Add more variants: xps.py add "<runs>" "<params>"')
+    click.echo('  - Add more variants: xps.py add "<runs>" "<params>" ["<metrics>"]')
     click.echo("  - Run experiments: xps.py run")
     click.echo()

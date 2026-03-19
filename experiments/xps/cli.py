@@ -25,10 +25,11 @@ def create(xp_name: str) -> None:
 @main.command()
 @click.argument("run_targets")
 @click.argument("params")
-def add(run_targets: str, params: str) -> None:
+@click.argument("metrics", required=False, default="")
+def add(run_targets: str, params: str, metrics: str) -> None:
     """Add an instrumentation commit to the current experiment branch."""
 
-    add_cmd.handle(run_targets, params)
+    add_cmd.handle(run_targets, params, metrics)
 
 
 @main.command()
@@ -97,7 +98,12 @@ def grid(
     """Show grids: best secondary-param per primary-param/rank, and speedup for combos."""
 
     grid_cmd.handle(
-        xp_name, device=device, variant=variant, param1=primary_param, param2=secondary_param, show=show
+        xp_name,
+        device=device,
+        variant=variant,
+        param1=primary_param,
+        param2=secondary_param,
+        show=show,
     )
 
 
