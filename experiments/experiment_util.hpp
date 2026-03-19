@@ -1,6 +1,7 @@
 #ifndef GPUSSSP_EXPERIMENTS_EXPERIMENT_UTIL_HPP
 #define GPUSSSP_EXPERIMENTS_EXPERIMENT_UTIL_HPP
 
+#include "common/string_util.hpp"
 #include "queries.hpp"
 
 #include <array>
@@ -12,11 +13,51 @@
 #include <iomanip>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace gpusssp::experiments
 {
+
+inline std::vector<std::string> parse_metrics(const std::string &metrics_str)
+{
+    std::vector<std::string> metrics;
+    common::detail::split(metrics, metrics_str, ",");
+
+    for (auto &metric : metrics)
+    {
+        if (metric != "time" && metric != "edges_relaxed")
+        {
+            throw std::runtime_error("unknown metric '" + metric +
+                                     "', available: time, edges_relaxed");
+        }
+    }
+
+    return metrics;
+}
+
+inline void validate_metrics(const std::vector<std::string> &metrics)
+{
+#ifdef ENABLE_STATISTICS
+    for (const auto &metric : metrics)
+    {
+        if (metric == "time")
+        {
+            throw std::runtime_error("'time' metric not available when ENABLE_STATISTICS is on "
+                                     "(overhead corrupts timing)");
+        }
+    }
+#else
+    for (const auto &metric : metrics)
+    {
+        if (metric == "edges_relaxed")
+        {
+            throw std::runtime_error("'edges_relaxed' metric requires ENABLE_STATISTICS");
+        }
+    }
+#endif
+}
 
 inline uint64_t get_unix_timestamp()
 {

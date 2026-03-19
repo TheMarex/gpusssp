@@ -115,6 +115,10 @@ target_link_libraries(experiment_dijkstra
         argparse::argparse
 )
 
+if(ENABLE_STATISTICS)
+    target_compile_definitions(experiment_dijkstra PRIVATE ENABLE_STATISTICS)
+endif()
+
 # Experiment Dial
 add_executable(experiment_dial
     experiments/experiment_dial.cpp
@@ -125,6 +129,10 @@ target_link_libraries(experiment_dial
     PRIVATE
         argparse::argparse
 )
+
+if(ENABLE_STATISTICS)
+    target_compile_definitions(experiment_dial PRIVATE ENABLE_STATISTICS)
+endif()
 
 # Experiment DeltaStep
 add_executable(experiment_deltastep

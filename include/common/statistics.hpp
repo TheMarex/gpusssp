@@ -120,11 +120,21 @@ class Statistics
 #endif
     }
 
+    [[nodiscard]] uint64_t value(StatisticsEvent event) const
+    {
+#ifdef ENABLE_STATISTICS
+        return counts[static_cast<std::size_t>(event)];
+#else
+        (void)event;
+        return 0;
+#endif
+    }
+
   private:
     Statistics() {}
 
 #ifdef ENABLE_STATISTICS
-    std::array<uint64_t, static_cast<std::size_t>(StatisticsEvent::NUM_EVENTS)> counts;
+    std::array<uint64_t, static_cast<std::size_t>(StatisticsEvent::NUM_EVENTS)> counts{};
 #endif
 };
 

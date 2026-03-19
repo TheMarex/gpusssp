@@ -99,6 +99,16 @@ class Statistics
 #endif
     }
 
+    [[nodiscard]] uint64_t value(StatisticsEvent event) // NOLINT
+    {
+#ifdef ENABLE_STATISTICS
+        return gpu_statistics_counters[static_cast<size_t>(event)];
+#else
+        (void)event;
+        return 0;
+#endif
+    }
+
   private:
     static constexpr size_t NUM_COUNTERS = static_cast<size_t>(StatisticsEvent::NUM_EVENTS);
 
