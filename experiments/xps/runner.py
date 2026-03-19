@@ -1,8 +1,9 @@
+import itertools
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import click
 
@@ -37,13 +38,13 @@ def build_commit_message(
     return " ".join(parts)
 
 
-def parse_commit_message(message: str, xp_name: str) -> Optional[ExperimentConfig]:
+def parse_commit_message(message: str, xp_name: str) -> List[ExperimentConfig]:
     expected_prefix = f"xp:{xp_name}"
     if not message.startswith(expected_prefix):
-        return None
+        return []
 
     run_targets: List[str] = []
-    params: Dict[str, Any] = {}
+    params: Dict[str, List[Any]] = {}
     metrics: List[str] = []
 
     for match in re.finditer(r"run:(\w+)", message):
@@ -53,14 +54,10 @@ def parse_commit_message(message: str, xp_name: str) -> Optional[ExperimentConfi
         param_name = match.group(1)
         param_value = match.group(2)
 
-        if param_name == "delta":
-            params["delta"] = [int(d) for d in param_value.split(",")]
-        elif param_name == "batch_size":
-            params["batch_size"] = int(param_value)
-        elif param_name == "gpu":
-            params["gpu"] = int(param_value)
+        if param_name in ("delta", "batch_size", "gpu"):
+            params[param_name] = [int(v) for v in param_value.split(",")]
         else:
-            params[param_name] = param_value
+            params[param_name] = param_value.split(",")
 
     for match in re.finditer(r"metric:(\w+)", message):
         metrics.append(match.group(1))
@@ -75,13 +72,23 @@ def parse_commit_message(message: str, xp_name: str) -> Optional[ExperimentConfi
 
     validate_metrics_in_commit(metrics, message)
 
-    return ExperimentConfig(
-        name=xp_name,
-        commit_sha="",
-        run_targets=run_targets,
-        params=params,
-        metrics=metrics,
-    )
+    param_keys = list(params.keys())
+    param_value_lists = [params[k] for k in param_keys]
+
+    configs = []
+    for combination in itertools.product(*param_value_lists):
+        config_params = dict(zip(param_keys, combination))
+        configs.append(
+            ExperimentConfig(
+                name=xp_name,
+                commit_sha="",
+                run_targets=run_targets.copy(),
+                params=config_params,
+                metrics=metrics.copy(),
+            )
+        )
+
+    return configs
 
 
 def validate_metrics_in_commit(metrics: List[str], message: str) -> None:
@@ -108,7 +115,7 @@ def format_cmd(
     xp_name: str,
     params: Dict[str, Any],
     metrics: List[str],
-) -> List[List[str]]:
+) -> List[str]:
     binary = build_dir / f"experiment_{target}"
     cmd = [str(binary), str(cache_path), str(xp_base_path), "-n", xp_name]
 
@@ -119,15 +126,11 @@ def format_cmd(
 
     if target in ["deltastep", "nearfar"]:
         if "delta" in params:
-            cmds = []
-            for delta in params["delta"]:
-                delta_cmd = cmd + ["--delta", str(delta)]
-                if "batch_size" in params:
-                    delta_cmd.extend(["--batch-size", str(params["batch_size"])])
-                cmds.append(delta_cmd)
-            return cmds
+            cmd.extend(["--delta", str(params["delta"])])
+        if "batch_size" in params:
+            cmd.extend(["--batch-size", str(params["batch_size"])])
 
-    return [cmd]
+    return cmd
 
 
 def run_experiment(
@@ -143,7 +146,7 @@ def run_experiment(
     if "gpu" in config.params:
         env["GPUSSSP_DEVICE"] = str(config.params["gpu"])
 
-    cmds = format_cmd(
+    cmd = format_cmd(
         build_dir,
         target,
         cache_path,
@@ -153,10 +156,9 @@ def run_experiment(
         config.metrics,
     )
 
-    for cmd in cmds:
-        cmd_str = " ".join(cmd)
-        click.echo(f"Running '{cmd_str}'...")
-        run_command(cmd, cwd=build_dir, env=env, capture=False)
+    cmd_str = " ".join(cmd)
+    click.echo(f"Running '{cmd_str}'...")
+    run_command(cmd, cwd=build_dir, env=env, capture=False)
 
 
 def ensure_release_build(
@@ -183,8 +185,8 @@ def collect_experiment_configs(
 ) -> List[ExperimentConfig]:
     configs: List[ExperimentConfig] = []
     for sha, message in commits:
-        config = parse_commit_message(message, xp_name)
-        if config:
+        parsed_configs = parse_commit_message(message, xp_name)
+        for config in parsed_configs:
             config.commit_sha = sha
             configs.append(config)
     return configs

@@ -1,3 +1,5 @@
+import math
+
 import click
 
 from .errors import error_exit
@@ -31,6 +33,8 @@ def handle(run_targets: str, params_str: str, metrics_str: str = "") -> None:
     validate_params(params)
     validate_metrics(metrics)
 
+    num_combinations = math.prod(len(v.split(",")) for v in params.values())
+
     xp_commit_msg = build_commit_message(xp_name, targets, params, metrics)
 
     click.echo(f"Adding instrumentation commit to branch: {current_branch}")
@@ -45,6 +49,7 @@ def handle(run_targets: str, params_str: str, metrics_str: str = "") -> None:
     click.echo(f"Experiment: {xp_name}")
     click.echo(f"Run targets: {', '.join(targets)}")
     click.echo(f"Parameters: {' '.join(f'{k}={v}' for k, v in params.items())}")
+    click.echo(f"Combinations: {num_combinations}")
     click.echo(f"Metrics: {', '.join(metrics)}")
     click.echo()
     click.echo("Next steps:")
