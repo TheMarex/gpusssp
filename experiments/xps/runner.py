@@ -87,20 +87,20 @@ def format_cmd(
     params: Dict[str, Any],
 ) -> List[List[str]]:
     binary = build_dir / f"experiment_{target}"
-    base_cmd = [str(binary), str(cache_path), str(xp_base_path)]
+    cmd = [str(binary), str(cache_path), str(xp_base_path), "-n", xp_name]
 
-    if target in ["deltastep", "nearfar"] and "delta" in params:
-        cmds = []
-        for delta in params["delta"]:
-            cmd = base_cmd + [xp_name, str(delta)]
-            if "batch_size" in params:
-                cmd.append(str(params["batch_size"]))
-            cmds.append(cmd)
-        return cmds
-
-    cmd = base_cmd + [xp_name]
     if target == "dial" and "range" in params:
-        cmd.append(str(params["range"]))
+        cmd.extend(["--range", str(params["range"])])
+
+    if target in ["deltastep", "nearfar"]:
+        if "delta" in params:
+            cmds = []
+            for delta in params["delta"]:
+                delta_cmd = cmd + ["--delta", str(delta)]
+                if "batch_size" in params:
+                    delta_cmd.extend(["--batch-size", str(params["batch_size"])])
+                cmds.append(delta_cmd)
+            return cmds
 
     return [cmd]
 

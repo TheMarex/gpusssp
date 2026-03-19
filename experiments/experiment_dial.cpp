@@ -6,10 +6,12 @@
 #include "common/files.hpp"
 #include "common/logger.hpp"
 #include "common/progress_bar.hpp"
+#include "common/statistics.hpp"
 #include "common/weighted_graph.hpp"
 #include "experiment_util.hpp"
 #include "queries.hpp"
 
+#include <argparse/argparse.hpp>
 #include <chrono>
 #include <cstdint>
 #include <optional>
@@ -21,26 +23,35 @@ using namespace gpusssp;
 
 int main(int argc, char **argv)
 {
-    if (argc < 3)
+    argparse::ArgumentParser program("experiment_dial", "1.0.0");
+    program.add_description("Run Dial algorithm benchmark.");
+
+    program.add_argument("graph_path").help("path to preprocessed graph data (without extension)");
+
+    program.add_argument("xp_path").help("base path for experiment output");
+
+    program.add_argument("-n", "--name")
+        .default_value(std::string("compare_algorithm"))
+        .help("experiment name");
+
+    program.add_argument("--range").default_value(32768u).scan<'u', uint32_t>().help(
+        "range parameter for bucket queue");
+
+    try
     {
-        common::log_error() << "Usage: " << argv[0]
-                            << " <graph_base_path> <xp_base_path> [xp_name] [range]" << '\n';
+        program.parse_args(argc, argv);
+    }
+    catch (const std::exception &err)
+    {
+        std::cerr << err.what() << '\n';
+        std::cerr << program;
         return 1;
     }
 
-    std::string graph_base_path = argv[1];
-    std::string xp_base_path = argv[2];
-
-    std::string xp_name = "compare_algorithm";
-    uint32_t range = 32 * 1024;
-    if (argc >= 4)
-    {
-        xp_name = argv[3];
-    }
-    if (argc >= 5)
-    {
-        range = std::stoi(argv[4]);
-    }
+    std::string graph_base_path = program.get("graph_path");
+    std::string xp_base_path = program.get("xp_path");
+    std::string xp_name = program.get("--name");
+    uint32_t range = program.get<uint32_t>("--range");
 
     common::log() << "Loading graph from: " << graph_base_path << '\n';
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_base_path);

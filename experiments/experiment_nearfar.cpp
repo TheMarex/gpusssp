@@ -2,6 +2,7 @@
 #include "common/files.hpp"
 #include "common/logger.hpp"
 #include "common/progress_bar.hpp"
+#include "common/statistics.hpp"
 #include "common/weighted_graph.hpp"
 #include "experiment_util.hpp"
 #include "gpu/statistics.hpp"
@@ -12,6 +13,7 @@
 #include "gpu/nearfar_buffers.hpp"
 #include "gpu/vulkan_context.hpp"
 
+#include <argparse/argparse.hpp>
 #include <chrono>
 #include <cstdint>
 #include <optional>
@@ -25,34 +27,41 @@ using namespace gpusssp;
 
 int main(int argc, char **argv)
 {
-    if (argc < 3)
+    argparse::ArgumentParser program("experiment_nearfar", "1.0.0");
+    program.add_description("Run NearFar algorithm benchmark.");
+
+    program.add_argument("graph_path").help("path to preprocessed graph data (without extension)");
+
+    program.add_argument("xp_path").help("base path for experiment output");
+
+    program.add_argument("-n", "--name")
+        .default_value(std::string("compare_algorithm"))
+        .help("experiment name");
+
+    program.add_argument("--delta").default_value(3600u).scan<'u', uint32_t>().help(
+        "delta parameter for near-far algorithm");
+
+    program.add_argument("--batch-size")
+        .default_value(64u)
+        .scan<'u', uint32_t>()
+        .help("batch size for GPU processing");
+
+    try
     {
-        common::log_error() << "Usage: " << argv[0]
-                            << " <graph_base_path> <xp_base_path> [xp_name] [delta] [batch_size]"
-                            << '\n';
+        program.parse_args(argc, argv);
+    }
+    catch (const std::exception &err)
+    {
+        std::cerr << err.what() << '\n';
+        std::cerr << program;
         return 1;
     }
 
-    std::string graph_base_path = argv[1];
-    std::string xp_base_path = argv[2];
-
-    std::string xp_name = "compare_algorithm";
-    if (argc >= 4)
-    {
-        xp_name = argv[3];
-    }
-
-    uint32_t delta = 3600u;
-    if (argc >= 5)
-    {
-        delta = std::stoi(argv[4]);
-    }
-
-    uint32_t batch_size = 64u;
-    if (argc >= 6)
-    {
-        batch_size = std::stoi(argv[5]);
-    }
+    std::string graph_base_path = program.get("graph_path");
+    std::string xp_base_path = program.get("xp_path");
+    std::string xp_name = program.get("--name");
+    uint32_t delta = program.get<uint32_t>("--delta");
+    uint32_t batch_size = program.get<uint32_t>("--batch-size");
 
     common::log() << "Loading graph from: " << graph_base_path << '\n';
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_base_path);

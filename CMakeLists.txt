@@ -110,10 +110,20 @@ add_executable(experiment_dijkstra
     src/common/logger.cpp
 )
 
+target_link_libraries(experiment_dijkstra
+    PRIVATE
+        argparse::argparse
+)
+
 # Experiment Dial
 add_executable(experiment_dial
     experiments/experiment_dial.cpp
     src/common/logger.cpp
+)
+
+target_link_libraries(experiment_dial
+    PRIVATE
+        argparse::argparse
 )
 
 # Experiment DeltaStep
@@ -125,6 +135,7 @@ add_executable(experiment_deltastep
 target_link_libraries(experiment_deltastep
     PRIVATE
         Vulkan::Vulkan
+        argparse::argparse
 )
 
 if(ENABLE_STATISTICS)
@@ -140,6 +151,7 @@ add_executable(experiment_bellmanford
 target_link_libraries(experiment_bellmanford
     PRIVATE
         Vulkan::Vulkan
+        argparse::argparse
 )
 
 if(ENABLE_STATISTICS)
@@ -155,6 +167,7 @@ add_executable(experiment_nearfar
 target_link_libraries(experiment_nearfar
     PRIVATE
         Vulkan::Vulkan
+        argparse::argparse
 )
 
 if(ENABLE_STATISTICS)
