@@ -3,6 +3,7 @@ import click
 from . import add as add_cmd
 from . import compare as compare_cmd
 from . import create as create_cmd
+from . import grid as grid_cmd
 from . import plot as plot_cmd
 from . import run as run_cmd
 from . import update as update_cmd
@@ -71,6 +72,33 @@ def plot(
     """Generate plots for experiment results."""
 
     plot_cmd.handle(xp_name, device=device, variant=variant)
+
+
+@main.command()
+@click.argument("xp_name", required=False)
+@click.option("--device", help="Filter by device hash.")
+@click.option("--variant", help="Filter variants by substring match.")
+@click.option("--primary-param", help="First parameter for rows.")
+@click.option("--secondary-param", help="Second parameter for cells.")
+@click.option(
+    "--show",
+    type=click.Choice(["winners", "top3", "all"]),
+    default="winners",
+    help="Which combos to show in Grid 2: winners, top3, or all.",
+)
+def grid(
+    xp_name: str | None,
+    device: str | None,
+    variant: str | None,
+    primary_param: str,
+    secondary_param: str,
+    show: str,
+) -> None:
+    """Show grids: best secondary-param per primary-param/rank, and speedup for combos."""
+
+    grid_cmd.handle(
+        xp_name, device=device, variant=variant, param1=primary_param, param2=secondary_param, show=show
+    )
 
 
 @main.command(name="_rebase", hidden=True)
