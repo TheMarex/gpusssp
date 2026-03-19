@@ -3,7 +3,9 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import click
+import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 from tabulate import tabulate
 
 from .discovery import (
@@ -96,6 +98,50 @@ def build_best_param2_grid(
     return pd.DataFrame(grid_data)
 
 
+def save_heatmap(
+    grid: pd.DataFrame,
+    exp_key: Tuple[str, str, str],
+    metric: str,
+    param1: str,
+    param2: str,
+    output_dir: Path,
+) -> None:
+    graph_name, query_hash, device_id = exp_key
+
+    rank_cols = [c for c in grid.columns if isinstance(c, int)]
+    if not rank_cols:
+        return
+
+    heatmap_data = grid[rank_cols].copy()
+    for col in rank_cols:
+        heatmap_data[col] = pd.to_numeric(heatmap_data[col], errors="coerce")
+
+    row_labels = [f"{row[param1]},{row[param2]}" for _, row in grid.iterrows()]
+    heatmap_data.index = row_labels
+    heatmap_data.columns = [str(c) for c in rank_cols]
+
+    plt.figure(figsize=(12, max(6, len(heatmap_data) * 0.5)))
+    ax = sns.heatmap(
+        heatmap_data,
+        annot=True,
+        fmt=".2f",
+        cmap="flare",
+        cbar_kws={"label": "Normalized"},
+    )
+    ax.set_xlabel("Rank")
+    ax.set_ylabel(f"{param1},{param2}")
+    ax.set_title(
+        f"Normalized Heatmap - {graph_name}/{query_hash}/{device_id} ({metric})"
+    )
+
+    filename = f"{graph_name}_{query_hash}_{device_id}_{metric}_heatmap.png"
+    output_path = output_dir / filename
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close()
+    click.echo(f"Saved heatmap to {output_path}")
+
+
 def find_best_per_rank(
     timing_data: Dict[Tuple[str, str], Dict[int, float]],
 ) -> Dict[int, float]:
@@ -156,8 +202,8 @@ def get_combos_for_show(
         return find_winning_combos(timing_data, best_per_rank)
 
 
-def build_speedup_grid(
-    timing_data: Dict[Tuple[str, str], Dict[int, float]],
+def build_normalized_grid(
+    data: Dict[Tuple[str, str], Dict[int, float]],
     best_per_rank: Dict[int, float],
     combos: set[Tuple[str, str]],
     param1: str,
@@ -177,11 +223,11 @@ def build_speedup_grid(
     for val1, val2 in sorted_combos:
         row = {param1: val1, param2: val2}
         for rank in all_ranks:
-            if rank in timing_data[(val1, val2)]:
-                this_time = timing_data[(val1, val2)][rank]
-                best_time = best_per_rank[rank]
-                speedup = best_time / this_time
-                row[rank] = f"{speedup:.2f}"
+            if rank in data[(val1, val2)]:
+                this_value = data[(val1, val2)][rank]
+                best_value = best_per_rank[rank]
+                normalized = best_value / this_value
+                row[rank] = f"{normalized:.2f}"
             else:
                 row[rank] = "-"
         grid_data.append(row)
@@ -196,6 +242,7 @@ def print_grids(
     param2: str,
     show: str,
     metric: str,
+    output_dir: Path | None = None,
 ) -> None:
     graph_name, query_hash, device_id = exp_key
 
@@ -218,17 +265,18 @@ def print_grids(
     best_per_rank = find_best_per_rank(timing_data)
     combos = get_combos_for_show(show, timing_data, best_per_rank)
 
-    grid2 = build_speedup_grid(timing_data, best_per_rank, combos, param1, param2)
+    grid2 = build_normalized_grid(timing_data, best_per_rank, combos, param1, param2)
     if grid2 is not None and not grid2.empty:
         show_desc = {
             "winners": "Winning combos",
             "top3": "Top 3 combos",
             "all": "All combos",
         }
-        click.echo(
-            f"\nGrid 2: {show_desc.get(show, show)} showing speedup vs best per rank (1.0 = winner)"
-        )
+        click.echo(f"\nGrid 2: {show_desc.get(show, show)} normalized (1.0 = best)")
         click.echo(tabulate(grid2, headers="keys", tablefmt="github", showindex=False))
+
+        if show == "all" and output_dir is not None:
+            save_heatmap(grid2, exp_key, metric, param1, param2, output_dir)
 
 
 def handle(
@@ -272,4 +320,5 @@ def handle(
                         param2,
                         show,
                         metric,
+                        entry.directory,
                     )
