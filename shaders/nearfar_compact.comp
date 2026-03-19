@@ -38,7 +38,7 @@ void main() {
         node = far[tid];
         
         if (!bit_vector_set(processed, node)) {
-            statisticsCount(STAT_NEARFAR_COMPACT_NODES);
+            statisticsCount(STAT_NEARFAR_NODES_COMPACTED);
 
             uint d = dist[node];
 

@@ -46,7 +46,7 @@ void main() {
         uint threshold = delta * phase;
 
         for (uint eid = first_edges[u]; eid < first_edges[u+1]; ++eid) {
-            statisticsCount(STAT_NEARFAR_RELAX_EDGES);
+            statisticsCount(STAT_NEARFAR_EDGES_RELAXED);
             
             uint v = targets[eid];
             uint w = weight[eid];
@@ -54,7 +54,7 @@ void main() {
             uint old_dist = atomicMin(dist[v], new_dist);
 
             if (new_dist < old_dist) {
-                statisticsCount(STAT_NEARFAR_RELAX_IMPROVED);
+                statisticsCount(STAT_NEARFAR_EDGES_IMPROVED);
                 
                 if (new_dist < threshold) {
                     near_buf[near_buf_count++] = v;

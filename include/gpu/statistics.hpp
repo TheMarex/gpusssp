@@ -18,9 +18,9 @@ namespace gpusssp::gpu
 
 enum class StatisticsEvent : uint8_t
 {
-    NEARFAR_RELAX_EDGES,
-    NEARFAR_RELAX_IMPROVED,
-    NEARFAR_COMPACT_NODES,
+    NEARFAR_EDGES_RELAXED,
+    NEARFAR_EDGES_IMPROVED,
+    NEARFAR_NODES_COMPACTED,
     DELTASTEP_EDGES_RELAXED,
     DELTASTEP_EDGES_IMPROVED,
     BELLMANFORD_EDGES_RELAXED,
@@ -31,9 +31,9 @@ enum class StatisticsEvent : uint8_t
 inline const char *event_to_name(StatisticsEvent event)
 {
     static std::array<const char *, static_cast<std::size_t>(StatisticsEvent::NUM_EVENTS)> names{
-        {"NEARFAR_RELAX_EDGES",
-         "NEARFAR_RELAX_IMPROVED",
-         "NEARFAR_COMPACT_NODES",
+        {"NEARFAR_EDGES_RELAXED",
+         "NEARFAR_EDGES_IMPROVED",
+         "NEARFAR_NODES_COMPACTED",
          "DELTASTEP_EDGES_RELAXED",
          "DELTASTEP_EDGES_IMPROVED",
          "BELLMANFORD_EDGES_RELAXED",
