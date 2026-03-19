@@ -21,7 +21,7 @@ Follow this playbook every time:
 
 1. **Clarify** – If the previous step was not sufficient then pin down the following:
    - experiment name + hypothesis (what metric should change and why)
-   - datasets / cache inputs, algorithms (`deltastep`, `nearfar`, etc.), and tunables (`delta`, `gpu`, repetitions)
+   - datasets / cache inputs, algorithms (`dijkstra`, `deltastep`, `nearfar`, `bellmanford`, `dial`), and tunables (`delta`, `batch_size`, `range`, `gpu`)
 
 2. **Scope documentation** – once clarified:
    - Inspect `EXPERIMENTS.md` if a section `## <experiment_name>` already exists keep the current hypothesis.

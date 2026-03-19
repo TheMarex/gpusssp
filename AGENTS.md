@@ -206,20 +206,14 @@ This converts OSM PBF format to the internal graph format used by the solver.
 ### Running Shortest Path Queries
 
 ```bash
-./gpusssp ../cache/berlin random random 300 1
+./gpusssp ../cache/berlin
+./gpusssp ../cache/berlin --source 13.38,52.51 --target random --delta 300 --num-queries 10
+./gpusssp ../cache/berlin --skip bellmanford,dial
 ```
 
-Format: `./gpusssp <graph_path> [<src_lon,src_lat>|random] [<dst_lon,dst_lat>|random] <delta> <num_queries>`
+The executable uses argparse with optional flags. Run `./gpusssp --help` for full options.
 
-Parameters:
-- `graph_path` - Path to preprocessed graph data (without extension)
-- `src_lon,src_lat` - Source coordinates (longitude, latitude)
-- `dst_lon,dst_lat` - Destination coordinates (longitude, latitude)
-- `random` - Use "random" instead of coordinates to pick random nodes
-- `delta` - Delta parameter for delta-stepping algorithm (typically 300-3600)
-- `num_queries` - Number of queries to run
-
-The executable runs all four algorithms (Dijkstra, DeltaStep, BellmanFord, NearFar) and compares results.
+Runs all algorithms (Dijkstra, Dial, DeltaStep, BellmanFord, NearFar) and compares results.
 
 ### Running Experiments
 

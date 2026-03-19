@@ -90,7 +90,7 @@ Creates a new experiment branch named `experiment/<xp_name>`.
 ./experiments/xps.py create delta_sweep
 ```
 
-### `xps.py add <run_targets> <params>`
+### `xps.py add <run_targets> <params> [metrics]`
 
 Adds an empty instrumentation commit to the current experiment branch.
 
@@ -98,28 +98,24 @@ Adds an empty instrumentation commit to the current experiment branch.
 - `dijkstra` - CPU Dijkstra baseline
 - `deltastep` - GPU Delta-Stepping
 - `bellmanford` - GPU Bellman-Ford
-- `nearfar` - GPU Near-Far (alternative name for a variant)
-- `dial` - CPU Dial benchmark (uses BucketQueue)
+- `nearfar` - GPU Near-Far
+- `dial` - CPU Dial's algorithm (uses BucketQueue)
 
 **Parameters:** Space-separated `key=value` pairs:
-- `delta=<values>` - Delta values (comma-separated for multiple)
 - `data=<name>` - Dataset name (required, e.g., `berlin`)
-- `gpu=<id>` - GPU device ID (optional, default 0)
-- `range=<value>` - Dial bucket range (optional, only for `dial` target)
+- `delta=<values>` - Delta values, comma-separated for multiple (for deltastep, nearfar)
+- `batch_size=<value>` - Batch size for GPU processing (for deltastep, nearfar)
+- `range=<value>` - Bucket range (for dial, default: 32768)
+- `gpu=<id>` - GPU device ID (optional)
+
+**Metrics:** Optional third argument. Default is `time`. Use `edges_relaxed` for edge-count metrics. Note: `time` and requires a different build configurations and cannot be mixed with other metrics.
 
 **Examples:**
 ```bash
-# Single algorithm, single delta
 ./experiments/xps.py add "deltastep" "delta=900 data=berlin"
-
-# Multiple algorithms
-./experiments/xps.py add "deltastep,nearfar" "delta=900 data=berlin"
-
-# Multiple deltas
-./experiments/xps.py add "deltastep" "delta=900,1800,3600 data=berlin"
-
-# Specific GPU
-./experiments/xps.py add "deltastep" "delta=900 data=berlin gpu=1"
+./experiments/xps.py add "deltastep,nearfar" "delta=900,1800,3600 data=berlin"
+./experiments/xps.py add "deltastep" "delta=900 data=berlin batch_size=128"
+./experiments/xps.py add "deltastep" "delta=900 data=berlin" "edges_relaxed"
 ```
 
 ### `xps.py run`
@@ -131,44 +127,31 @@ Runs all experiments in the current branch. Must be run from an `experiment/*` b
 ./experiments/xps.py run
 ```
 
-### `xps.py compare [xp_name] [--device <hash>] [--variant <substring>]`
+### `xps.py compare [xp_name] [...]`
 
-Compare experiment results and print summary tables. If `xp_name` is omitted, it shows results for all experiments found in `experiments/results/`.
-
-**Options:**
-- `--device <hash>`: Filter results by specific device hash.
-- `--variant <substring>`: Filter variants by substring match (e.g., `deltastep`).
+Compare experiment results and print summary tables. If `xp_name` is omitted, shows results for all experiments in `experiments/results/`. Run `./experiments/xps.py compare --help` for options.
 
 **Example:**
 ```bash
-# Compare current experiment
-./experiments/xps.py compare
-
-# Compare a specific experiment
-./experiments/xps.py compare my_experiment
-
-# Compare only deltastep variants on a specific device
-./experiments/xps.py compare --variant deltastep --device 0123abcd
+./experiments/xps.py compare my_experiment --variant deltastep --device 0123abcd --metrics time,edges_relaxed
 ```
 
-### `xps.py plot [xp_name] [--device <hash>] [--variant <substring>]`
+### `xps.py plot [xp_name] [...]`
 
-Generate visualization plots (histograms and Dijkstra rank boxplots) for experiment results. Plots are saved in the respective results directories.
-
-**Options:**
-- `--device <hash>`: Filter results by specific device hash.
-- `--variant <substring>`: Filter variants by substring match (e.g., `nearfar`).
+Generate visualization plots (histograms and Dijkstra rank boxplots) for experiment results. Plots are saved in the respective results directories. Run `./experiments/xps.py plot --help` for options.
 
 **Example:**
 ```bash
-# Generate plots for current experiment
-./experiments/xps.py plot
+./experiments/xps.py plot my_experiment --variant nearfar --device 0123abcd
+```
 
-# Generate plots for a specific experiment
-./experiments/xps.py plot my_experiment
+### `xps.py grid [xp_name] [...]`
 
-# Generate plots only for nearfar variants
-./experiments/xps.py plot --variant nearfar
+Show grids comparing parameter combinations: best secondary-param per primary-param/rank, and speedup for combos. Run `./experiments/xps.py grid --help` for options.
+
+**Example:**
+```bash
+./experiments/xps.py grid my_experiment --primary-param delta --secondary-param batch_size --show top3 --variant deltastep
 ```
 
 ### `xps.py update [xp_name]`
@@ -183,7 +166,7 @@ Rebase the experiment branch on `main` and drop any previous result commits. Thi
 ## Files
 
 - `xps.py` - Main experiment management tool
-- `run_experiments.py` - Old standalone runner (deprecated, use `xps.py run`)
+
 - `experiment_*.cpp` - Experiment runner executables
 - `results/` - Generated experiment results (git-ignored except after committed by `xps.py run`)
 - `evaluation/` - Analysis and validation tools
@@ -194,5 +177,5 @@ Rebase the experiment branch on `main` and drop any previous result commits. Thi
 - Experiment names should use lowercase and underscores only
 - Each instrumentation commit is run independently (code changes before it are included)
 - Results are automatically committed after a successful run
-- Always use `data=berlin` or whatever dataset you have preprocessed in `cache/`
+- Always use `data=berlin_zorder` or whatever dataset you have preprocessed in `cache/`
 - For meaningful performance comparison, experiments are always built in Release mode
