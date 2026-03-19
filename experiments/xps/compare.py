@@ -1,5 +1,4 @@
-import sys
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import click
 import pandas as pd
@@ -12,53 +11,52 @@ from .paths import get_workspace_root
 def print_tables(
     exp_key: Tuple[str, str, str],
     variant_dfs: Dict[str, pd.DataFrame],
+    metric: str,
     baseline_dfs: Dict[str, pd.DataFrame] | None = None,
 ) -> None:
     graph_name, query_hash, device_id = exp_key
 
-    # Merge baseline (CPU) if provided
     all_variants = baseline_dfs.copy() if baseline_dfs else {}
     all_variants.update(variant_dfs)
+
+    all_variants = {v: df for v, df in all_variants.items() if metric in df.columns}
 
     if not all_variants:
         return
 
     click.echo(f"Graph: {graph_name}, Query: {query_hash}, Device: {device_id}")
+    click.echo(f"Metric: {metric}")
 
-    # Table 1: Percentiles
     percentiles = [0.01, 0.1, 0.5, 0.9, 0.99]
     perc_names = ["p1", "p10", "p50", "p90", "p99"]
 
     perc_data = []
     for variant, df in sorted(all_variants.items()):
         row = {"variant": variant}
-        vals = df["time"].quantile(percentiles).values
+        vals = df[metric].quantile(percentiles).values
         for name, val in zip(perc_names, vals):
             row[name] = f"{val:,.0f}"
         perc_data.append(row)
 
     perc_df = pd.DataFrame(perc_data)
-    click.echo("\nExecution Time Percentiles (μs):")
+    click.echo(f"\n{metric.capitalize()} Percentiles:")
     click.echo(tabulate(perc_df, headers="keys", tablefmt="github", showindex=False))
 
-    # Table 2: Avg time per rank
     combined_df = pd.concat(
         [df.assign(variant=variant) for variant, df in all_variants.items()],
         ignore_index=True,
     )
-    rank_avg = combined_df.groupby(["variant", "rank"])["time"].mean().unstack()
+    rank_avg = combined_df.groupby(["variant", "rank"])[metric].mean().unstack()
 
-    # Format the rank_avg table for better readability
     rank_avg_formatted = rank_avg.map(lambda x: f"{x:,.0f}" if pd.notnull(x) else "-")
 
-    # Split the table into two halves by columns to avoid terminal overflow
     num_cols = len(rank_avg_formatted.columns)
     mid = (num_cols + 1) // 2
 
     first_half = rank_avg_formatted.iloc[:, :mid]
     second_half = rank_avg_formatted.iloc[:, mid:]
 
-    click.echo("\nAverage Execution Time per Dijkstra Rank (μs):")
+    click.echo(f"\nAverage {metric.capitalize()} per Dijkstra Rank:")
     click.echo(tabulate(first_half, headers="keys", tablefmt="github", showindex=True))
 
     if not second_half.empty:
@@ -67,7 +65,6 @@ def print_tables(
             + tabulate(second_half, headers="keys", tablefmt="github", showindex=True)
         )
 
-    # Summary Result: Identify the fastest variant(s) based on rank data
     winners_per_rank = rank_avg.idxmin(axis=0).dropna()
     unique_winners = winners_per_rank.unique()
 
@@ -92,7 +89,6 @@ def print_tables(
             df = get_speedup_df(winner, rank_avg.columns)
             click.echo(tabulate(df, headers="keys", tablefmt="github", showindex=True))
         else:
-            # Find maximum range [0, m] where the first winner dominates
             w_start = winners_per_rank.iloc[0]
             m = 0
             while (
@@ -101,19 +97,15 @@ def print_tables(
             ):
                 m += 1
 
-            # Find maximum range [k, n] where the last winner dominates
             w_end = winners_per_rank.iloc[-1]
             k = len(winners_per_rank) - 1
             while k - 1 >= 0 and winners_per_rank.iloc[k - 1] == w_end:
                 k -= 1
 
-            # Use the actual rank values for the range display
             start_ranks = winners_per_rank.index[0 : m + 1]
             end_ranks = winners_per_rank.index[k:]
 
-            click.echo(
-                f"\nSpeedup of winner {w_start}"
-            )
+            click.echo(f"\nSpeedup of winner {w_start}")
             df_start = get_speedup_df(w_start, start_ranks)
             click.echo(
                 tabulate(df_start, headers="keys", tablefmt="github", showindex=True)
@@ -130,9 +122,13 @@ def handle(
     xp_name: str | None = None,
     device: str | None = None,
     variant: str | None = None,
+    metrics: List[str] | None = None,
     verbose: bool = True,
 ) -> str:
     """Compare experiment results and return/print summary tables."""
+    if metrics is None:
+        metrics = ["time"]
+
     workspace_root = get_workspace_root()
     results_base = workspace_root / "experiments" / "results"
 
@@ -164,11 +160,14 @@ def handle(
                     if device_id == "cpu":
                         continue
                     non_baseline = True
-                    print_tables((graph, query, device_id), entry.dfs, baseline_dfs)
+                    for metric in metrics:
+                        print_tables(
+                            (graph, query, device_id), entry.dfs, metric, baseline_dfs
+                        )
 
-                # If there are only CPU queries
                 if not non_baseline:
-                    print_tables((graph, query, "cpu"), baseline_dfs, {})
+                    for metric in metrics:
+                        print_tables((graph, query, "cpu"), baseline_dfs, metric, {})
 
     final_output = output.getvalue()
     if verbose:

@@ -51,14 +51,21 @@ def update(xp_name: str | None) -> None:
 @click.argument("xp_name", required=False)
 @click.option("--device", help="Filter by device hash.")
 @click.option("--variant", help="Filter variants by substring match.")
+@click.option(
+    "--metrics",
+    default="time",
+    help="Comma-separated metrics to compare (default: time).",
+)
 def compare(
     xp_name: str | None,
     device: str | None,
     variant: str | None,
+    metrics: str,
 ) -> None:
     """Compare experiment results and print summary tables."""
 
-    compare_cmd.handle(xp_name, device=device, variant=variant)
+    metrics_list = [m.strip() for m in metrics.split(",") if m.strip()]
+    compare_cmd.handle(xp_name, device=device, variant=variant, metrics=metrics_list)
 
 
 @main.command()

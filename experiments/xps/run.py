@@ -86,7 +86,7 @@ def handle() -> None:
         for target in config.run_targets:
             run_experiment(target, config, workspace_root, build_dir)
 
-        stdout = compare_cmd.handle(xp_name, verbose=False)
+        stdout = compare_cmd.handle(xp_name, metrics=config.metrics, verbose=False)
         if stdout:
             click.echo(f"\nIntermediate results for {xp_name}:")
             click.echo(stdout)
@@ -97,7 +97,8 @@ def handle() -> None:
     click.echo(f"Returning to branch: {original_branch}")
     run_command(["git", "checkout", original_branch])
 
-    stdout = compare_cmd.handle(xp_name, verbose=False)
+    all_metrics = sorted(set(m for c in experiment_configs for m in c.metrics))
+    stdout = compare_cmd.handle(xp_name, metrics=all_metrics, verbose=False)
 
     if stdout:
         click.echo(stdout)
