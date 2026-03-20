@@ -17,55 +17,66 @@ from .discovery import (
 from .paths import get_workspace_root
 
 
-def parse_variant_params(
-    variant: str, param1: str, param2: str
-) -> Tuple[str | None, str | None]:
+def parse_variant_params(variant: str, param1: str, param2: str | None) -> str | None:
     pattern1 = rf"{param1}(\d+)"
-    pattern2 = rf"{param2}(\d+)"
-
     match1 = re.search(pattern1, variant)
-    match2 = re.search(pattern2, variant)
-
-    val1 = match1.group(1) if match1 else None
-    val2 = match2.group(1) if match2 else None
-
-    return val1, val2
+    return match1.group(1) if match1 else None
 
 
 def collect_timing_data(
     variant_dfs: Dict[str, pd.DataFrame],
     param1: str,
-    param2: str,
+    param2: str | None,
     metric: str,
-) -> Dict[Tuple[str, str], Dict[int, float]]:
-    timing_data: Dict[Tuple[str, str], Dict[int, float]] = {}
+) -> Dict[Tuple[str, ...], Dict[int, float]]:
+    timing_data: Dict[Tuple[str, ...], Dict[int, float]] = {}
 
     for variant, df in variant_dfs.items():
         if metric not in df.columns:
             continue
-        val1, val2 = parse_variant_params(variant, param1, param2)
-        if val1 is None or val2 is None:
+        val1 = parse_variant_params(variant, param1, param2)
+        if val1 is None:
             continue
 
-        key = (val1, val2)
+        if param2 is not None:
+            pattern2 = rf"{param2}(\d+)"
+            match2 = re.search(pattern2, variant)
+            if match2 is None:
+                continue
+            val2 = match2.group(1)
+            key: Tuple[str, ...] = (val1, val2)
+        else:
+            key = (val1,)
+
         if key not in timing_data:
             timing_data[key] = {}
 
         rank_avg = df.groupby("rank")[metric].mean()
         for rank, avg_time in rank_avg.items():
-            timing_data[key][int(rank)] = avg_time
+            rank_int = int(rank)
+            if param2 is None:
+                if (
+                    rank_int not in timing_data[key]
+                    or avg_time < timing_data[key][rank_int]
+                ):
+                    timing_data[key][rank_int] = avg_time
+            else:
+                timing_data[key][rank_int] = avg_time
 
     return timing_data
 
 
 def build_best_param2_grid(
-    timing_data: Dict[Tuple[str, str], Dict[int, float]],
+    timing_data: Dict[Tuple[str, ...], Dict[int, float]],
     param1: str,
     param2: str,
 ) -> pd.DataFrame | None:
     rows_data: Dict[str, Dict[int, Tuple[str, float]]] = {}
 
-    for (val1, val2), rank_times in timing_data.items():
+    for key, rank_times in timing_data.items():
+        if len(key) != 2:
+            continue
+        val1, val2 = key
         if val1 not in rows_data:
             rows_data[val1] = {}
 
@@ -103,7 +114,7 @@ def save_heatmap(
     exp_key: Tuple[str, str, str],
     metric: str,
     param1: str,
-    param2: str,
+    param2: str | None,
     output_dir: Path,
 ) -> None:
     graph_name, query_hash, device_id = exp_key
@@ -116,7 +127,12 @@ def save_heatmap(
     for col in rank_cols:
         heatmap_data[col] = pd.to_numeric(heatmap_data[col], errors="coerce")
 
-    row_labels = [f"{row[param1]},{row[param2]}" for _, row in grid.iterrows()]
+    if param2 is not None and param2 in grid.columns:
+        row_labels = [f"{row[param1]},{row[param2]}" for _, row in grid.iterrows()]
+        ylabel = f"{param1},{param2}"
+    else:
+        row_labels = [str(row[param1]) for _, row in grid.iterrows()]
+        ylabel = param1
     heatmap_data.index = row_labels
     heatmap_data.columns = [str(c) for c in rank_cols]
 
@@ -129,7 +145,7 @@ def save_heatmap(
         cbar_kws={"label": "Normalized"},
     )
     ax.set_xlabel("Rank")
-    ax.set_ylabel(f"{param1},{param2}")
+    ax.set_ylabel(ylabel)
     ax.set_title(
         f"Normalized Heatmap - {graph_name}/{query_hash}/{device_id} ({metric})"
     )
@@ -143,7 +159,7 @@ def save_heatmap(
 
 
 def find_best_per_rank(
-    timing_data: Dict[Tuple[str, str], Dict[int, float]],
+    timing_data: Dict[Tuple[str, ...], Dict[int, float]],
 ) -> Dict[int, float]:
     best_per_rank: Dict[int, float] = {}
 
@@ -156,31 +172,31 @@ def find_best_per_rank(
 
 
 def find_winning_combos(
-    timing_data: Dict[Tuple[str, str], Dict[int, float]],
+    timing_data: Dict[Tuple[str, ...], Dict[int, float]],
     best_per_rank: Dict[int, float],
-) -> set[Tuple[str, str]]:
+) -> set[Tuple[str, ...]]:
     winners = set()
 
-    for (val1, val2), rank_times in timing_data.items():
+    for key, rank_times in timing_data.items():
         for rank, avg_time in rank_times.items():
             if avg_time == best_per_rank[rank]:
-                winners.add((val1, val2))
+                winners.add(key)
                 break
 
     return winners
 
 
 def find_top3_combos(
-    timing_data: Dict[Tuple[str, str], Dict[int, float]],
+    timing_data: Dict[Tuple[str, ...], Dict[int, float]],
     best_per_rank: Dict[int, float],
-) -> set[Tuple[str, str]]:
+) -> set[Tuple[str, ...]]:
     top3_combos = set()
 
     for rank in best_per_rank.keys():
         rank_times = []
-        for (val1, val2), times in timing_data.items():
+        for key, times in timing_data.items():
             if rank in times:
-                rank_times.append((times[rank], (val1, val2)))
+                rank_times.append((times[rank], key))
 
         rank_times.sort(key=lambda x: x[0])
         for _, combo in rank_times[:3]:
@@ -191,9 +207,9 @@ def find_top3_combos(
 
 def get_combos_for_show(
     show: str,
-    timing_data: Dict[Tuple[str, str], Dict[int, float]],
+    timing_data: Dict[Tuple[str, ...], Dict[int, float]],
     best_per_rank: Dict[int, float],
-) -> set[Tuple[str, str]]:
+) -> set[Tuple[str, ...]]:
     if show == "all":
         return set(timing_data.keys())
     elif show == "top3":
@@ -203,28 +219,33 @@ def get_combos_for_show(
 
 
 def build_normalized_grid(
-    data: Dict[Tuple[str, str], Dict[int, float]],
+    data: Dict[Tuple[str, ...], Dict[int, float]],
     best_per_rank: Dict[int, float],
-    combos: set[Tuple[str, str]],
+    combos: set[Tuple[str, ...]],
     param1: str,
-    param2: str,
+    param2: str | None,
 ) -> pd.DataFrame | None:
     if not combos:
         return None
 
     all_ranks = sorted(best_per_rank.keys())
 
-    sorted_combos = sorted(
-        combos,
-        key=lambda x: (int(x[0]), int(x[1])),
-    )
+    def sort_key(key: Tuple[str, ...]) -> Tuple[int, ...]:
+        return tuple(int(x) for x in key)
+
+    sorted_combos = sorted(combos, key=sort_key)
 
     grid_data = []
-    for val1, val2 in sorted_combos:
-        row = {param1: val1, param2: val2}
+    for key in sorted_combos:
+        if param2 is not None and len(key) == 2:
+            val1, val2 = key
+            row = {param1: val1, param2: val2}
+        else:
+            row = {param1: key[0]}
+
         for rank in all_ranks:
-            if rank in data[(val1, val2)]:
-                this_value = data[(val1, val2)][rank]
+            if rank in data[key]:
+                this_value = data[key][rank]
                 best_value = best_per_rank[rank]
                 normalized = best_value / this_value
                 row[rank] = f"{normalized:.2f}"
@@ -239,7 +260,7 @@ def print_grids(
     exp_key: Tuple[str, str, str],
     variant_dfs: Dict[str, pd.DataFrame],
     param1: str,
-    param2: str,
+    param2: str | None,
     show: str,
     metric: str,
     output_dir: Path | None = None,
@@ -257,10 +278,15 @@ def print_grids(
     click.echo(f"\nGraph: {graph_name}, Query: {query_hash}, Device: {device_id}")
     click.echo(f"Metric: {metric}")
 
-    grid1 = build_best_param2_grid(timing_data, param1, param2)
-    if grid1 is not None and not grid1.empty:
-        click.echo(f"\nGrid 1: {param1} (rows) vs rank (cols), showing best {param2}")
-        click.echo(tabulate(grid1, headers="keys", tablefmt="github", showindex=False))
+    if param2 is not None:
+        grid1 = build_best_param2_grid(timing_data, param1, param2)
+        if grid1 is not None and not grid1.empty:
+            click.echo(
+                f"\nGrid 1: {param1} (rows) vs rank (cols), showing best {param2}"
+            )
+            click.echo(
+                tabulate(grid1, headers="keys", tablefmt="github", showindex=False)
+            )
 
     best_per_rank = find_best_per_rank(timing_data)
     combos = get_combos_for_show(show, timing_data, best_per_rank)
@@ -284,7 +310,7 @@ def handle(
     device: str | None = None,
     variant: str | None = None,
     param1: str = "delta",
-    param2: str = "batch",
+    param2: str | None = None,
     show: str = "winners",
     metrics: List[str] | None = None,
 ) -> None:

@@ -86,8 +86,10 @@ def plot(
 @click.argument("xp_name", required=False)
 @click.option("--device", help="Filter by device hash.")
 @click.option("--variant", help="Filter variants by substring match.")
-@click.option("--primary-param", help="First parameter for rows.")
-@click.option("--secondary-param", help="Second parameter for cells.")
+@click.option("--primary-param", default="delta", help="First parameter for rows.")
+@click.option(
+    "--secondary-param", default=None, help="Second parameter for cells (optional)."
+)
 @click.option(
     "--show",
     type=click.Choice(["winners", "top3", "all"]),
@@ -104,11 +106,11 @@ def grid(
     device: str | None,
     variant: str | None,
     primary_param: str,
-    secondary_param: str,
+    secondary_param: str | None,
     show: str,
     metrics: str,
 ) -> None:
-    """Show grids: best secondary-param per primary-param/rank, and speedup for combos."""
+    """Show grids: best secondary-param per primary-param/rank, and normalized values for combos."""
 
     metrics_list = [m.strip() for m in metrics.split(",") if m.strip()]
     grid_cmd.handle(
