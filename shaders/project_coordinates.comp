@@ -40,7 +40,7 @@ void main()
     float y = EARTH_RADIUS * log(tan(PI / 4.0 + lat_rad / 2.0));
 
     float norm_x = (x - params.center_x) * params.inv_width;
-    float norm_y = (y - params.center_y) * params.inv_height;
+    float norm_y = (params.center_y - y) * params.inv_height;
 
     positions[idx] = vec2(norm_x, norm_y);
 }
