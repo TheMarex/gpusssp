@@ -375,10 +375,11 @@ class DeltaStepRunner : public AlgorithmRunner
                     std::unique_ptr<gpu::DeltaStepBuffers> buffers_ptr_, // NOLINT
                     vk::Device device,
                     gpu::Statistics &statistics,
-                    uint32_t delta)
+                    uint32_t delta,
+                    uint32_t batch_size)
         : graph_buffers(graph_buffers), buffers_ptr(std::move(buffers_ptr_)), device(device),
           statistics(statistics), delta_value(delta),
-          algorithm(graph_buffers, *buffers_ptr, device, statistics, delta, 1)
+          algorithm(graph_buffers, *buffers_ptr, device, statistics, delta, batch_size)
     {
     }
 
@@ -436,10 +437,11 @@ class NearFarRunner : public AlgorithmRunner
                   std::unique_ptr<gpu::NearFarBuffers> buffers_ptr_, // NOLINT
                   vk::Device device,
                   gpu::Statistics &statistics,
-                  uint32_t delta)
+                  uint32_t delta,
+                  uint32_t batch_size)
         : graph_buffers(graph_buffers), buffers_ptr(std::move(buffers_ptr_)), device(device),
           statistics(statistics), delta_value(delta),
-          algorithm(graph_buffers, *buffers_ptr, device, statistics, delta, 1)
+          algorithm(graph_buffers, *buffers_ptr, device, statistics, delta, batch_size)
     {
     }
 
@@ -1587,6 +1589,11 @@ int main(int argc, char **argv)
         .default_value(std::string("random"))
         .help("target node: \"random\", node ID, or lon,lat");
 
+    program.add_argument("-b", "--batch-size")
+        .default_value(64u)
+        .scan<'u', uint32_t>()
+        .help("relaxation batch size for GPU algorithms");
+
     try
     {
         program.parse_args(argc, argv);
@@ -1630,6 +1637,7 @@ int main(int argc, char **argv)
 
     auto source_str = program.get("--source");
     auto target_str = program.get("--target");
+    auto batch_size = program.get<uint32_t>("--batch-size");
 
     common::NearestNeighbour nn(coordinates);
 
@@ -1685,7 +1693,8 @@ int main(int argc, char **argv)
                 graph.num_nodes(), context.device(), context.memory_properties()),
             context.device(),
             statistics,
-            app.delta);
+            app.delta,
+            batch_size);
     }
     else
     {
@@ -1695,7 +1704,8 @@ int main(int argc, char **argv)
                 graph.num_nodes(), context.device(), context.memory_properties()),
             context.device(),
             statistics,
-            app.delta);
+            app.delta,
+            batch_size);
     }
 
     auto render_pipeline =

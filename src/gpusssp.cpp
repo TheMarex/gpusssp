@@ -58,6 +58,11 @@ int main(int argc, char **argv)
         .default_value(std::string("auto"))
         .help("delta parameter for delta-stepping: \"auto\" or integer");
 
+    program.add_argument("-b", "--batch-size")
+        .default_value(64u)
+        .scan<'u', uint32_t>()
+        .help("relaxation batch size for GPU algorithms");
+
     program.add_argument("-n", "--num-queries")
         .default_value(1u)
         .scan<'u', uint32_t>()
@@ -84,6 +89,7 @@ int main(int argc, char **argv)
     auto target_str = program.get("--target");
     auto delta_str = program.get("--delta");
     auto num_queries = program.get<uint32_t>("--num-queries");
+    auto batch_size = program.get<uint32_t>("--batch-size");
 
     auto skip_str = program.get("--skip");
     auto is_skipped = [&](const std::string &name)
@@ -183,13 +189,15 @@ int main(int argc, char **argv)
         gpu::NearFarBuffers nearfar_buffers(graph.num_nodes(), device, vk_ctx.memory_properties());
         gpu::Statistics gpu_statistics(device, vk_ctx.memory_properties());
 
-        gpu::DeltaStep deltastep(graph_buffers, deltastep_buffers, device, gpu_statistics, delta);
+        gpu::DeltaStep deltastep(
+            graph_buffers, deltastep_buffers, device, gpu_statistics, delta, batch_size);
         deltastep.initialize(cmd_pool);
 
         gpu::BellmanFord bellmanford(graph_buffers, bellmanford_buffers, device, gpu_statistics);
         bellmanford.initialize(cmd_pool);
 
-        gpu::NearFar nearfar(graph_buffers, nearfar_buffers, device, gpu_statistics, delta);
+        gpu::NearFar nearfar(
+            graph_buffers, nearfar_buffers, device, gpu_statistics, delta, batch_size);
         nearfar.initialize(cmd_pool);
 
         const bool skip_dijkstra = is_skipped("dijkstra");
