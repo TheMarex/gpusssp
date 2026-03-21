@@ -14,6 +14,7 @@
 
 #include "common/benchmark.hpp"
 #include "common/bucket_queue.hpp"
+#include "common/cli.hpp"
 #include "common/constants.hpp"
 #include "common/coordinate.hpp"
 #include "common/dial.hpp"
@@ -37,39 +38,6 @@
 #include "gpu/vulkan_context.hpp"
 
 using namespace gpusssp;
-
-static std::optional<common::Coordinate> string_to_coordinate(const std::string &s)
-{
-    if (s == "random")
-    {
-        return {};
-    }
-
-    auto pos = s.find(',');
-    if (pos == std::string::npos)
-    {
-        return {};
-    }
-    return common::Coordinate::from_floating(std::stod(s.substr(0, pos)),
-                                             std::stod(s.substr(pos + 1)));
-}
-
-static std::optional<uint32_t> string_to_node_id(const std::string &s)
-{
-    if (s.empty() || !std::isdigit(s[0]))
-    {
-        return {};
-    }
-
-    std::size_t pos;
-    auto node_id = std::stoi(s, &pos);
-    if (pos != s.size())
-    {
-        return {};
-    }
-
-    return node_id;
-}
 
 int main(int argc, char **argv)
 {
@@ -133,10 +101,10 @@ int main(int argc, char **argv)
         return false;
     };
 
-    auto maybe_src_coord = string_to_coordinate(source_str);
-    auto maybe_dst_coord = string_to_coordinate(target_str);
-    auto maybe_src_node_id = maybe_src_coord ? std::nullopt : string_to_node_id(source_str);
-    auto maybe_dst_node_id = maybe_dst_coord ? std::nullopt : string_to_node_id(target_str);
+    auto maybe_src_coord = common::parse_coordinate(source_str);
+    auto maybe_dst_coord = common::parse_coordinate(target_str);
+    auto maybe_src_node_id = maybe_src_coord ? std::nullopt : common::parse_node_id(source_str);
+    auto maybe_dst_node_id = maybe_dst_coord ? std::nullopt : common::parse_node_id(target_str);
 
     common::log() << "Loading graph from: " << graph_path << '\n';
     auto graph = common::files::read_weighted_graph<uint32_t>(graph_path);

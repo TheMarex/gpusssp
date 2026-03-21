@@ -1,12 +1,16 @@
+#include "common/cli.hpp"
 #include "common/coordinate.hpp"
 #include "common/files.hpp"
+#include "common/graph_metrics.hpp"
 #include "common/logger.hpp"
+#include "common/nearest_neighbour.hpp"
 #include "common/web_mercator.hpp"
 #include "common/weighted_graph.hpp"
 #include "gpu/coordinates_buffer.hpp"
 #include "gpu/shader.hpp"
 #include "gpu/shared_queue.hpp"
 #include "gpu/vulkan_graphics_context.hpp"
+#include <argparse/argparse.hpp>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -358,6 +362,10 @@ struct App
     NearFarTracer nearfar_tracer;
 
     AlgorithmType algorithm_type = AlgorithmType::DELTA_STEP;
+
+    // Source and target nodes (nullopt = random)
+    std::optional<uint32_t> src_node;
+    std::optional<uint32_t> dst_node;
 };
 
 class DeltaStepRunner : public AlgorithmRunner
@@ -860,8 +868,8 @@ static std::jthread start_sssp_thread(App &ctx,
                     ctx.sssp_run_requested = false;
                 }
 
-                uint32_t src_node = dist(gen);
-                uint32_t dst_node = dist(gen);
+                uint32_t src_node = ctx.src_node.value_or(dist(gen));
+                uint32_t dst_node = ctx.dst_node.value_or(dist(gen));
 
                 common::log() << "SSSP thread: Running "
                               << (algorithm.type() == AlgorithmType::DELTA_STEP ? "delta-stepping"
@@ -1556,40 +1564,101 @@ static void shutdown(App &app,
 
 int main(int argc, char **argv)
 {
-    if (argc < 2 || argc > 4)
+    argparse::ArgumentParser program("visualize_graph", "1.0.0");
+    program.add_description("GPU-accelerated graph visualization with SSSP algorithm tracing.");
+
+    program.add_argument("graph_path").help("path to preprocessed graph data (without extension)");
+
+    program.add_argument("-o", "--output").help("output directory for frame recording");
+
+    program.add_argument("-a", "--algorithm")
+        .default_value(std::string("deltastep"))
+        .help("algorithm: deltastep (default) or nearfar");
+
+    program.add_argument("-d", "--delta")
+        .default_value(std::string("auto"))
+        .help("delta parameter for algorithm: \"auto\" or integer");
+
+    program.add_argument("-s", "--source")
+        .default_value(std::string("random"))
+        .help("source node: \"random\", node ID, or lon,lat");
+
+    program.add_argument("-t", "--target")
+        .default_value(std::string("random"))
+        .help("target node: \"random\", node ID, or lon,lat");
+
+    try
     {
-        common::log_error() << "Usage: " << argv[0] << " <graph_base_path> [output_dir] [algorithm]"
-                            << '\n';
-        common::log_error() << "  algorithm: deltastep (default) or nearfar" << '\n';
+        program.parse_args(argc, argv);
+    }
+    catch (const std::exception &err)
+    {
+        std::cerr << err.what() << '\n';
+        std::cerr << program;
         return EXIT_FAILURE;
     }
 
-    std::string base_path = argv[1];
+    std::string base_path = program.get("graph_path");
     std::optional<std::string> output_dir;
-    AlgorithmType algorithm_type = AlgorithmType::DELTA_STEP;
+    if (program.is_used("--output"))
+    {
+        output_dir = program.get("--output");
+    }
 
-    if (argc >= 3)
+    std::string algo_str = program.get("--algorithm");
+    AlgorithmType algorithm_type = AlgorithmType::DELTA_STEP;
+    if (algo_str == "nearfar")
     {
-        output_dir = argv[2];
+        algorithm_type = AlgorithmType::NEAR_FAR;
     }
-    if (argc >= 4)
+    else if (algo_str != "deltastep")
     {
-        std::string algo_str = argv[3];
-        if (algo_str == "nearfar")
-        {
-            algorithm_type = AlgorithmType::NEAR_FAR;
-        }
-        else if (algo_str != "deltastep")
-        {
-            common::log_error() << "Unknown algorithm: " << algo_str << '\n';
-            return EXIT_FAILURE;
-        }
+        common::log_error() << "Unknown algorithm: " << algo_str << '\n';
+        return EXIT_FAILURE;
     }
+
+    auto delta_str = program.get("--delta");
 
     auto [graph, coordinates, bounding_box] = load_graph(base_path);
 
+    auto delta = common::compute_delta_heuristic(graph);
+    if (delta_str != "auto")
+    {
+        delta = std::stoi(delta_str);
+    }
+    common::log() << "Using delta value " << delta << '\n';
+
+    auto source_str = program.get("--source");
+    auto target_str = program.get("--target");
+
+    common::NearestNeighbour nn(coordinates);
+
+    auto maybe_src_coord = common::parse_coordinate(source_str);
+    auto maybe_dst_coord = common::parse_coordinate(target_str);
+    auto maybe_src_node_id = maybe_src_coord ? std::nullopt : common::parse_node_id(source_str);
+    auto maybe_dst_node_id = maybe_dst_coord ? std::nullopt : common::parse_node_id(target_str);
+
     App app;
     app.algorithm_type = algorithm_type;
+    app.delta = delta;
+
+    if (maybe_src_coord)
+    {
+        app.src_node = nn.nearest(*maybe_src_coord);
+    }
+    else if (maybe_src_node_id)
+    {
+        app.src_node = *maybe_src_node_id;
+    }
+
+    if (maybe_dst_coord)
+    {
+        app.dst_node = nn.nearest(*maybe_dst_coord);
+    }
+    else if (maybe_dst_node_id)
+    {
+        app.dst_node = *maybe_dst_node_id;
+    }
     gpu::VulkanGraphicsContext context("Graph Visualizer", 1280, 720);
     app.context = &context;
     setup_glfw_callbacks(context.window(), app);

@@ -94,6 +94,7 @@ target_link_libraries(visualize_graph
     PRIVATE
         Vulkan::Vulkan
         glfw
+        argparse::argparse
 )
 
 target_compile_definitions(visualize_graph PRIVATE ENABLE_TRACING)
