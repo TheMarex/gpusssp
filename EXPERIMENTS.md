@@ -1,6 +1,7 @@
 ## node_stalling
 
 Hypotheis: A large batch size negatively affects low ranks because we process the near bucket to completion. Stalling out nodes > best_distance may lead to an early termination and limits the amount of wasted work for low ranks.
+Outcome: Stalling indeed helps for lower ranks, however the additional branch and access to the dist array lead to slowdowns of more than 10% for larger ranks.
 
 ## batch_size_sweep
 
