@@ -1,6 +1,8 @@
+
 ## batch_size_sweep
 
 Hypothesis: The batch_size parameter affects the performance of the deltastep/nearfar algorithms and needs to be tuned.
+Outcome: Optimal batch size highly depends on delta and best delta highly depends on the rank of the query and how efficient the computation should be.
 
 ## cmd_buf_no_simultaneoususe
 
