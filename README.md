@@ -7,6 +7,7 @@ We implement a naive Delta-Step algorithm, Near-Far and Bellman-Ford.
 There is plenty of future work. We explored the ADDS algorithm in detail, but porting the implementation faithfully to Vulkan/GLSL is rather complex.
 
 ![](./search_germany.gif)
+_Shortest-Path search with Near-Far on Germany. Orange is the far bucket, light-green the near bucket and dark-green the settled nodes._
 
 ## Disclaimer
 
