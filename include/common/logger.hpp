@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <iostream>
 #include <ostream>
+#include <streambuf>
 
 namespace gpusssp::common
 {
@@ -16,12 +17,21 @@ enum class LogLevel : std::uint8_t
     ERROR = 3
 };
 
+class NullStreambuf : public std::streambuf
+{
+  protected:
+    int overflow(int c) override { return c; }
+};
+
 class NullStream : public std::ostream
 {
   public:
-    NullStream() : std::ostream(nullptr) {}
+    NullStream() : std::ostream(&null_buf) {}
     template <typename T> NullStream &operator<<(const T &) { return *this; }
     NullStream &operator<<(std::ostream &(*)(std::ostream &)) { return *this; }
+
+  private:
+    NullStreambuf null_buf;
 };
 
 class Logger
@@ -65,7 +75,11 @@ inline std::ostream &log_warning() { return Logger::get().log(LogLevel::WARNING)
 inline std::ostream &log_error() { return Logger::get().log(LogLevel::ERROR); }
 
 #ifdef NDEBUG
-inline NullStream log_debug() { return NullStream(); }
+inline NullStream &log_debug()
+{
+    static NullStream null_stream;
+    return null_stream;
+}
 #else
 inline std::ostream &log_debug() { return Logger::get().log(LogLevel::DEBUG); }
 #endif
