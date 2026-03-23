@@ -1667,7 +1667,7 @@ int main(int argc, char **argv)
     {
         app.dst_node = *maybe_dst_node_id;
     }
-    gpu::VulkanGraphicsContext context("Graph Visualizer", 1280, 720);
+    gpu::VulkanGraphicsContext context("Graph Visualizer", 1280, 720, gpu::detail::select_device());
     app.context = &context;
     setup_glfw_callbacks(context.window(), app);
 

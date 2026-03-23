@@ -20,7 +20,10 @@ namespace gpusssp::gpu
 class VulkanGraphicsContext : public VulkanContext
 {
   public:
-    explicit VulkanGraphicsContext(const char *app_name, uint32_t width, uint32_t height) // NOLINT
+    explicit VulkanGraphicsContext(const char *app_name, // NOLINT
+                                   uint32_t width,
+                                   uint32_t height,
+                                   uint32_t device_index)
         : m_width(width), m_height(height)
     {
         initialize_glfw(app_name);
@@ -32,7 +35,7 @@ class VulkanGraphicsContext : public VulkanContext
 
         create_instance(app_name, extensions);
         create_vulkan_surface();
-        select_physical_device(0);
+        select_physical_device(device_index);
         find_graphics_queue_family();
 
         std::vector<const char *> device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
