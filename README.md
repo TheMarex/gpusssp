@@ -6,6 +6,8 @@ The journey to learn about the state-of-the-art algorithms was documented in thi
 We implement a naive Delta-Step algorithm, Near-Far and Bellman-Ford.
 There is plenty of future work. We explored the ADDS algorithm in detail, but porting the implementation faithfully to Vulkan/GLSL is rather complex.
 
+![](./search_germany.gif)
+
 ## Disclaimer
 
 There are no plans to make this into a production-grade service or library right now.
