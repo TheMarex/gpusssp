@@ -33,7 +33,7 @@ echo "[3/4] Reordering graph (z-order)..."
 echo ""
 
 echo "[4/4] Running shortest path queries on all algorithms..."
-"$BUILD_DIR/gpusssp" "${MONACO_GRAPH}_zorder" --skip "" -n 100
+cd "$BUILD_DIR" && ./gpusssp "${MONACO_GRAPH}_zorder" --skip "" -n 100
 echo ""
 
 echo "=== Integration test completed successfully ==="
