@@ -76,12 +76,18 @@ target_link_libraries(osm2graph
         ZLIB::ZLIB
         BZip2::BZip2
         Threads::Threads
+        argparse::argparse
 )
 
 # Graph reorder executable
 add_executable(graph_reorder
     src/graph_reorder.cpp
     src/common/logger.cpp
+)
+
+target_link_libraries(graph_reorder
+    PRIVATE
+        argparse::argparse
 )
 
 # Graph visualizer executable

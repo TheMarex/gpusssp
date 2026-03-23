@@ -7,8 +7,10 @@
 #include "common/zorder.hpp"
 
 #include <algorithm>
+#include <argparse/argparse.hpp>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <numeric>
 #include <ostream>
 #include <string>
@@ -18,23 +20,35 @@ using namespace gpusssp;
 
 int main(int argc, char **argv)
 {
-    if (argc < 4)
+    argparse::ArgumentParser program("graph_reorder", "1.0.0");
+    program.add_description("Reorder graph nodes using spatial locality optimization.");
+
+    program.add_argument("method")
+        .default_value(std::string("zorder"))
+        .help("reordering method: zorder");
+
+    program.add_argument("input_path").help("path to input graph data (without extension)");
+    program.add_argument("output_path").help("path to output graph data (without extension)");
+
+    try
     {
-        common::log() << argv[0] << " METHOD INPUT_PATH OUTPUT_PATH" << '\n';
-        common::log() << "Example: " << argv[0] << " zorder cache/berlin cache/berlin_zorder"
-                      << '\n';
-        common::log() << "Methods: zorder" << '\n';
+        program.parse_args(argc, argv);
+    }
+    catch (const std::exception &err)
+    {
+        common::log_error() << err.what() << '\n';
+        common::log_error() << program;
         return EXIT_FAILURE;
     }
 
-    const std::string method = argv[1];
-    const std::string input_path = argv[2];
-    const std::string output_path = argv[3];
+    const std::string method = program.get("method");
+    const std::string input_path = program.get("input_path");
+    const std::string output_path = program.get("output_path");
 
     if (method != "zorder")
     {
-        common::log() << "Error: Unknown method '" << method << "'" << '\n';
-        common::log() << "Available methods: zorder" << '\n';
+        common::log_error() << "Error: Unknown method '" << method << "'" << '\n';
+        common::log_error() << "Available methods: zorder" << '\n';
         return EXIT_FAILURE;
     }
 

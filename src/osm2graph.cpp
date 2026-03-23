@@ -5,19 +5,34 @@
 #include "common/timed_logger.hpp"
 #include "common/weighted_graph.hpp"
 
+#include <argparse/argparse.hpp>
+#include <cstdlib>
+#include <exception>
+#include <string>
+
 using namespace gpusssp;
 
 int main(int argc, char **argv)
 {
-    if (argc < 3)
+    argparse::ArgumentParser program("osm2graph", "1.0.0");
+    program.add_description("Convert OSM PBF format to internal graph format.");
+
+    program.add_argument("osm_path").help("path to OSM PBF file");
+    program.add_argument("output_path").help("output path for graph data (without extension)");
+
+    try
     {
-        common::log() << argv[0] << " PATH_TO_OSM OUTPUT_PATH" << '\n';
-        common::log() << "Example: " << argv[0] << " berlin.osm.pbf cache/graph/berlin" << '\n';
+        program.parse_args(argc, argv);
+    }
+    catch (const std::exception &err)
+    {
+        common::log_error() << err.what() << '\n';
+        common::log_error() << program;
         return EXIT_FAILURE;
     }
 
-    const std::string network_path = argv[1];
-    const std::string output_base_path = argv[2];
+    const std::string network_path = program.get("osm_path");
+    const std::string output_base_path = program.get("output_path");
 
     common::TimedLogger time_read("Reading network from");
     auto network = preprocessing::read_network(network_path);
