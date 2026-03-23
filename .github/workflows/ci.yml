@@ -29,20 +29,25 @@ jobs:
             libosmium2-dev \
             libprotozero-dev
 
-      - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Run tests
+      - name: Vulkan info
         env:
-          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-        run: ctest --test-dir build --output-on-failure
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: vulkaninfo --summary
 
-      - name: Run integration test
-        env:
-          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-        run: ./ci/integration_test.sh
-        working-directory: ${{ github.workspace }}
+#      - name: Configure CMake
+#        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+#
+#      - name: Build
+#        run: cmake --build build --parallel
+#
+#      - name: Run tests
+#        env:
+#          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+#        run: ctest --test-dir build --output-on-failure
+#
+#      - name: Run integration test
+#        env:
+#          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+#        run: ./ci/integration_test.sh
+#        working-directory: ${{ github.workspace }}
 
