@@ -13,6 +13,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache build directory
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-${{ runner.os }}
+          restore-keys: |
+            build-${{ runner.os }}-v1
+
       - name: Install dependencies
         run: |
           sudo apt-get update
