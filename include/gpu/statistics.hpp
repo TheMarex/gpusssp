@@ -55,8 +55,8 @@ class Statistics
                                         buf_statistics,
                                         vk::MemoryPropertyFlagBits::eHostVisible |
                                             vk::MemoryPropertyFlagBits::eHostCoherent);
-        gpu_statistics_counters =
-            (uint64_t *)device.mapMemory(mem_statistics, 0, NUM_COUNTERS * sizeof(uint64_t));
+        gpu_statistics_counters = static_cast<uint64_t *>(
+            device.mapMemory(mem_statistics, 0, NUM_COUNTERS * sizeof(uint64_t)));
         reset();
 #else
         buf_statistics =
@@ -90,8 +90,12 @@ class Statistics
         std::stringstream ss;
         for (size_t i = 0; i < NUM_COUNTERS; ++i)
         {
-            StatisticsEvent event = static_cast<StatisticsEvent>(i);
-            ss << event_to_name(event) << ": " << gpu_statistics_counters[i] << std::endl;
+            auto event = static_cast<StatisticsEvent>(i);
+            auto count = gpu_statistics_counters[i];
+            if (count > 0)
+            {
+                ss << event_to_name(event) << ": " << count << '\n';
+            }
         }
         return ss.str();
 #else

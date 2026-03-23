@@ -56,7 +56,7 @@ using NearFarTracer = gpu::NearFarTracer;
 
 using VisualizationPayload = std::variant<DeltaStepPayload, NearFarPayload>;
 
-enum class AlgorithmType
+enum class AlgorithmType : uint8_t
 {
     DELTA_STEP,
     NEAR_FAR

@@ -71,7 +71,7 @@ inline double bearing(const Coordinate &lhs, const Coordinate &rhs)
     const auto y = std::sin(lon_delta) * std::cos(lat2);
     const auto x =
         (std::cos(lat1) * std::sin(lat2)) - (std::sin(lat1) * std::cos(lat2) * std::cos(lon_delta));
-    double result = RAD_TO_DEGREE * std::atan2(y, x);
+    auto result = static_cast<double>(RAD_TO_DEGREE * std::atan2(y, x));
 
     while (result < 0.0)
     {
@@ -92,10 +92,10 @@ inline double haversine_distance(const Coordinate lhs, const Coordinate rhs)
 
     const constexpr long double EARTH_RADIUS = 6372797.560856;
 
-    const double dlat1 = lt1 * DEGREE_TO_RAD;
-    const double dlong1 = ln1 * DEGREE_TO_RAD;
-    const double dlat2 = lt2 * DEGREE_TO_RAD;
-    const double dlong2 = ln2 * DEGREE_TO_RAD;
+    const auto dlat1 = static_cast<double>(lt1 * DEGREE_TO_RAD);
+    const auto dlong1 = static_cast<double>(ln1 * DEGREE_TO_RAD);
+    const auto dlat2 = static_cast<double>(lt2 * DEGREE_TO_RAD);
+    const auto dlong2 = static_cast<double>(ln2 * DEGREE_TO_RAD);
 
     const double dlong = dlong1 - dlong2;
     const double dlat = dlat1 - dlat2;
@@ -103,7 +103,7 @@ inline double haversine_distance(const Coordinate lhs, const Coordinate rhs)
     const double aharv = std::pow(std::sin(dlat / 2.0), 2.0) +
                          (std::cos(dlat1) * std::cos(dlat2) * std::pow(std::sin(dlong / 2.), 2));
     const double charv = 2. * std::atan2(std::sqrt(aharv), std::sqrt(1.0 - aharv));
-    return EARTH_RADIUS * charv;
+    return static_cast<double>(EARTH_RADIUS * charv);
 }
 
 static const constexpr Coordinate INVALID_COORD = {.lon = std::numeric_limits<std::int32_t>::max(),

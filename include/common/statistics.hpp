@@ -111,7 +111,11 @@ class Statistics
         for (const auto event_id : irange<std::uint8_t>(0, event_counters.size()))
         {
             StatisticsEvent event{event_id};
-            ss << event_to_name(event) << ": " << event_counters[event_id] << std::endl;
+            auto count = event_counters[event_id];
+            if (count > 0)
+            {
+                ss << event_to_name(event) << ": " << count << '\n';
+            }
         }
         return ss.str();
 #else

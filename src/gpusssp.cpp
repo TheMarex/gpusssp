@@ -1,10 +1,10 @@
 #include <algorithm>
 #include <argparse/argparse.hpp>
 #include <cassert>
-#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <optional>
 #include <ostream>
 #include <random>
@@ -16,7 +16,6 @@
 #include "common/bucket_queue.hpp"
 #include "common/cli.hpp"
 #include "common/constants.hpp"
-#include "common/coordinate.hpp"
 #include "common/dial.hpp"
 #include "common/dijkstra.hpp"
 #include "common/files.hpp"
@@ -79,8 +78,8 @@ int main(int argc, char **argv)
     }
     catch (const std::exception &err)
     {
-        std::cerr << err.what() << '\n';
-        std::cerr << program;
+        common::log_error() << err.what() << '\n';
+        common::log_error() << program;
         return 1;
     }
 
@@ -135,7 +134,7 @@ int main(int argc, char **argv)
 
     common::NearestNeighbour nn(coordinates);
 
-    std::uniform_int_distribution<> random_node_id(0, graph.num_nodes() - 1);
+    std::uniform_int_distribution<> random_node_id(0, static_cast<int32_t>(graph.num_nodes() - 1));
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -320,7 +319,7 @@ int main(int argc, char **argv)
                     << "Error: Dial distance " << src_nodes[i] << "->" << dst_nodes[i]
                     << " mismatch. expected: " << expected_dist << " actual: " << dl_dist << '\n';
             }
-            checksum += dist;
+            checksum ^= dist;
         }
         auto num_reachable = num_queries - num_unreachable;
         auto &log = common::log();
@@ -352,12 +351,11 @@ int main(int argc, char **argv)
                         : "")
                 << ")";
         log << '\n';
-        common::log() << "Checksum: " << (checksum / num_reachable) << '\n';
+        common::log() << "Checksum: " << checksum << '\n';
 
 #ifdef ENABLE_STATISTICS
-        common::log() << "Statistics: " << std::endl
-                      << common::Statistics::get().summary() << gpu_statistics.summary()
-                      << std::endl;
+        common::log() << "Statistics: " << '\n'
+                      << common::Statistics::get().summary() << gpu_statistics.summary() << '\n';
 #endif
     }
 

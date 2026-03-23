@@ -31,6 +31,8 @@ Checks: >
   -google-readability-braces-around-statements,
   -google-readability-todo,
   -google-runtime-references,
+  -google-runtime-int,
+  -google-build-using-namespace,
   misc-*,
   -misc-const-correctness,
   -misc-non-private-member-variables-in-classes,
