@@ -14,7 +14,7 @@ MONACO_GRAPH="$CACHE_DIR/monaco"
 echo "=== GPUSSSP Integration Test ==="
 echo ""
 
-mkdir -p "$DATA_DIR" "$CACHE_DIR"
+mkdir -p "$DATA_DIR" "$CACHE_DIR" "$MONACO_GRAPH" "${MONACO_GRAPH}_zorder"
 
 echo "[1/4] Downloading Monaco OSM data..."
 if [ ! -f "$MONACO_PBF" ]; then
