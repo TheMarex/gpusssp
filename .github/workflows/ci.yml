@@ -24,7 +24,9 @@ jobs:
             glslang-tools \
             zlib1g-dev \
             libbz2-dev \
-            libglfw3-dev
+            libglfw3-dev \
+            libosmium2-dev \
+            libprotozero-dev
 
       - name: Configure CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON

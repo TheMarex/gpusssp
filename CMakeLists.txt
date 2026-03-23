@@ -18,10 +18,12 @@ endif()
 # Export compile commands for clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Add cmake module path for FindOsmium.cmake and FindProtozero.cmake
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
 # Add include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libosmium/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb
 )
 
@@ -31,6 +33,7 @@ find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
 find_package(BZip2 REQUIRED)
 find_package(glfw3 REQUIRED)
+find_package(Osmium REQUIRED COMPONENTS pbf)
 
 include(FetchContent)
 FetchContent_Declare(
