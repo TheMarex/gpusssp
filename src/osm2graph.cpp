@@ -11,9 +11,8 @@ int main(int argc, char **argv)
 {
     if (argc < 3)
     {
-        common::log() << argv[0] << " PATH_TO_OSM OUTPUT_PATH" << std::endl;
-        common::log() << "Example: " << argv[0] << " berlin.osm.pbf cache/graph/berlin"
-                      << std::endl;
+        common::log() << argv[0] << " PATH_TO_OSM OUTPUT_PATH" << '\n';
+        common::log() << "Example: " << argv[0] << " berlin.osm.pbf cache/graph/berlin" << '\n';
         return EXIT_FAILURE;
     }
 
@@ -31,7 +30,7 @@ int main(int argc, char **argv)
     time_simplify.finished();
     common::log() << "Removed " << (nodes_before - nodes_after) << "("
                   << ((nodes_before - nodes_after) / (double)nodes_before * 100) << "%) nodes."
-                  << std::endl;
+                  << '\n';
 
     common::TimedLogger time_convert("Converting to graph");
     auto graph = preprocessing::weighted_graph_from_network(network);
@@ -39,7 +38,7 @@ int main(int argc, char **argv)
     time_convert.finished();
 
     common::log() << "Graph has " << graph.num_nodes() << " nodes and " << graph.num_edges()
-                  << " edges" << std::endl;
+                  << " edges" << '\n';
 
     common::TimedLogger time_write("Writing graph");
     common::files::write_weighted_graph(output_base_path, graph);

@@ -347,7 +347,7 @@ template <class... Types> class CSVWriter
 
     void write(const input_t &value)
     {
-        stream << detail::join_tuple<Types...>(value, delimiter) << std::endl;
+        stream << detail::join_tuple<Types...>(value, delimiter) << '\n';
     }
 
   private:

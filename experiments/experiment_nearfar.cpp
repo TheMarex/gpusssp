@@ -56,8 +56,7 @@ int main(int argc, char **argv)
     }
     catch (const std::exception &err)
     {
-        std::cerr << err.what() << '\n';
-        std::cerr << program;
+        common::log_error() << err.what() << '\n' << program;
         return 1;
     }
 
@@ -158,8 +157,8 @@ int main(int argc, char **argv)
         common::log() << "Done." << '\n';
 
 #ifdef ENABLE_STATISTICS
-        common::log() << "Statistics: " << std::endl
-                      << common::Statistics::get().summary() << statistics.summary() << std::endl;
+        common::log() << "Statistics: " << '\n'
+                      << common::Statistics::get().summary() << statistics.summary() << '\n';
 #endif
     }
 
