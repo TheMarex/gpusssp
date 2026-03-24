@@ -17,10 +17,10 @@ echo ""
 mkdir -p "$DATA_DIR" "$CACHE_DIR" "$MONACO_GRAPH" "${MONACO_GRAPH}_zorder"
 
 echo "[1/4] Downloading Monaco OSM data..."
-if [ ! -f "$MONACO_PBF" ]; then
-    wget -q --show-progress -O "$MONACO_PBF" "$MONACO_URL"
-else
+if [ -f "$MONACO_PBF" ]; then
     echo "  Already downloaded, skipping."
+else
+    wget -q --show-progress -O "$MONACO_PBF" "$MONACO_URL"
 fi
 echo ""
 

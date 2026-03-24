@@ -13,6 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache data
+        id: cache-data
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: data-${{ runner.os }}
+
       - name: Cache build directory
         uses: actions/cache@v4
         with:
