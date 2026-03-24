@@ -51,13 +51,13 @@ template <typename GraphT> class DeltaStep
         : graph_buffers(graph_buffers), deltastep_buffers(deltastep_buffers),
           statistics(statistics), device(device), delta(delta), relax_batch_size(relax_batch_size),
           workgroup_size(workgroup_size)
-    {
-    }
+    { fence = device.createFence({vk::FenceCreateFlagBits::eSignaled}); }
 
     ~DeltaStep()
     {
         main_pipeline.destroy(device);
         prepare_dispatch_pipeline.destroy(device);
+        device.destroyFence(fence);
     }
 
     void initialize(vk::CommandPool cmd_pool)
@@ -306,8 +306,9 @@ template <typename GraphT> class DeltaStep
         auto &sync_cmd_buf = cmd_bufs[1];
 
         record_init_commands(init_cmd_buf, src_node);
-        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf});
-        queue.waitIdle();
+        device.resetFences(fence);
+        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf}, fence);
+        (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
         for (uint32_t bucket = 0; bucket < max_buckets; bucket++)
         {
@@ -319,14 +320,18 @@ template <typename GraphT> class DeltaStep
             *gpu_max_changed_id = num_nodes - 1;
             *gpu_best_distance = common::INF_WEIGHT;
 
-            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, init_bucket_cmd_bufs.data()});
-            queue.waitIdle();
+            device.resetFences(fence);
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, init_bucket_cmd_bufs.data()},
+                         fence);
+            (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
             bool converged = false;
             while (!converged)
             {
-                queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &relax_cmd_bufs[buffer_idx]});
-                queue.waitIdle();
+                device.resetFences(fence);
+                queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &relax_cmd_bufs[buffer_idx]},
+                             fence);
+                (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
                 if (tracer)
                 {
@@ -353,8 +358,9 @@ template <typename GraphT> class DeltaStep
             }
 
             record_sync_commands(sync_cmd_buf, dst_node, bucket + 1);
-            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &sync_cmd_buf});
-            queue.waitIdle();
+            device.resetFences(fence);
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &sync_cmd_buf}, fence);
+            (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {
@@ -393,6 +399,7 @@ template <typename GraphT> class DeltaStep
     ComputePipeline prepare_dispatch_pipeline;
 
     vk::Device device;
+    vk::Fence fence;
     uint32_t delta;
     uint32_t relax_batch_size;
     uint32_t workgroup_size;

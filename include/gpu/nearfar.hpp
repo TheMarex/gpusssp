@@ -126,6 +126,8 @@ template <typename GraphT> class NearFar
                                                {far_0_buffer, dispatch_buffer},
                                                {far_1_buffer, dispatch_buffer}},
                                               {workgroup_size});
+
+        fence = device.createFence({vk::FenceCreateFlagBits::eSignaled});
     }
 
     ~NearFar()
@@ -133,6 +135,7 @@ template <typename GraphT> class NearFar
         relax_pipeline.destroy(device);
         compact_pipeline.destroy(device);
         prepare_dispatch_pipeline.destroy(device);
+        device.destroyFence(fence);
     }
 
     void initialize(vk::CommandPool cmd_pool)
@@ -431,8 +434,9 @@ template <typename GraphT> class NearFar
         record_sync_commands(sync_cmd_bufs[1], dst_node, 1);
         record_init_commands(init_cmd_buf, src_node, dst_node, delta);
 
-        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf});
-        queue.waitIdle();
+        device.resetFences(fence);
+        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf}, fence);
+        (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
         common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_INIT_DURATION, init_start);
 
@@ -458,13 +462,16 @@ template <typename GraphT> class NearFar
                 common::log_debug() << phase << " near " << *gpu_num_near << " best distance "
                                     << *gpu_best_distance << '\n';
 
-                queue.submit(vk::SubmitInfo{
-                    0,
-                    nullptr,
-                    nullptr,
-                    1,
-                    &relax_cmd_bufs[current_near_buffer_idx + (2 * current_far_buffer_idx)]});
-                queue.waitIdle();
+                device.resetFences(fence);
+                queue.submit(
+                    vk::SubmitInfo{
+                        0,
+                        nullptr,
+                        nullptr,
+                        1,
+                        &relax_cmd_bufs[current_near_buffer_idx + (2 * current_far_buffer_idx)]},
+                    fence);
+                (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
                 current_near_buffer_idx = (current_near_buffer_idx + relax_batch_size) % 2;
 
@@ -479,9 +486,11 @@ template <typename GraphT> class NearFar
             common::Statistics::get().stop(common::StatisticsEvent::NEARFAR_RELAX_DURATION,
                                            relax_start);
 
+            device.resetFences(fence);
             queue.submit(
-                vk::SubmitInfo{0, nullptr, nullptr, 1, &sync_cmd_bufs[current_far_buffer_idx]});
-            queue.waitIdle();
+                vk::SubmitInfo{0, nullptr, nullptr, 1, &sync_cmd_bufs[current_far_buffer_idx]},
+                fence);
+            (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
             if (*gpu_best_distance != common::INF_WEIGHT)
             {
@@ -505,9 +514,11 @@ template <typename GraphT> class NearFar
             common::log_debug() << phase << " far " << *gpu_num_far << " best distance "
                                 << *gpu_best_distance << '\n';
 
+            device.resetFences(fence);
             queue.submit(
-                vk::SubmitInfo{0, nullptr, nullptr, 1, &compact_cmd_bufs[current_far_buffer_idx]});
-            queue.waitIdle();
+                vk::SubmitInfo{0, nullptr, nullptr, 1, &compact_cmd_bufs[current_far_buffer_idx]},
+                fence);
+            (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
             phase++;
             phase_cmd_buf.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
@@ -520,8 +531,9 @@ template <typename GraphT> class NearFar
                                           {},
                                           {});
             phase_cmd_buf.end();
-            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &phase_cmd_buf});
-            queue.waitIdle();
+            device.resetFences(fence);
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &phase_cmd_buf}, fence);
+            (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
             if (tracer)
             {
@@ -560,6 +572,7 @@ template <typename GraphT> class NearFar
     ComputePipeline prepare_dispatch_pipeline;
 
     vk::Device device;
+    vk::Fence fence;
     uint32_t delta;
     uint32_t relax_batch_size;
     uint32_t workgroup_size;

@@ -46,9 +46,15 @@ template <typename GraphT> class BellmanFord
                                                               changed_buffer,
                                                               statistics_buffer}},
                                                             {workgroup_size});
+
+        fence = device.createFence({vk::FenceCreateFlagBits::eSignaled});
     }
 
-    ~BellmanFord() { main_pipeline.destroy(device); }
+    ~BellmanFord()
+    {
+        main_pipeline.destroy(device);
+        device.destroyFence(fence);
+    }
 
     void initialize(vk::CommandPool cmd_pool)
     {
@@ -174,16 +180,18 @@ template <typename GraphT> class BellmanFord
         record_init_commands(init_cmd_buf, src_node);
         record_sync_commands(sync_cmd_buf, dst_node);
 
-        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf});
-        queue.waitIdle();
+        device.resetFences(fence);
+        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &init_cmd_buf}, fence);
+        (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
         uint32_t *gpu_changed = bellmanford_buffers.changed();
         uint32_t *gpu_best_distance = bellmanford_buffers.best_distance();
 
         for (uint32_t iteration = 0; iteration < num_nodes - 1; iteration += BATCH_SIZE)
         {
-            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, batch_cmd_bufs.data()});
-            queue.waitIdle();
+            device.resetFences(fence);
+            queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, batch_cmd_bufs.data()}, fence);
+            (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
             if (*gpu_changed == 0)
             {
@@ -191,8 +199,9 @@ template <typename GraphT> class BellmanFord
             }
         }
 
-        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &sync_cmd_buf});
-        queue.waitIdle();
+        device.resetFences(fence);
+        queue.submit(vk::SubmitInfo{0, nullptr, nullptr, 1, &sync_cmd_buf}, fence);
+        (void)device.waitForFences(fence, VK_TRUE, UINT64_MAX);
 
         device.freeCommandBuffers(cmd_pool, one_time_cmd_bufs);
 
@@ -207,6 +216,7 @@ template <typename GraphT> class BellmanFord
     ComputePipeline main_pipeline;
 
     vk::Device device;
+    vk::Fence fence;
     uint32_t workgroup_size;
     std::vector<vk::CommandBuffer> batch_cmd_bufs;
 };
