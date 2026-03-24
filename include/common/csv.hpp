@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <fstream>
+#include <mutex>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -341,18 +342,20 @@ template <class... Types> class CSVWriter
 
     void write_header(const std::vector<std::string> &header)
     {
+        std::scoped_lock lock(m_mutex);
         stream << detail::join(header, delimiter) << '\n';
-        ;
     }
 
     void write(const input_t &value)
     {
+        std::scoped_lock lock(m_mutex);
         stream << detail::join_tuple<Types...>(value, delimiter) << '\n';
     }
 
   private:
     const char *delimiter;
     std::ofstream stream;
+    std::mutex m_mutex;
 };
 } // namespace gpusssp::common
 

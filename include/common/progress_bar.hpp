@@ -2,8 +2,11 @@
 #define GPUSSSP_COMMON_PROGRESS_BAR_HPP
 
 #include "common/logger.hpp"
+
+#include <atomic>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 
 namespace gpusssp::common
 {
@@ -18,7 +21,8 @@ class ProgressBar
 
     void update(size_t count)
     {
-        current_count = count;
+        std::scoped_lock lock(m_mutex);
+        current_count.store(count);
 
         auto &os = Logger::get().log(LogLevel::INFO);
         if (os.rdbuf() == nullptr)
@@ -27,8 +31,8 @@ class ProgressBar
         }
 
         auto prev_progress = static_cast<float>(prev_update) / static_cast<float>(total_count);
-        auto progress = static_cast<float>(current_count) / static_cast<float>(total_count);
-        if (progress - prev_progress < MIN_INCREMENT && current_count < total_count)
+        auto progress = static_cast<float>(count) / static_cast<float>(total_count);
+        if (progress - prev_progress < MIN_INCREMENT && count < total_count)
         {
             return;
         }
@@ -42,7 +46,7 @@ class ProgressBar
             {
                 os << "=";
             }
-            else if (i == pos && current_count < total_count)
+            else if (i == pos && count < total_count)
             {
                 os << ">";
             }
@@ -51,10 +55,10 @@ class ProgressBar
                 os << " ";
             }
         }
-        os << "] " << std::setw(3) << static_cast<int>(progress * 100.0f) << "% (" << current_count
-           << "/" << total_count << ")";
+        os << "] " << std::setw(3) << static_cast<int>(progress * 100.0f) << "% (" << count << "/"
+           << total_count << ")";
 
-        if (current_count >= total_count)
+        if (count >= total_count)
         {
             os << '\n';
         }
@@ -63,15 +67,16 @@ class ProgressBar
             os.flush();
         }
 
-        prev_update = current_count;
+        prev_update = count;
     }
 
-    void increment() { update(current_count + 1); }
+    void increment() { update(current_count.fetch_add(1) + 1); }
 
   private:
     size_t total_count;
-    size_t current_count = 0;
+    std::atomic<size_t> current_count{0};
     size_t prev_update = 0;
+    std::mutex m_mutex;
 };
 
 } // namespace gpusssp::common
