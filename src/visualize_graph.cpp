@@ -1,3 +1,7 @@
+// DISCLAIMER: This file mostly AI-generated and it shows.
+// This tool was useful for debugging / creating visualizations for the blog posts.
+// It is buggy but worked well-enough for that purpose.
+
 #include "common/cli.hpp"
 #include "common/coordinate.hpp"
 #include "common/files.hpp"

@@ -6,6 +6,8 @@
 # ///
 """Unified experiment management tool for GPUSSSP."""
 
+# DISCLAIMER: The xps.py tools is mostly AI-generated with minimal oversight.
+
 from pathlib import Path
 import sys
 
