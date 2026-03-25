@@ -192,6 +192,22 @@ if(ENABLE_STATISTICS)
     target_compile_definitions(experiment_nearfar PRIVATE ENABLE_STATISTICS)
 endif()
 
+# Experiment Throughput
+add_executable(experiment_throughput
+    experiments/experiment_throughput.cpp
+    src/common/logger.cpp
+)
+
+target_link_libraries(experiment_throughput
+    PRIVATE
+        Vulkan::Vulkan
+        argparse::argparse
+)
+
+if(ENABLE_STATISTICS)
+    target_compile_definitions(experiment_throughput PRIVATE ENABLE_STATISTICS)
+endif()
+
 set(SHADER_COMPILE_FLAGS "")
 if(ENABLE_STATISTICS)
     list(APPEND SHADER_COMPILE_FLAGS -DENABLE_STATISTICS)
@@ -251,6 +267,7 @@ add_dependencies(gpusssp shaders)
 add_dependencies(experiment_deltastep shaders)
 add_dependencies(experiment_bellmanford shaders)
 add_dependencies(experiment_nearfar shaders)
+add_dependencies(experiment_throughput shaders)
 add_dependencies(visualize_graph shaders)
 
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo;Profiling" CACHE STRING "" FORCE)
