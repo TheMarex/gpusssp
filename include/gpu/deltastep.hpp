@@ -51,7 +51,9 @@ template <typename GraphT> class DeltaStep
         : graph_buffers(graph_buffers), deltastep_buffers(deltastep_buffers),
           statistics(statistics), device(device), delta(delta), relax_batch_size(relax_batch_size),
           workgroup_size(workgroup_size)
-    { fence = device.createFence({vk::FenceCreateFlagBits::eSignaled}); }
+    {
+        fence = device.createFence({vk::FenceCreateFlagBits::eSignaled});
+    }
 
     ~DeltaStep()
     {

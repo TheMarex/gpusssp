@@ -3,10 +3,10 @@
 #include <cstdint>
 #include <vector>
 
+#include "mock_graph.hpp"
 #include "common/bucket_queue.hpp"
 #include "common/constants.hpp"
 #include "common/dijkstra.hpp"
-#include "mock_graph.hpp"
 
 #include "common/dial.hpp"
 #include "common/edge.hpp"

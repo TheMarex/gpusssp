@@ -4,11 +4,11 @@
 #include <cstdint>
 #include <vulkan/vulkan.hpp>
 
-#include "common/weighted_graph.hpp"
-#include "gpu/statistics.hpp"
 #include "grid_graph.hpp"
 #include "mock_graph.hpp"
 #include "vulkan_test_fixture.hpp"
+#include "common/weighted_graph.hpp"
+#include "gpu/statistics.hpp"
 
 #include "gpu/graph_buffers.hpp"
 #include "gpu/nearfar.hpp"

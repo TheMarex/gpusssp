@@ -1,3 +1,5 @@
+#include "experiment_util.hpp"
+#include "queries.hpp"
 #include "common/bucket_queue.hpp"
 #include "common/constants.hpp"
 #include "common/csv.hpp"
@@ -8,8 +10,6 @@
 #include "common/progress_bar.hpp"
 #include "common/statistics.hpp"
 #include "common/weighted_graph.hpp"
-#include "experiment_util.hpp"
-#include "queries.hpp"
 
 #include <argparse/argparse.hpp>
 #include <chrono>

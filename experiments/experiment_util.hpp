@@ -1,8 +1,8 @@
 #ifndef GPUSSSP_EXPERIMENTS_EXPERIMENT_UTIL_HPP
 #define GPUSSSP_EXPERIMENTS_EXPERIMENT_UTIL_HPP
 
-#include "common/string_util.hpp"
 #include "queries.hpp"
+#include "common/string_util.hpp"
 
 #include <array>
 #include <chrono>

@@ -1,15 +1,15 @@
 #ifndef GPUSSSP_IMPORT_OSM_HPP
 #define GPUSSSP_IMPORT_OSM_HPP
 
+#include "osmium/io/file.hpp"
+#include "osmium/osm/location.hpp"
+#include "osmium/osm/types.hpp"
 #include "common/constants.hpp"
 #include "common/coordinate.hpp"
 #include "common/dyn_graph.hpp"
 #include "common/graph_transform.hpp"
 #include "common/irange.hpp"
 #include "common/weighted_graph.hpp"
-#include "osmium/io/file.hpp"
-#include "osmium/osm/location.hpp"
-#include "osmium/osm/types.hpp"
 
 #include <algorithm>
 #include <cassert>

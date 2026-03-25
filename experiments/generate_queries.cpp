@@ -1,10 +1,10 @@
+#include "queries.hpp"
 #include "common/constants.hpp"
 #include "common/dijkstra.hpp"
 #include "common/files.hpp"
 #include "common/id_queue.hpp"
 #include "common/logger.hpp"
 #include "common/progress_bar.hpp"
-#include "queries.hpp"
 
 #include <algorithm>
 #include <cmath>

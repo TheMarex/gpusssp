@@ -1,6 +1,6 @@
+#include "mock_graph.hpp"
 #include "common/graph_metrics.hpp"
 #include "common/weighted_graph.hpp"
-#include "mock_graph.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 
