@@ -54,7 +54,7 @@ def parse_commit_message(message: str, xp_name: str) -> List[ExperimentConfig]:
         param_name = match.group(1)
         param_value = match.group(2)
 
-        if param_name in ("delta", "batch_size", "gpu"):
+        if param_name in ("delta", "batch_size", "gpu", "threads"):
             params[param_name] = [int(v) for v in param_value.split(",")]
         else:
             params[param_name] = param_value.split(",")
@@ -129,6 +129,8 @@ def format_cmd(
             cmd.extend(["--delta", str(params["delta"])])
         if "batch_size" in params:
             cmd.extend(["--batch-size", str(params["batch_size"])])
+        if target == "nearfar" and "threads" in params:
+            cmd.extend(["--threads", str(params["threads"])])
 
     return cmd
 
