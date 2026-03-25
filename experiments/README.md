@@ -100,12 +100,14 @@ Adds an empty instrumentation commit to the current experiment branch.
 - `bellmanford` - GPU Bellman-Ford
 - `nearfar` - GPU Near-Far
 - `dial` - CPU Dial's algorithm (uses BucketQueue)
+- `throughput` - Algorithm throughput benchmark (requires at least one algorithm target)
 
 **Parameters:** Space-separated `key=value` pairs. All parameters support comma-separated values to run multiple combinations:
 - `data=<name>` - Dataset name (required, e.g., `berlin`)
 - `delta=<values>` - Delta values (for deltastep, nearfar)
 - `batch_size=<values>` - Batch size for GPU processing (for deltastep, nearfar)
 - `range=<value>` - Bucket range (for dial, default: 32768)
+- `threads=<values>` - Maximum worker threads (for nearfar, throughput)
 - `gpu=<id>` - GPU device ID (optional)
 
 **Metrics:** Optional third argument. Default is `time`. Use `edges_relaxed` for edge-count metrics. Note: `time` and requires a different build configurations and cannot be mixed with other metrics.
@@ -116,6 +118,7 @@ Adds an empty instrumentation commit to the current experiment branch.
 ./experiments/xps.py add "deltastep,nearfar" "delta=900,1800,3600 data=berlin"
 ./experiments/xps.py add "deltastep" "delta=900,1800 batch_size=64,128 data=berlin"  # 4 combinations
 ./experiments/xps.py add "deltastep" "delta=900 data=berlin" "edges_relaxed"
+./experiments/xps.py add "nearfar,throughput" "delta=3600 threads=1,2,4,8 data=berlin"
 ```
 
 ### `xps.py run`

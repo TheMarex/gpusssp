@@ -3,7 +3,14 @@ from typing import Dict, List
 
 from .errors import error_exit
 
-VALID_RUN_TARGETS = {"dijkstra", "deltastep", "bellmanford", "nearfar", "dial"}
+VALID_RUN_TARGETS = {
+    "dijkstra",
+    "deltastep",
+    "bellmanford",
+    "nearfar",
+    "dial",
+    "throughput",
+}
 VALID_METRICS = {"time", "edges_relaxed"}
 
 

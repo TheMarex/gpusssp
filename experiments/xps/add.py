@@ -30,6 +30,10 @@ def handle(run_targets: str, params_str: str, metrics_str: str = "") -> None:
     metrics = parse_metrics(metrics_str)
 
     validate_run_targets(targets)
+    if "throughput" in targets and len([t for t in targets if t != "throughput"]) == 0:
+        error_exit(
+            "throughput target requires at least one other algorithm target (e.g., nearfar, dijkstra, dial)"
+        )
     validate_params(params)
     validate_metrics(metrics)
 

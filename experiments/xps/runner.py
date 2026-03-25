@@ -76,17 +76,43 @@ def parse_commit_message(message: str, xp_name: str) -> List[ExperimentConfig]:
     param_value_lists = [params[k] for k in param_keys]
 
     configs = []
-    for combination in itertools.product(*param_value_lists):
-        config_params = dict(zip(param_keys, combination))
-        configs.append(
-            ExperimentConfig(
-                name=xp_name,
-                commit_sha="",
-                run_targets=run_targets.copy(),
-                params=config_params,
-                metrics=metrics.copy(),
+    algorithm_targets = {"dijkstra", "deltastep", "bellmanford", "nearfar", "dial"}
+    base_algos = [t for t in run_targets if t in algorithm_targets]
+    other_targets = [t for t in run_targets if t != "throughput"]
+
+    if other_targets:
+        for combination in itertools.product(*param_value_lists):
+            config_params = dict(zip(param_keys, combination))
+            configs.append(
+                ExperimentConfig(
+                    name=xp_name,
+                    commit_sha="",
+                    run_targets=other_targets.copy(),
+                    params=config_params,
+                    metrics=metrics.copy(),
+                )
             )
-        )
+
+    if "throughput" in run_targets:
+        throughput_param_value_lists = []
+        for k in param_keys:
+            if k == "threads":
+                throughput_param_value_lists.append([max(params[k])])
+            else:
+                throughput_param_value_lists.append(params[k])
+
+        for combination in itertools.product(*throughput_param_value_lists):
+            config_params = dict(zip(param_keys, combination))
+            config_params["_throughput_algorithms"] = base_algos
+            configs.append(
+                ExperimentConfig(
+                    name=xp_name,
+                    commit_sha="",
+                    run_targets=["throughput"],
+                    params=config_params,
+                    metrics=metrics.copy(),
+                )
+            )
 
     return configs
 
@@ -115,22 +141,30 @@ def format_cmd(
     xp_name: str,
     params: Dict[str, Any],
     metrics: List[str],
+    algorithm: str = None,
 ) -> List[str]:
     binary = build_dir / f"experiment_{target}"
     cmd = [str(binary), str(cache_path), str(xp_base_path), "-n", xp_name]
 
-    cmd.extend(["--metrics", ",".join(metrics)])
+    if target != "throughput":
+        cmd.extend(["--metrics", ",".join(metrics)])
 
     if target == "dial" and "range" in params:
         cmd.extend(["--range", str(params["range"])])
 
-    if target in ["deltastep", "nearfar"]:
+    if target in ["deltastep", "nearfar", "throughput"]:
         if "delta" in params:
             cmd.extend(["--delta", str(params["delta"])])
         if "batch_size" in params:
             cmd.extend(["--batch-size", str(params["batch_size"])])
+
         if target == "nearfar" and "threads" in params:
             cmd.extend(["--threads", str(params["threads"])])
+        elif target == "throughput":
+            if "threads" in params:
+                cmd.extend(["--max-threads", str(params["threads"])])
+            if algorithm:
+                cmd.extend(["--algorithm", algorithm])
 
     return cmd
 
@@ -148,19 +182,49 @@ def run_experiment(
     if "gpu" in config.params:
         env["GPUSSSP_DEVICE"] = str(config.params["gpu"])
 
-    cmd = format_cmd(
-        build_dir,
-        target,
-        cache_path,
-        xp_base_path,
-        config.name,
-        config.params,
-        config.metrics,
-    )
+    if target == "throughput":
+        algorithms = config.params.get("_throughput_algorithms")
+        if not algorithms:
+            algorithm_targets = {
+                "dijkstra",
+                "deltastep",
+                "bellmanford",
+                "nearfar",
+                "dial",
+            }
+            algorithms = [t for t in config.run_targets if t in algorithm_targets]
 
-    cmd_str = " ".join(cmd)
-    click.echo(f"Running '{cmd_str}'...")
-    run_command(cmd, cwd=build_dir, env=env, capture=False)
+        if not algorithms:
+            algorithms = ["nearfar"]
+
+        for algo in algorithms:
+            cmd = format_cmd(
+                build_dir,
+                target,
+                cache_path,
+                xp_base_path,
+                config.name,
+                config.params,
+                config.metrics,
+                algorithm=algo,
+            )
+            cmd_str = " ".join(cmd)
+            click.echo(f"Running '{cmd_str}'...")
+            run_command(cmd, cwd=build_dir, env=env, capture=False)
+    else:
+        cmd = format_cmd(
+            build_dir,
+            target,
+            cache_path,
+            xp_base_path,
+            config.name,
+            config.params,
+            config.metrics,
+        )
+
+        cmd_str = " ".join(cmd)
+        click.echo(f"Running '{cmd_str}'...")
+        run_command(cmd, cwd=build_dir, env=env, capture=False)
 
 
 def ensure_release_build(
