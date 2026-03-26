@@ -1,3 +1,10 @@
+## threading
+
+Hypothesis: Dijkstra will beat NearFar for larger graphs on thoughput even though the latency is higher.
+
+## threading_delta
+Hypothesis: For nearfar a smaller delta-value like 512 will beat 4096 on throughput because it has better efficiency.
+
 ## node_stalling
 
 Hypotheis: A large batch size negatively affects low ranks because we process the near bucket to completion. Stalling out nodes > best_distance may lead to an early termination and limits the amount of wasted work for low ranks.
