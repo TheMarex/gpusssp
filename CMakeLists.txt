@@ -74,6 +74,8 @@ add_executable(osm2graph
     src/common/logger.cpp
 )
 
+target_include_directories(osm2graph PRIVATE ${OSMIUM_INCLUDE_DIR})
+
 target_link_libraries(osm2graph
     PRIVATE
         ZLIB::ZLIB

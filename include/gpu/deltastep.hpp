@@ -340,7 +340,7 @@ template <typename GraphT> class DeltaStep
                     tracer->signal_and_wait({.bucket_index = bucket, .buffer_index = buffer_idx});
                 }
 
-                uint32_t range_size = std::max(0L,
+                uint32_t range_size = std::max(0LL,
                                                static_cast<int64_t>(*gpu_max_changed_id) -
                                                    static_cast<int64_t>(*gpu_min_changed_id));
                 common::Statistics::get().sum(common::StatisticsEvent::DELTASTEP_RANGE, range_size);

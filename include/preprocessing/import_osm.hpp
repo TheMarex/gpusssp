@@ -1,9 +1,6 @@
 #ifndef GPUSSSP_IMPORT_OSM_HPP
 #define GPUSSSP_IMPORT_OSM_HPP
 
-#include "osmium/io/file.hpp"
-#include "osmium/osm/location.hpp"
-#include "osmium/osm/types.hpp"
 #include "common/constants.hpp"
 #include "common/coordinate.hpp"
 #include "common/dyn_graph.hpp"
@@ -16,6 +13,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <osmium/io/file.hpp>
+#include <osmium/osm/location.hpp>
+#include <osmium/osm/types.hpp>
 #include <osmium/handler.hpp>
 #include <osmium/handler/node_locations_for_ways.hpp>
 #include <osmium/index/map/sparse_mem_array.hpp>
