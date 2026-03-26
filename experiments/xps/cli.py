@@ -72,14 +72,16 @@ def compare(
 @click.argument("xp_name", required=False)
 @click.option("--device", help="Filter by device hash.")
 @click.option("--variant", help="Filter variants by substring match.")
+@click.option("--threads", type=int, help="Filter throughput data by thread count.")
 def plot(
     xp_name: str | None,
     device: str | None,
     variant: str | None,
+    threads: int | None,
 ) -> None:
     """Generate plots for experiment results."""
 
-    plot_cmd.handle(xp_name, device=device, variant=variant)
+    plot_cmd.handle(xp_name, device=device, variant=variant, threads=threads)
 
 
 @main.command()

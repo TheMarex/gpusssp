@@ -1,5 +1,6 @@
-import sys
-from typing import Dict, Tuple
+import re
+from pathlib import Path
+from typing import Dict
 
 import click
 import matplotlib.pyplot as plt
@@ -15,6 +16,28 @@ from .discovery import (
     group_by_query,
 )
 from .paths import get_workspace_root
+
+
+def _parse_algorithm_name(variant: str) -> str:
+    match = re.match(r"(\w+)_", variant)
+    return match.group(1) if match else variant
+
+
+def _is_throughput_df(df: pd.DataFrame) -> bool:
+    return "throughput" in df.columns
+
+
+def _partition_variant_dfs(
+    variant_dfs: Dict[str, pd.DataFrame],
+) -> tuple[Dict[str, pd.DataFrame], Dict[str, pd.DataFrame]]:
+    throughput_dfs = {}
+    time_dfs = {}
+    for name, df in variant_dfs.items():
+        if _is_throughput_df(df):
+            throughput_dfs[name] = df
+        else:
+            time_dfs[name] = df
+    return throughput_dfs, time_dfs
 
 
 def _plot_histogram(variant_dfs, title, output_path, variant_filter=None):
@@ -69,7 +92,42 @@ def _plot_rank_boxplot(
     plt.close(fig)
 
 
-def _save_plots(graph, query, device, entry, baseline_entry):
+def _plot_throughput_lineplot(
+    variant_dfs: Dict[str, pd.DataFrame],
+    title: str,
+    output_path: Path,
+    threads_filter: int | None = None,
+):
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    for variant, df in sorted(variant_dfs.items()):
+        algorithm = _parse_algorithm_name(variant)
+        threads_values = sorted(df["threads"].unique())
+        for threads in threads_values:
+            if threads_filter is not None and threads != threads_filter:
+                continue
+            df_subset = df[df["threads"] == threads]
+            label = f"{algorithm} (threads={threads})"
+            ax.plot(
+                df_subset["rank"],
+                df_subset["throughput"],
+                marker="o",
+                label=label,
+                alpha=0.7,
+            )
+
+    ax.set_xlabel("Rank")
+    ax.set_yscale("log")
+    ax.set_ylabel("Throughput (queries/s)")
+    ax.set_title(title)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.tight_layout()
+
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _save_plots(graph, query, device, entry, baseline_entry, threads_filter=None):
     all_variants = {}
     if baseline_entry:
         all_variants.update(baseline_entry.dfs)
@@ -82,36 +140,42 @@ def _save_plots(graph, query, device, entry, baseline_entry):
         )
         return
 
-    if len(all_variants) >= 2 and baseline_entry is not None:
-        validate_distances(all_variants)
-
     base_filename = f"{graph}_{query}_{device}"
-    histogram_path = entry.directory / f"{base_filename}_histogram.png"
-    rank_path = entry.directory / f"{base_filename}_rank_boxplot.png"
-
     title = f"{graph} device={device}"
 
-    _plot_histogram(
-        all_variants,
-        title,
-        histogram_path,
-    )
-    _plot_rank_boxplot(
-        all_variants,
-        title,
-        rank_path,
-    )
+    throughput_dfs, time_dfs = _partition_variant_dfs(all_variants)
 
-    click.echo(
-        f"Saved plots for graph={graph}, query={query}, device={device} -> "
-        f"{histogram_path.name}, {rank_path.name}"
-    )
+    if throughput_dfs:
+        throughput_path = entry.directory / f"{base_filename}_throughput.png"
+        _plot_throughput_lineplot(
+            throughput_dfs, f"{title} - Throughput", throughput_path, threads_filter
+        )
+        click.echo(
+            f"Saved throughput plot for graph={graph}, query={query}, device={device} -> "
+            f"{throughput_path.name}"
+        )
+
+    if time_dfs:
+        if len(time_dfs) >= 2 and baseline_entry is not None:
+            validate_distances(time_dfs)
+
+        histogram_path = entry.directory / f"{base_filename}_histogram.png"
+        rank_path = entry.directory / f"{base_filename}_rank_boxplot.png"
+
+        _plot_histogram(time_dfs, title, histogram_path)
+        _plot_rank_boxplot(time_dfs, title, rank_path)
+
+        click.echo(
+            f"Saved plots for graph={graph}, query={query}, device={device} -> "
+            f"{histogram_path.name}, {rank_path.name}"
+        )
 
 
 def handle(
     xp_name: str | None = None,
     device: str | None = None,
     variant: str | None = None,
+    threads: int | None = None,
 ) -> None:
     workspace_root = get_workspace_root()
     results_base = workspace_root / "experiments" / "results"
@@ -135,6 +199,4 @@ def handle(
             for device_id, entry in sorted(devices.items()):
                 if device_id == "cpu":
                     continue
-                # If we filtered by device in collect_experiments, it should only contain the device and cpu
-                # So if device is set and device_id != device, it shouldn't be here anyway.
-                _save_plots(graph, query, device_id, entry, baseline)
+                _save_plots(graph, query, device_id, entry, baseline, threads)
