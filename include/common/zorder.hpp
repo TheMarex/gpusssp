@@ -4,7 +4,9 @@
 #include "common/coordinate.hpp"
 
 #include <cstdint>
+#if defined(__x86_64__) || defined(__i386__)
 #include <immintrin.h>
+#endif
 
 namespace gpusssp::common
 {
