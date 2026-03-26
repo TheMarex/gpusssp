@@ -9,9 +9,26 @@
 namespace gpusssp::common
 {
 
+static inline uint64_t spread_bits(uint32_t x)
+{
+    uint64_t r = x;
+    r = (r | (r << 16)) & 0x0000FFFF0000FFFFULL;
+    r = (r | (r << 8)) & 0x00FF00FF00FF00FFULL;
+    r = (r | (r << 4)) & 0x0F0F0F0F0F0F0F0FULL;
+    r = (r | (r << 2)) & 0x3333333333333333ULL;
+    r = (r | (r << 1)) & 0x5555555555555555ULL;
+    return r;
+}
+
 inline uint64_t morton_encode(uint32_t x, uint32_t y)
 {
+#if defined(__BMI2__) && (defined(__x86_64__) || defined(__i386__))
     return _pdep_u64(x, 0x5555555555555555ULL) | _pdep_u64(y, 0xAAAAAAAAAAAAAAAAULL);
+#elif defined(__aarch64__) || defined(__arm64__)
+    return spread_bits(x) | (spread_bits(y) << 1);
+#else
+#error "morton_encode requires BMI2 (x86) or ARM64"
+#endif
 }
 
 // Converts a coordinate to a z-order curve value
